@@ -57,33 +57,60 @@ export async function POST(req: NextRequest) {
     const initData = await initRes.json();
     if (!initRes.ok) {
       return NextResponse.json(
-        { error: initData?.message ?? "Could not start the payment." },
+        { error: initData?.message ?? "Could not start the payment.", debug: initData },
         { status: initRes.status }
       );
     }
 
-    const paymentReference: string = initData?.payment?.reference ?? reference;
+    // NotchPay's actual response nests these under "transaction".
+    const txReference: string | undefined = initData?.transaction?.reference;
+    const txId: string | undefined = initData?.transaction?.id;
+    const candidates = [txReference, txId, reference].filter(
+      (v): v is string => Boolean(v)
+    );
 
-    // Step 2: trigger the mobile money charge (sends the prompt to the phone)
+    // Step 2: trigger the mobile money charge (sends the prompt to the phone).
+    // Try each identifier NotchPay might expect, in order, since the docs
+    // and real API responses don't always agree on reference vs id.
     const channel = provider === "mtn" ? "cm.mtn" : "cm.orange";
-    const chargeRes = await fetch(`${NOTCHPAY_BASE_URL}/payments/${paymentReference}`, {
-      method: "POST",
-      headers: {
-        Authorization: NOTCHPAY_PUBLIC_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ channel, data: { phone } }),
-    });
+    let chargeData: Record<string, unknown> | null = null;
+    let chargeOk = false;
+    let usedReference = candidates[0];
+    let lastError: unknown = null;
 
-    const chargeData = await chargeRes.json();
-    if (!chargeRes.ok) {
+    for (const candidate of candidates) {
+      const chargeRes = await fetch(`${NOTCHPAY_BASE_URL}/payments/${candidate}`, {
+        method: "POST",
+        headers: {
+          Authorization: NOTCHPAY_PUBLIC_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ channel, data: { phone } }),
+      });
+      const data = await chargeRes.json();
+      if (chargeRes.ok) {
+        chargeData = data;
+        chargeOk = true;
+        usedReference = candidate;
+        break;
+      }
+      lastError = data;
+      // Only keep trying the next candidate on a "not found"-style miss.
+      if (chargeRes.status !== 404) break;
+    }
+
+    if (!chargeOk) {
+      const errData = (lastError ?? {}) as { message?: string };
       return NextResponse.json(
-        { error: chargeData?.message ?? "Could not charge that mobile money number." },
-        { status: chargeRes.status }
+        {
+          error: errData?.message ?? "Could not charge that mobile money number.",
+          debug: { initData, lastError, candidates },
+        },
+        { status: 502 }
       );
     }
 
-    return NextResponse.json({ reference: paymentReference });
+    return NextResponse.json({ reference: usedReference, debug: chargeData });
   } catch {
     return NextResponse.json(
       { error: "Could not reach the payment provider. Please try again." },
