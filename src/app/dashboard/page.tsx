@@ -9,6 +9,8 @@ import {
   getMyOrders,
   getCategories,
   createProduct,
+  updateProduct,
+  deleteProduct,
   uploadProductImage,
   markOrderShipped,
   type Shop,
@@ -18,6 +20,10 @@ import {
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 
+// Which product form is open, if any: closed, adding a new one, or
+// editing an existing one (carries the product being edited).
+type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product: Product };
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -25,7 +31,7 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [formState, setFormState] = useState<FormState>({ mode: "closed" });
 
   const loadData = useCallback(async () => {
     const {
@@ -60,6 +66,12 @@ export default function DashboardPage() {
     loadData();
   }, [loadData]);
 
+  async function handleDelete(productId: string) {
+    if (!window.confirm("Remove this listing? This can't be undone.")) return;
+    await deleteProduct(productId);
+    loadData();
+  }
+
   if (loading) {
     return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">Loading…</div>;
   }
@@ -91,40 +103,77 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Your listings</h2>
         <button
-          onClick={() => setShowAddProduct((v) => !v)}
+          onClick={() =>
+            setFormState((s) => (s.mode === "add" ? { mode: "closed" } : { mode: "add" }))
+          }
           className="text-sm rounded-full bg-neutral-900 text-white px-4 py-1.5"
         >
-          {showAddProduct ? "Cancel" : "+ Add product"}
+          {formState.mode === "add" ? "Cancel" : "+ Add product"}
         </button>
       </div>
 
-      {showAddProduct && (
-        <AddProductForm
+      {formState.mode === "add" && (
+        <ProductForm
           shopId={shop.id}
           categories={categories}
           onDone={() => {
-            setShowAddProduct(false);
+            setFormState({ mode: "closed" });
             loadData();
           }}
+          onCancel={() => setFormState({ mode: "closed" })}
         />
       )}
 
       <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
         {products.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 p-4">
-            <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden">
-              {p.image_urls?.[0] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.image_urls[0]} alt={p.title} className="w-full h-full object-cover" />
-              ) : (
-                "🛍️"
-              )}
+          <div key={p.id}>
+            <div className="flex items-center gap-3 p-4">
+              <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden shrink-0">
+                {p.image_urls?.[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.image_urls[0]} alt={p.title} className="w-full h-full object-cover" />
+                ) : (
+                  "🛍️"
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{p.title}</p>
+                <p className="text-xs text-neutral-500">{p.category?.name}</p>
+              </div>
+              <p className="text-sm font-semibold whitespace-nowrap">{formatFcfa(p.price_fcfa)}</p>
+              <button
+                onClick={() =>
+                  setFormState((s) =>
+                    s.mode === "edit" && s.product.id === p.id
+                      ? { mode: "closed" }
+                      : { mode: "edit", product: p }
+                  )
+                }
+                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 shrink-0"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => handleDelete(p.id)}
+                className="text-xs rounded-full border border-red-200 text-red-700 px-3 py-1.5 hover:border-red-400 shrink-0"
+              >
+                Delete
+              </button>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">{p.title}</p>
-              <p className="text-xs text-neutral-500">{p.category?.name}</p>
-            </div>
-            <p className="text-sm font-semibold">{formatFcfa(p.price_fcfa)}</p>
+            {formState.mode === "edit" && formState.product.id === p.id && (
+              <div className="px-4 pb-4">
+                <ProductForm
+                  shopId={shop.id}
+                  categories={categories}
+                  existingProduct={p}
+                  onDone={() => {
+                    setFormState({ mode: "closed" });
+                    loadData();
+                  }}
+                  onCancel={() => setFormState({ mode: "closed" })}
+                />
+              </div>
+            )}
           </div>
         ))}
         {products.length === 0 && (
@@ -179,20 +228,27 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AddProductForm({
+function ProductForm({
   shopId,
   categories,
+  existingProduct,
   onDone,
+  onCancel,
 }: {
   shopId: string;
   categories: Category[];
+  existingProduct?: Product;
   onDone: () => void;
+  onCancel: () => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [stock, setStock] = useState("1");
-  const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
+  const isEditing = Boolean(existingProduct);
+  const [title, setTitle] = useState(existingProduct?.title ?? "");
+  const [description, setDescription] = useState(existingProduct?.description ?? "");
+  const [price, setPrice] = useState(existingProduct ? String(existingProduct.price_fcfa) : "");
+  const [stock, setStock] = useState(existingProduct ? String(existingProduct.stock_quantity) : "1");
+  const [categoryId, setCategoryId] = useState(
+    existingProduct?.category_id ?? categories[0]?.id ?? ""
+  );
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,23 +258,34 @@ function AddProductForm({
     setError(null);
     setSubmitting(true);
     try {
-      let imageUrls: string[] = [];
+      let imageUrls: string[] | undefined;
       if (file) {
         const url = await uploadProductImage(file, shopId);
         imageUrls = [url];
       }
-      await createProduct({
-        shopId,
-        categoryId: categoryId || null,
-        title,
-        description,
-        priceFcfa: Number(price),
-        stockQuantity: Number(stock),
-        imageUrls,
-      });
+      if (isEditing && existingProduct) {
+        await updateProduct(existingProduct.id, {
+          categoryId: categoryId || null,
+          title,
+          description,
+          priceFcfa: Number(price),
+          stockQuantity: Number(stock),
+          imageUrls,
+        });
+      } else {
+        await createProduct({
+          shopId,
+          categoryId: categoryId || null,
+          title,
+          description,
+          priceFcfa: Number(price),
+          stockQuantity: Number(stock),
+          imageUrls: imageUrls ?? [],
+        });
+      }
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add product.");
+      setError(err instanceof Error ? err.message : "Could not save product.");
     } finally {
       setSubmitting(false);
     }
@@ -286,7 +353,19 @@ function AddProductForm({
         </select>
       </div>
       <div>
-        <label className="text-sm font-medium block mb-1">Photo</label>
+        <label className="text-sm font-medium block mb-1">
+          Photo{isEditing ? " (leave blank to keep the current one)" : ""}
+        </label>
+        {isEditing && existingProduct?.image_urls?.[0] && !file && (
+          <div className="w-16 h-16 rounded-lg overflow-hidden mb-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={existingProduct.image_urls[0]}
+              alt={existingProduct.title}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
         <input
           type="file"
           accept="image/*"
@@ -299,13 +378,22 @@ function AddProductForm({
           {error}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
-      >
-        {submitting ? "Saving…" : "Add product"}
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
+        >
+          {submitting ? "Saving…" : isEditing ? "Save changes" : "Add product"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold hover:border-neutral-900"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }

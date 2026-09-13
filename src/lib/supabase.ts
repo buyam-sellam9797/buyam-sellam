@@ -229,6 +229,34 @@ export async function createProduct(input: {
   if (error) throw new Error(error.message);
 }
 
+export async function updateProduct(
+  productId: string,
+  input: {
+    categoryId: string | null;
+    title: string;
+    description: string;
+    priceFcfa: number;
+    stockQuantity: number;
+    imageUrls?: string[];
+  }
+) {
+  const patch: Record<string, unknown> = {
+    category_id: input.categoryId,
+    title: input.title,
+    description: input.description || null,
+    price_fcfa: input.priceFcfa,
+    stock_quantity: input.stockQuantity,
+  };
+  if (input.imageUrls) patch.image_urls = input.imageUrls;
+  const { error } = await supabase.from("products").update(patch).eq("id", productId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteProduct(productId: string) {
+  const { error } = await supabase.from("products").delete().eq("id", productId);
+  if (error) throw new Error(error.message);
+}
+
 export async function uploadProductImage(file: File, shopId: string): Promise<string> {
   const ext = file.name.split(".").pop() || "jpg";
   const path = `${shopId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;

@@ -3,6 +3,11 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* The whole site is designed as a light theme (white cards, dark
+     text) — force browsers to render form fields, scrollbars, etc.
+     in light mode too, so they don't flip to hard-to-read dark
+     styling on a phone/browser set to dark mode. */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -10,16 +15,16 @@
   --color-foreground: var(--foreground);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
+}
+
+input,
+select,
+textarea {
+  background-color: #ffffff;
+  color: #171717;
 }
