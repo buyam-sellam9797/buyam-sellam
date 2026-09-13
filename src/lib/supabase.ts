@@ -58,14 +58,6 @@ export type Order = {
   created_at: string;
 };
 
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
 export async function getCategories(): Promise<Category[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
@@ -182,7 +174,7 @@ export async function createSellerAccount(input: {
   whatsappNumber: string;
   city: string;
   description?: string;
-}) {
+}): Promise<{ hasSession: boolean; slug: string }> {
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email: input.email,
     password: input.password,
@@ -190,40 +182,30 @@ export async function createSellerAccount(input: {
   if (signUpError) throw new Error(signUpError.message);
   const user = signUpData.user;
   if (!user) {
-    throw new Error(
-      "Account created — check your email to confirm it, then log in."
-    );
+    throw new Error("Could not create your account — please try again.");
   }
 
-  const { error: profileError } = await supabase.from("profiles").upsert({
-    id: user.id,
-    role: "seller",
-    full_name: input.fullName,
-    phone_number: input.whatsappNumber,
-    city: input.city,
-  });
-  if (profileError) throw new Error(profileError.message);
-
-  const baseSlug = slugify(input.shopName) || "shop";
-  let slug = baseSlug;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { error: shopError } = await supabase.from("shops").insert({
-      owner_id: user.id,
-      shop_name: input.shopName,
-      slug,
-      description: input.description || null,
-      whatsapp_number: input.whatsappNumber,
+  // Done via a server route (service role) rather than a direct table
+  // write from the browser: right after sign-up there may not be an
+  // active session yet (e.g. if email confirmation is required), and
+  // a session is what the usual per-user security rules need to allow
+  // a write — this way shop creation always works regardless.
+  const res = await fetch("/api/signup-seller", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      fullName: input.fullName,
+      whatsappNumber: input.whatsappNumber,
       city: input.city,
-    });
-    if (!shopError) return { userId: user.id, slug };
-    // 23505 = unique_violation (slug already taken) — try a suffixed slug.
-    if (shopError.code === "23505") {
-      slug = `${baseSlug}-${Math.floor(Math.random() * 1000)}`;
-      continue;
-    }
-    throw new Error(shopError.message);
-  }
-  throw new Error("Could not create your shop — please try again.");
+      shopName: input.shopName,
+      description: input.description,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Could not create your shop.");
+
+  return { hasSession: Boolean(signUpData.session), slug: data.slug };
 }
 
 export async function createProduct(input: {

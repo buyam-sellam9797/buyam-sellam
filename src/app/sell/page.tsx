@@ -23,7 +23,7 @@ export default function SellPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await createSellerAccount({
+      const result = await createSellerAccount({
         fullName,
         email,
         password,
@@ -31,14 +31,13 @@ export default function SellPage() {
         whatsappNumber: whatsapp,
         city,
       });
-      router.push("/dashboard");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
-      if (message.toLowerCase().includes("confirm")) {
-        setNeedsEmailConfirm(true);
+      if (result.hasSession) {
+        router.push("/dashboard");
       } else {
-        setError(message);
+        setNeedsEmailConfirm(true);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setSubmitting(false);
     }
