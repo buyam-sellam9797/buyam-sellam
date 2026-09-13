@@ -76,7 +76,8 @@ create table if not exists products (
 -- ============================================================
 create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
-  buyer_id uuid not null references profiles(id),
+  buyer_id uuid references profiles(id),   -- null for guest checkout (buyer_phone identifies them instead)
+  buyer_phone text,
   shop_id uuid not null references shops(id),
   status text not null default 'pending_payment' check (
     status in (
@@ -177,8 +178,32 @@ create policy "Sellers view orders on their shop" on orders
 create policy "Buyers create their own orders" on orders
   for insert with check (auth.uid() = buyer_id);
 
+create policy "Sellers update orders on their shop" on orders
+  for update using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
+
 create policy "Public can view reviews" on reviews
   for select using (true);
 
 create policy "Buyers write reviews on their own completed orders" on reviews
   for insert with check (auth.uid() = buyer_id);
+
+-- ============================================================
+-- STORAGE — public bucket for product photos
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('product-images', 'product-images', true)
+on conflict (id) do nothing;
+
+create policy "Public can view product images" on storage.objects
+  for select using (bucket_id = 'product-images');
+
+create policy "Authenticated sellers can upload product images" on storage.objects
+  for insert with check (bucket_id = 'product-images' and auth.role() = 'authenticated');
+
+create policy "Authenticated sellers can update their product images" on storage.objects
+  for update using (bucket_id = 'product-images' and auth.role() = 'authenticated');
+
+create policy "Authenticated sellers can delete their product images" on storage.objects
+  for delete using (bucket_id = 'product-images' and auth.role() = 'authenticated');

@@ -1,7 +1,17 @@
 import Link from "next/link";
-import { categories, products, formatFcfa } from "@/lib/mock-data";
+import { getCategories, getActiveProducts } from "@/lib/supabase";
+import { formatFcfa } from "@/lib/format";
 
-export default function Home() {
+// This page lists live products/categories from Supabase — never cache
+// it statically, or new sellers/listings wouldn't show up until the
+// next deploy.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [categories, products] = await Promise.all([
+    getCategories(),
+    getActiveProducts(),
+  ]);
   const featured = products.slice(0, 4);
 
   return (
@@ -38,11 +48,11 @@ export default function Home() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {categories.map((c) => (
             <Link
-              key={c}
-              href={`/browse?category=${encodeURIComponent(c)}`}
+              key={c.id}
+              href={`/browse?category=${encodeURIComponent(c.slug)}`}
               className="rounded-xl border border-neutral-200 bg-white px-4 py-6 text-center text-sm font-medium hover:border-amber-500 hover:text-amber-600 transition"
             >
-              {c}
+              {c.name}
             </Link>
           ))}
         </div>
@@ -55,26 +65,47 @@ export default function Home() {
             See all
           </Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {featured.map((p) => (
-            <Link
-              key={p.id}
-              href={`/product/${p.id}`}
-              className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
-            >
-              <div className="aspect-square bg-neutral-100 flex items-center justify-center text-5xl">
-                {p.imageEmoji}
-              </div>
-              <div className="p-3">
-                <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-                <p className="text-xs text-neutral-500 mt-0.5">{p.shopName}</p>
-                <p className="text-sm font-semibold mt-1">
-                  {formatFcfa(p.priceFcfa)}
-                </p>
-              </div>
+        {featured.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-500">
+            No products listed yet.{" "}
+            <Link href="/sell" className="text-amber-600 hover:underline">
+              Be the first to open a shop
             </Link>
-          ))}
-        </div>
+            .
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {featured.map((p) => (
+              <Link
+                key={p.id}
+                href={`/product/${p.id}`}
+                className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
+              >
+                <div className="aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+                  {p.image_urls?.[0] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.image_urls[0]}
+                      alt={p.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-5xl">🛍️</span>
+                  )}
+                </div>
+                <div className="p-3">
+                  <p className="text-sm font-medium line-clamp-1">{p.title}</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    {p.shop?.shop_name}
+                  </p>
+                  <p className="text-sm font-semibold mt-1">
+                    {formatFcfa(p.price_fcfa)}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="bg-white border-t border-neutral-200">

@@ -1,24 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-// Server-side only — this key never reaches the browser.
+// Server-side only — these keys never reach the browser.
 const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
 const NOTCHPAY_BASE_URL = "https://api.notchpay.co";
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+
+// A privileged client used only in this trusted server route — it can
+// write orders for guest buyers (who have no logged-in session) and
+// update payment status without needing broad public write rules that
+// anyone could otherwise call directly with the public anon key.
+function getAdminClient() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+}
+
 type ChargeBody = {
-  amount: number;
-  productTitle: string;
+  productId: string;
   provider: "mtn" | "orange";
   phone: string;
 };
 
-// Starts a NotchPay payment: initialize, then immediately trigger the
-// mobile money charge (this sends the USSD/approval prompt to the
-// buyer's phone). Returns the payment reference so the client can poll
-// for the buyer's confirmation.
+// Starts a NotchPay payment for a real product: looks the product up
+// (so the price can't be tampered with from the browser), creates a
+// pending order, then initializes and charges via mobile money. Returns
+// both the reference NotchPay uses and the reference our own order was
+// filed under, so the client can poll for the buyer's confirmation.
 export async function POST(req: NextRequest) {
   if (!NOTCHPAY_PUBLIC_KEY) {
     return NextResponse.json(
       { error: "Payments are not configured yet (missing NOTCHPAY_PUBLIC_KEY)." },
+      { status: 500 }
+    );
+  }
+
+  const admin = getAdminClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Payments are not configured yet (missing Supabase service role key)." },
       { status: 500 }
     );
   }
@@ -30,12 +51,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { amount, productTitle, provider, phone } = body;
-  if (!amount || !provider || !phone) {
-    return NextResponse.json({ error: "Missing amount, provider, or phone." }, { status: 400 });
+  const { productId, provider, phone } = body;
+  if (!productId || !provider || !phone) {
+    return NextResponse.json({ error: "Missing product, provider, or phone." }, { status: 400 });
   }
 
-  const reference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const { data: product, error: productError } = await admin
+    .from("products")
+    .select("id, shop_id, title, price_fcfa, is_active")
+    .eq("id", productId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (productError || !product) {
+    return NextResponse.json({ error: "This product is no longer available." }, { status: 404 });
+  }
+
+  const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .insert({
+      shop_id: product.shop_id,
+      status: "pending_payment",
+      total_amount_fcfa: product.price_fcfa,
+      payment_provider: "notchpay",
+      payment_reference: orderReference,
+      buyer_phone: phone,
+    })
+    .select("id")
+    .single();
+
+  if (orderError || !order) {
+    return NextResponse.json({ error: "Could not start the order. Please try again." }, { status: 500 });
+  }
+
+  await admin.from("order_items").insert({
+    order_id: order.id,
+    product_id: product.id,
+    quantity: 1,
+    unit_price_fcfa: product.price_fcfa,
+  });
 
   try {
     // Step 1: initialize the payment
@@ -46,10 +102,10 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount,
+        amount: product.price_fcfa,
         currency: "XAF",
-        description: productTitle,
-        reference,
+        description: product.title,
+        reference: orderReference,
         customer: { phone },
       }),
     });
@@ -65,7 +121,7 @@ export async function POST(req: NextRequest) {
     // NotchPay's actual response nests these under "transaction".
     const txReference: string | undefined = initData?.transaction?.reference;
     const txId: string | undefined = initData?.transaction?.id;
-    const candidates = [txReference, txId, reference].filter(
+    const candidates = [txReference, txId, orderReference].filter(
       (v): v is string => Boolean(v)
     );
 
@@ -110,7 +166,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ reference: usedReference, debug: chargeData });
+    return NextResponse.json({ reference: usedReference, orderReference, debug: chargeData });
   } catch {
     return NextResponse.json(
       { error: "Could not reach the payment provider. Please try again." },
@@ -120,7 +176,9 @@ export async function POST(req: NextRequest) {
 }
 
 // Polled by the client to find out whether the buyer approved the
-// mobile money prompt yet.
+// mobile money prompt yet. Once NotchPay confirms it, the matching
+// order is flipped to "paid_held" so the seller sees it in their
+// dashboard and the escrow clock starts.
 export async function GET(req: NextRequest) {
   if (!NOTCHPAY_PUBLIC_KEY) {
     return NextResponse.json(
@@ -130,6 +188,7 @@ export async function GET(req: NextRequest) {
   }
 
   const reference = req.nextUrl.searchParams.get("reference");
+  const orderReference = req.nextUrl.searchParams.get("orderReference");
   if (!reference) {
     return NextResponse.json({ error: "Missing reference." }, { status: 400 });
   }
@@ -146,6 +205,29 @@ export async function GET(req: NextRequest) {
       );
     }
     const status: string = data?.transaction?.status ?? data?.payment?.status ?? "pending";
+
+    if (status === "complete" && orderReference) {
+      const admin = getAdminClient();
+      if (admin) {
+        const { data: updatedOrder } = await admin
+          .from("orders")
+          .update({ status: "paid_held", updated_at: new Date().toISOString() })
+          .eq("payment_reference", orderReference)
+          .eq("status", "pending_payment")
+          .select("id")
+          .maybeSingle();
+
+        if (updatedOrder) {
+          await admin.from("payment_events").insert({
+            order_id: updatedOrder.id,
+            provider: "notchpay",
+            event_type: "payment.complete",
+            raw_payload: data,
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ status });
   } catch {
     return NextResponse.json(

@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { products, formatFcfa } from "@/lib/mock-data";
+import { getProductById } from "@/lib/supabase";
+import { formatFcfa } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
 
 export default async function ProductPage({
   params,
@@ -8,27 +11,43 @@ export default async function ProductPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const product = products.find((p) => p.id === id);
+  const product = await getProductById(id);
   if (!product) notFound();
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 grid sm:grid-cols-2 gap-8">
-      <div className="aspect-square bg-neutral-100 rounded-xl flex items-center justify-center text-8xl">
-        {product.imageEmoji}
+      <div className="aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
+        {product.image_urls?.[0] ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={product.image_urls[0]}
+            alt={product.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span className="text-8xl">🛍️</span>
+        )}
       </div>
       <div>
-        <p className="text-xs uppercase tracking-wide text-amber-600 font-semibold">
-          {product.category}
-        </p>
+        {product.category && (
+          <p className="text-xs uppercase tracking-wide text-amber-600 font-semibold">
+            {product.category.name}
+          </p>
+        )}
         <h1 className="text-2xl font-bold mt-1">{product.title}</h1>
-        <Link
-          href={`/shop/${product.shopSlug}`}
-          className="text-sm text-neutral-500 hover:text-amber-600 mt-1 inline-block"
-        >
-          Sold by {product.shopName}
-        </Link>
+        {product.description && (
+          <p className="text-sm text-neutral-600 mt-2">{product.description}</p>
+        )}
+        {product.shop && (
+          <Link
+            href={`/shop/${product.shop.slug}`}
+            className="text-sm text-neutral-500 hover:text-amber-600 mt-1 inline-block"
+          >
+            Sold by {product.shop.shop_name}
+          </Link>
+        )}
         <p className="text-2xl font-semibold mt-4">
-          {formatFcfa(product.priceFcfa)}
+          {formatFcfa(product.price_fcfa)}
         </p>
 
         <Link

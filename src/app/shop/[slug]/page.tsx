@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { products, formatFcfa } from "@/lib/mock-data";
+import { getShopBySlug, getShopProducts } from "@/lib/supabase";
+import { formatFcfa } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
 
 export default async function ShopPage({
   params,
@@ -8,20 +11,28 @@ export default async function ShopPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const shopProducts = products.filter((p) => p.shopSlug === slug);
-  if (shopProducts.length === 0) notFound();
+  const shop = await getShopBySlug(slug);
+  if (!shop) notFound();
 
-  const shopName = shopProducts[0].shopName;
+  const shopProducts = await getShopProducts(shop.id);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="rounded-xl bg-white border border-neutral-200 p-6 mb-8 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-700">
-          {shopName.charAt(0)}
+        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-700 overflow-hidden">
+          {shop.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={shop.logo_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+          ) : (
+            shop.shop_name.charAt(0)
+          )}
         </div>
         <div>
-          <h1 className="text-xl font-bold">{shopName}</h1>
-          <p className="text-sm text-neutral-500">Douala &middot; Buyam Sellam verified shop</p>
+          <h1 className="text-xl font-bold">{shop.shop_name}</h1>
+          <p className="text-sm text-neutral-500">
+            {shop.city}
+            {shop.is_verified ? " · Buyam Sellam verified shop" : ""}
+          </p>
         </div>
       </div>
 
@@ -35,17 +46,27 @@ export default async function ShopPage({
             href={`/product/${p.id}`}
             className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
           >
-            <div className="aspect-square bg-neutral-100 flex items-center justify-center text-5xl">
-              {p.imageEmoji}
+            <div className="aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+              {p.image_urls?.[0] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={p.image_urls[0]} alt={p.title} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-5xl">🛍️</span>
+              )}
             </div>
             <div className="p-3">
               <p className="text-sm font-medium line-clamp-1">{p.title}</p>
               <p className="text-sm font-semibold mt-1">
-                {formatFcfa(p.priceFcfa)}
+                {formatFcfa(p.price_fcfa)}
               </p>
             </div>
           </Link>
         ))}
+        {shopProducts.length === 0 && (
+          <p className="text-neutral-500 text-sm col-span-full py-12 text-center">
+            No listings yet.
+          </p>
+        )}
       </div>
     </div>
   );

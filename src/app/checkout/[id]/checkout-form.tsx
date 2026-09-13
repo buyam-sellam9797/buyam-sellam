@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Product } from "@/lib/mock-data";
-import { formatFcfa } from "@/lib/mock-data";
+import type { Product } from "@/lib/supabase";
+import { formatFcfa } from "@/lib/format";
 
 type Status = "form" | "waiting" | "held" | "failed";
 
@@ -29,8 +29,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: product.priceFcfa,
-          productTitle: product.title,
+          productId: product.id,
           provider,
           phone,
         }),
@@ -43,11 +42,14 @@ export default function CheckoutForm({ product }: { product: Product }) {
       }
 
       const reference: string = startData.reference;
+      const orderReference: string = startData.orderReference;
       let attempts = 0;
       pollRef.current = setInterval(async () => {
         attempts += 1;
         try {
-          const checkRes = await fetch(`/api/checkout?reference=${encodeURIComponent(reference)}`);
+          const checkRes = await fetch(
+            `/api/checkout?reference=${encodeURIComponent(reference)}&orderReference=${encodeURIComponent(orderReference)}`
+          );
           const checkData = await checkRes.json();
           if (checkData.status === "complete") {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -77,7 +79,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
       <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-900">
         <p className="font-semibold mb-1">Payment held ✓</p>
         <p>
-          {formatFcfa(product.priceFcfa)} is confirmed and held by Buyam
+          {formatFcfa(product.price_fcfa)} is confirmed and held by Buyam
           Sellam. The seller has been notified to ship your order —
           you&apos;ll be asked to confirm receipt before they get paid.
         </p>
@@ -146,7 +148,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
         disabled={status === "waiting"}
         className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
       >
-        {status === "waiting" ? "Check your phone…" : `Pay ${formatFcfa(product.priceFcfa)}`}
+        {status === "waiting" ? "Check your phone…" : `Pay ${formatFcfa(product.price_fcfa)}`}
       </button>
       {status === "waiting" && (
         <p className="text-xs text-neutral-500 text-center">
