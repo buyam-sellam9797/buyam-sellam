@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getCategories, getActiveProducts } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { getLocale } from "@/lib/get-locale";
+import { getDictionary, plural } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +11,8 @@ export default async function BrowsePage({
 }: {
   searchParams: Promise<{ category?: string }>;
 }) {
+  const locale = await getLocale();
+  const t = getDictionary(locale);
   const { category } = await searchParams;
   const [categories, filtered] = await Promise.all([
     getCategories(),
@@ -18,10 +22,10 @@ export default async function BrowsePage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-1">Browse Douala shops</h1>
+      <h1 className="text-2xl font-bold mb-1">{t.browse.title}</h1>
       <p className="text-neutral-500 text-sm mb-6">
-        {filtered.length} item{filtered.length === 1 ? "" : "s"}
-        {activeCategory ? ` in ${activeCategory.name}` : ""}
+        {filtered.length} {plural(filtered.length, locale, t.browse.itemOne, t.browse.itemOther)}
+        {activeCategory ? ` ${t.browse.inCategory} ${activeCategory.name}` : ""}
       </p>
 
       <div className="flex flex-wrap gap-2 mb-8">
@@ -33,7 +37,7 @@ export default async function BrowsePage({
               : "border-neutral-300 hover:border-neutral-900"
           }`}
         >
-          All
+          {t.browse.all}
         </Link>
         {categories.map((c) => (
           <Link
@@ -82,7 +86,7 @@ export default async function BrowsePage({
         ))}
         {filtered.length === 0 && (
           <p className="text-neutral-500 text-sm col-span-full py-12 text-center">
-            No listings in this category yet.
+            {t.browse.noListings}
           </p>
         )}
       </div>

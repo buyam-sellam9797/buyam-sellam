@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useLocale } from "@/components/locale-provider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,14 +29,12 @@ export default function LoginPage() {
 
   return (
     <div className="mx-auto max-w-sm px-4 py-16">
-      <h1 className="text-2xl font-bold mb-1">Seller login</h1>
-      <p className="text-neutral-500 text-sm mb-8">
-        Log in to manage your shop and listings.
-      </p>
+      <h1 className="text-2xl font-bold mb-1">{t.login.title}</h1>
+      <p className="text-neutral-500 text-sm mb-8">{t.login.subtitle}</p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <div>
           <label className="text-sm font-medium block mb-2" htmlFor="email">
-            Email
+            {t.login.email}
           </label>
           <input
             id="email"
@@ -47,7 +47,7 @@ export default function LoginPage() {
         </div>
         <div>
           <label className="text-sm font-medium block mb-2" htmlFor="password">
-            Password
+            {t.login.password}
           </label>
           <input
             id="password"
@@ -68,12 +68,12 @@ export default function LoginPage() {
           disabled={submitting}
           className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
         >
-          {submitting ? "Logging in…" : "Log in"}
+          {submitting ? t.login.loggingIn : t.login.submit}
         </button>
         <p className="text-xs text-neutral-500 text-center">
-          No shop yet?{" "}
+          {t.login.noShopYet}{" "}
           <Link href="/sell" className="text-amber-600 hover:underline">
-            Open one for free
+            {t.login.openForFree}
           </Link>
         </p>
       </form>

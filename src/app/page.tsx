@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getCategories, getActiveProducts } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { getLocale } from "@/lib/get-locale";
+import { getDictionary } from "@/lib/i18n";
 
 // This page lists live products/categories from Supabase — never cache
 // it statically, or new sellers/listings wouldn't show up until the
@@ -8,6 +10,8 @@ import { formatFcfa } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const locale = await getLocale();
+  const t = getDictionary(locale);
   const [categories, products] = await Promise.all([
     getCategories(),
     getActiveProducts(),
@@ -19,32 +23,28 @@ export default async function Home() {
       <section className="bg-neutral-900 text-white">
         <div className="mx-auto max-w-6xl px-4 py-16 flex flex-col gap-4">
           <h1 className="text-3xl sm:text-4xl font-bold max-w-xl">
-            Real Douala sellers. Real fashion &amp; beauty. Pay safely by
-            mobile money.
+            {t.home.heroTitle}
           </h1>
-          <p className="text-neutral-300 max-w-lg">
-            Your payment is held until you confirm you received your order —
-            so you can shop with sellers you don&apos;t know yet, safely.
-          </p>
+          <p className="text-neutral-300 max-w-lg">{t.home.heroSubtitle}</p>
           <div className="flex flex-wrap gap-3 mt-2">
             <Link
               href="/browse"
               className="rounded-full bg-amber-500 text-neutral-900 font-semibold px-6 py-2.5 hover:bg-amber-400"
             >
-              Browse products
+              {t.home.browseCta}
             </Link>
             <Link
               href="/sell"
               className="rounded-full border border-white/40 px-6 py-2.5 hover:bg-white/10"
             >
-              Open your shop, it&apos;s free
+              {t.home.openShopCta}
             </Link>
           </div>
         </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-10">
-        <h2 className="text-lg font-semibold mb-4">Shop by category</h2>
+        <h2 className="text-lg font-semibold mb-4">{t.home.shopByCategory}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {categories.map((c) => (
             <Link
@@ -60,16 +60,16 @@ export default async function Home() {
 
       <section className="mx-auto max-w-6xl px-4 pb-16">
         <div className="flex items-baseline justify-between mb-4">
-          <h2 className="text-lg font-semibold">Just listed</h2>
+          <h2 className="text-lg font-semibold">{t.home.justListed}</h2>
           <Link href="/browse" className="text-sm text-amber-600 hover:underline">
-            See all
+            {t.home.seeAll}
           </Link>
         </div>
         {featured.length === 0 ? (
           <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-500">
-            No products listed yet.{" "}
+            {t.home.noProductsYet}{" "}
             <Link href="/sell" className="text-amber-600 hover:underline">
-              Be the first to open a shop
+              {t.home.beFirstToOpenShop}
             </Link>
             .
           </div>
@@ -111,25 +111,16 @@ export default async function Home() {
       <section className="bg-white border-t border-neutral-200">
         <div className="mx-auto max-w-6xl px-4 py-12 grid sm:grid-cols-3 gap-8 text-sm">
           <div>
-            <p className="font-semibold mb-1">1. Pick a real seller</p>
-            <p className="text-neutral-500">
-              Verified shops from sellers around Douala — fashion, beauty,
-              and accessories.
-            </p>
+            <p className="font-semibold mb-1">{t.home.how1Title}</p>
+            <p className="text-neutral-500">{t.home.how1Body}</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">2. Pay by mobile money</p>
-            <p className="text-neutral-500">
-              MTN Mobile Money or Orange Money. Your payment is held by
-              Buyam Sellam, not sent straight to the seller.
-            </p>
+            <p className="font-semibold mb-1">{t.home.how2Title}</p>
+            <p className="text-neutral-500">{t.home.how2Body}</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">3. Confirm and release</p>
-            <p className="text-neutral-500">
-              Only once you confirm you received your order does the
-              seller get paid.
-            </p>
+            <p className="font-semibold mb-1">{t.home.how3Title}</p>
+            <p className="text-neutral-500">{t.home.how3Body}</p>
           </div>
         </div>
       </section>

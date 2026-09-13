@@ -166,7 +166,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ reference: usedReference, orderReference, debug: chargeData });
+    return NextResponse.json({
+      reference: usedReference,
+      orderReference,
+      orderId: order.id,
+      debug: chargeData,
+    });
   } catch {
     return NextResponse.json(
       { error: "Could not reach the payment provider. Please try again." },

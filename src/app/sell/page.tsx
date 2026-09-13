@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createSellerAccount } from "@/lib/supabase";
+import { useLocale } from "@/components/locale-provider";
 
 export default function SellPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
@@ -46,13 +48,13 @@ export default function SellPage() {
   if (needsEmailConfirm) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-bold mb-2">Almost there ✓</h1>
+        <h1 className="text-xl font-bold mb-2">{t.sell.almostThere}</h1>
         <p className="text-neutral-600 text-sm">
-          Your shop was created. Check {email} for a confirmation link, then{" "}
+          {t.sell.checkEmailPrefix} {email} {t.sell.checkEmailSuffix}{" "}
           <Link href="/login" className="text-amber-600 hover:underline">
-            log in
+            {t.sell.logIn}
           </Link>{" "}
-          to reach your dashboard.
+          {t.sell.toReachDashboard}
         </p>
       </div>
     );
@@ -60,30 +62,27 @@ export default function SellPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-10">
-      <h1 className="text-2xl font-bold mb-1">Open your shop</h1>
-      <p className="text-neutral-500 text-sm mb-8">
-        Free to list. You only get paid once a buyer confirms they received
-        their order.
-      </p>
+      <h1 className="text-2xl font-bold mb-1">{t.sell.title}</h1>
+      <p className="text-neutral-500 text-sm mb-8">{t.sell.subtitle}</p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <Field
-          label="Your full name"
+          label={t.sell.fullName}
           id="name"
           required
           value={fullName}
           onChange={setFullName}
         />
         <Field
-          label="Shop name"
+          label={t.sell.shopName}
           id="shopName"
           required
-          placeholder="e.g. Mama Clara Fashion"
+          placeholder={t.sell.shopNamePlaceholder}
           value={shopName}
           onChange={setShopName}
         />
         <Field
-          label="Email"
+          label={t.sell.email}
           id="email"
           type="email"
           required
@@ -91,7 +90,7 @@ export default function SellPage() {
           onChange={setEmail}
         />
         <Field
-          label="Password"
+          label={t.sell.password}
           id="password"
           type="password"
           required
@@ -99,15 +98,15 @@ export default function SellPage() {
           onChange={setPassword}
         />
         <Field
-          label="WhatsApp number"
+          label={t.sell.whatsapp}
           id="whatsapp"
           required
-          placeholder="+237 6XX XXX XXX"
+          placeholder={t.sell.whatsappPlaceholder}
           value={whatsapp}
           onChange={setWhatsapp}
         />
         <Field
-          label="City"
+          label={t.sell.city}
           id="city"
           required
           value={city}
@@ -125,13 +124,13 @@ export default function SellPage() {
           disabled={submitting}
           className="mt-2 rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
         >
-          {submitting ? "Creating your shop…" : "Open my shop"}
+          {submitting ? t.sell.creating : t.sell.submit}
         </button>
 
         <p className="text-xs text-neutral-500 text-center">
-          Already have a shop?{" "}
+          {t.sell.alreadyHaveShop}{" "}
           <Link href="/login" className="text-amber-600 hover:underline">
-            Log in
+            {t.sell.logIn}
           </Link>
         </p>
       </form>

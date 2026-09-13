@@ -19,6 +19,8 @@ import {
   type Category,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { useLocale } from "@/components/locale-provider";
+import type { Dictionary } from "@/lib/i18n";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
@@ -26,6 +28,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const [loading, setLoading] = useState(true);
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -67,48 +70,52 @@ export default function DashboardPage() {
   }, [loadData]);
 
   async function handleDelete(productId: string) {
-    if (!window.confirm("Remove this listing? This can't be undone.")) return;
+    if (!window.confirm(t.dashboard.removeConfirm)) return;
     await deleteProduct(productId);
     loadData();
   }
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">Loading…</div>;
+    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">{t.dashboard.loading}</div>;
   }
 
   if (!shop) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">
-        We couldn&apos;t find a shop linked to your account.
+        {t.dashboard.noShopFound}
       </div>
     );
   }
 
   const heldOrders = orders.filter((o) => o.status === "paid_held").length;
-  const totalPaidOut = orders
-    .filter((o) => o.status === "completed")
+  const owed = orders
+    .filter((o) => o.status === "completed" && !o.payout_sent)
+    .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
+  const paidOut = orders
+    .filter((o) => o.status === "completed" && o.payout_sent)
     .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-1">{shop.shop_name}</h1>
-      <p className="text-neutral-500 text-sm mb-8">Seller dashboard</p>
+      <p className="text-neutral-500 text-sm mb-8">{t.dashboard.sellerDashboard}</p>
 
-      <div className="grid sm:grid-cols-3 gap-4 mb-10">
-        <Stat label="Listings" value={String(products.length)} />
-        <Stat label="Orders held" value={String(heldOrders)} />
-        <Stat label="Paid out" value={formatFcfa(totalPaidOut)} />
+      <div className="grid sm:grid-cols-4 gap-4 mb-10">
+        <Stat label={t.dashboard.listings} value={String(products.length)} />
+        <Stat label={t.dashboard.ordersHeld} value={String(heldOrders)} />
+        <Stat label={t.dashboard.owed} value={formatFcfa(owed)} />
+        <Stat label={t.dashboard.paidOut} value={formatFcfa(paidOut)} />
       </div>
 
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">Your listings</h2>
+        <h2 className="text-lg font-semibold">{t.dashboard.yourListings}</h2>
         <button
           onClick={() =>
             setFormState((s) => (s.mode === "add" ? { mode: "closed" } : { mode: "add" }))
           }
           className="text-sm rounded-full bg-neutral-900 text-white px-4 py-1.5"
         >
-          {formState.mode === "add" ? "Cancel" : "+ Add product"}
+          {formState.mode === "add" ? t.dashboard.cancel : t.dashboard.addProduct}
         </button>
       </div>
 
@@ -116,6 +123,7 @@ export default function DashboardPage() {
         <ProductForm
           shopId={shop.id}
           categories={categories}
+          t={t}
           onDone={() => {
             setFormState({ mode: "closed" });
             loadData();
@@ -151,13 +159,13 @@ export default function DashboardPage() {
                 }
                 className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 shrink-0"
               >
-                Edit
+                {t.dashboard.edit}
               </button>
               <button
                 onClick={() => handleDelete(p.id)}
                 className="text-xs rounded-full border border-red-200 text-red-700 px-3 py-1.5 hover:border-red-400 shrink-0"
               >
-                Delete
+                {t.dashboard.delete}
               </button>
             </div>
             {formState.mode === "edit" && formState.product.id === p.id && (
@@ -166,6 +174,7 @@ export default function DashboardPage() {
                   shopId={shop.id}
                   categories={categories}
                   existingProduct={p}
+                  t={t}
                   onDone={() => {
                     setFormState({ mode: "closed" });
                     loadData();
@@ -178,17 +187,15 @@ export default function DashboardPage() {
         ))}
         {products.length === 0 && (
           <p className="text-sm text-neutral-500 p-8 text-center">
-            No listings yet — add your first product above.
+            {t.dashboard.noListingsYet}
           </p>
         )}
       </div>
 
-      <h2 className="text-lg font-semibold mt-10 mb-4">Orders</h2>
+      <h2 className="text-lg font-semibold mt-10 mb-4">{t.dashboard.orders}</h2>
       {orders.length === 0 ? (
         <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
-          No orders yet. Once a buyer pays, it will show up here as
-          &ldquo;held&rdquo; until you mark it shipped and the buyer confirms
-          receipt.
+          {t.dashboard.noOrdersYet}
         </p>
       ) : (
         <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
@@ -197,7 +204,9 @@ export default function DashboardPage() {
               <div className="flex-1">
                 <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
                 <p className="text-xs text-neutral-500">
-                  {o.buyer_phone ?? "unknown buyer"} · {o.status}
+                  {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
+                  {t.dashboard.statusLabels[o.status] ?? o.status}
+                  {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
                 </p>
               </div>
               {o.status === "paid_held" && (
@@ -208,7 +217,7 @@ export default function DashboardPage() {
                   }}
                   className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900"
                 >
-                  Mark shipped
+                  {t.dashboard.markShipped}
                 </button>
               )}
             </div>
@@ -232,12 +241,14 @@ function ProductForm({
   shopId,
   categories,
   existingProduct,
+  t,
   onDone,
   onCancel,
 }: {
   shopId: string;
   categories: Category[];
   existingProduct?: Product;
+  t: Dictionary;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -297,7 +308,7 @@ function ProductForm({
       className="rounded-xl border border-neutral-200 bg-white p-5 mb-6 flex flex-col gap-4"
     >
       <div>
-        <label className="text-sm font-medium block mb-1">Product name</label>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.productName}</label>
         <input
           required
           value={title}
@@ -306,7 +317,7 @@ function ProductForm({
         />
       </div>
       <div>
-        <label className="text-sm font-medium block mb-1">Description</label>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.description}</label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -316,7 +327,7 @@ function ProductForm({
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm font-medium block mb-1">Price (FCFA)</label>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.price}</label>
           <input
             required
             type="number"
@@ -327,7 +338,7 @@ function ProductForm({
           />
         </div>
         <div>
-          <label className="text-sm font-medium block mb-1">Stock</label>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.stock}</label>
           <input
             required
             type="number"
@@ -339,7 +350,7 @@ function ProductForm({
         </div>
       </div>
       <div>
-        <label className="text-sm font-medium block mb-1">Category</label>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.category}</label>
         <select
           value={categoryId}
           onChange={(e) => setCategoryId(e.target.value)}
@@ -354,7 +365,8 @@ function ProductForm({
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">
-          Photo{isEditing ? " (leave blank to keep the current one)" : ""}
+          {t.dashboard.photo}
+          {isEditing ? t.dashboard.photoKeepCurrent : ""}
         </label>
         {isEditing && existingProduct?.image_urls?.[0] && !file && (
           <div className="w-16 h-16 rounded-lg overflow-hidden mb-2">
@@ -384,14 +396,14 @@ function ProductForm({
           disabled={submitting}
           className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
         >
-          {submitting ? "Saving…" : isEditing ? "Save changes" : "Add product"}
+          {submitting ? t.dashboard.saving : isEditing ? t.dashboard.saveChanges : t.dashboard.addProductBtn}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold hover:border-neutral-900"
         >
-          Cancel
+          {t.dashboard.cancel}
         </button>
       </div>
     </form>

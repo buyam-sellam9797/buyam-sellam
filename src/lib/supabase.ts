@@ -55,6 +55,8 @@ export type Order = {
   payment_provider: string | null;
   payment_reference: string | null;
   buyer_phone: string | null;
+  payout_sent: boolean;
+  payout_sent_at: string | null;
   created_at: string;
 };
 
@@ -271,7 +273,9 @@ export async function uploadProductImage(file: File, shopId: string): Promise<st
 export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
-    .select("id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, created_at")
+    .select(
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, payout_sent, payout_sent_at, created_at"
+    )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
   if (error) {

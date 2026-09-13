@@ -95,6 +95,8 @@ create table if not exists orders (
   payment_reference text,          -- ID returned by the payment provider
   delivery_method text,            -- 'seller_delivery' | 'pickup' | 'moto_partner'
   delivery_notes text,
+  payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
+  payout_sent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

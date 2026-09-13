@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductById } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { getLocale } from "@/lib/get-locale";
+import { getDictionary } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,8 @@ export default async function ProductPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const locale = await getLocale();
+  const t = getDictionary(locale);
   const { id } = await params;
   const product = await getProductById(id);
   if (!product) notFound();
@@ -43,7 +47,7 @@ export default async function ProductPage({
             href={`/shop/${product.shop.slug}`}
             className="text-sm text-neutral-500 hover:text-amber-600 mt-1 inline-block"
           >
-            Sold by {product.shop.shop_name}
+            {t.product.soldBy} {product.shop.shop_name}
           </Link>
         )}
         <p className="text-2xl font-semibold mt-4">
@@ -54,12 +58,11 @@ export default async function ProductPage({
           href={`/checkout/${product.id}`}
           className="mt-6 inline-block w-full text-center rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700"
         >
-          Buy now with Mobile Money
+          {t.product.buyNow}
         </Link>
 
         <div className="mt-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
-          Your payment is held by Buyam Sellam and only released to the
-          seller once you confirm you received this order.
+          {t.product.escrowNotice}
         </div>
       </div>
     </div>

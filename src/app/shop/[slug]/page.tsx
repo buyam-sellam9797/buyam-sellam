@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { getLocale } from "@/lib/get-locale";
+import { getDictionary, plural } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,8 @@ export default async function ShopPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const locale = await getLocale();
+  const t = getDictionary(locale);
   const { slug } = await params;
   const shop = await getShopBySlug(slug);
   if (!shop) notFound();
@@ -31,13 +35,13 @@ export default async function ShopPage({
           <h1 className="text-xl font-bold">{shop.shop_name}</h1>
           <p className="text-sm text-neutral-500">
             {shop.city}
-            {shop.is_verified ? " · Buyam Sellam verified shop" : ""}
+            {shop.is_verified ? ` · ${t.shop.verified}` : ""}
           </p>
         </div>
       </div>
 
       <h2 className="text-sm font-semibold text-neutral-500 mb-3">
-        {shopProducts.length} listing{shopProducts.length === 1 ? "" : "s"}
+        {shopProducts.length} {plural(shopProducts.length, locale, t.shop.listingOne, t.shop.listingOther)}
       </h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {shopProducts.map((p) => (
@@ -64,7 +68,7 @@ export default async function ShopPage({
         ))}
         {shopProducts.length === 0 && (
           <p className="text-neutral-500 text-sm col-span-full py-12 text-center">
-            No listings yet.
+            {t.shop.noListings}
           </p>
         )}
       </div>

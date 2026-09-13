@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getProductById } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { getLocale } from "@/lib/get-locale";
+import { getDictionary } from "@/lib/i18n";
 import CheckoutForm from "./checkout-form";
 
 export const dynamic = "force-dynamic";
@@ -10,13 +12,15 @@ export default async function CheckoutPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const locale = await getLocale();
+  const t = getDictionary(locale);
   const { id } = await params;
   const product = await getProductById(id);
   if (!product) notFound();
 
   return (
     <div className="mx-auto max-w-md px-4 py-10">
-      <h1 className="text-xl font-bold mb-6">Confirm your order</h1>
+      <h1 className="text-xl font-bold mb-6">{t.checkout.confirmOrder}</h1>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-4 flex gap-3 items-center mb-6">
         <div className="w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden">
