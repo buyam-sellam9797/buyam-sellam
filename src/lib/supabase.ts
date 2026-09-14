@@ -42,6 +42,12 @@ export type Shop = {
   verification_id_photo_path: string | null;
   verification_note: string | null;
   verification_rejected_reason: string | null;
+  // Automatic ID + live-selfie verification via Didit (src/lib/didit.ts) —
+  // a separate path from the manual fields above; either one being
+  // approved sets is_verified true.
+  identity_verification_status: "none" | "pending" | "in_review" | "approved" | "declined" | null;
+  identity_verification_session_id: string | null;
+  identity_verified_at: string | null;
 };
 
 export type BuyerProfile = {

@@ -41,6 +41,15 @@ create table if not exists shops (
   verification_id_photo_path text,      -- path (not a public URL) inside the private verification-documents bucket
   verification_note text,               -- seller's own note submitted with a verification request (e.g. ID/business reg number)
   verification_rejected_reason text,    -- set by admin when a request is turned down, shown back to the seller
+  -- Automatic ID + live-selfie verification via Didit (see src/lib/didit.ts).
+  -- A separate path from the manual review fields above — either one
+  -- getting approved sets is_verified true. 'approved' here means Didit
+  -- itself confirmed the selfie matches the ID card's photo.
+  identity_verification_status text
+    check (identity_verification_status in ('none', 'pending', 'in_review', 'approved', 'declined'))
+    default 'none',
+  identity_verification_session_id text,
+  identity_verified_at timestamptz,
   created_at timestamptz not null default now()
 );
 

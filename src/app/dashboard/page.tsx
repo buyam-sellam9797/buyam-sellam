@@ -231,7 +231,12 @@ export default function DashboardPage() {
 
       {tab === "trust" && (
         <div className="flex flex-col gap-8">
-          <VerificationPanel shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
+          <VerificationPanel
+            shop={shop}
+            t={t}
+            onSaved={(updated) => setShop({ ...shop, ...updated })}
+            onRefreshShop={loadData}
+          />
           <PayoutHistory orders={orders} t={t} />
         </div>
       )}
@@ -832,22 +837,40 @@ function ShopSettingsForm({
 }
 
 // Verification is never required to sell — a shop is fully functional
-// without it. This panel is just where a seller who skipped it during
-// onboarding (or whose request was turned down) can request or
-// re-request a review. Hidden once the shop is actually verified.
+// without it. Two ways to get verified live here: the automatic path
+// (Didit checks a live selfie against the seller's ID card photo —
+// this is what actually stops someone verifying with a stranger's ID)
+// shown first since it's faster and stronger, with the older
+// human-reviewed document upload kept underneath as a fallback for
+// anyone who can't complete the automatic flow. Hidden entirely once
+// the shop is actually verified, however that happened.
 function VerificationPanel({
   shop,
   t,
   onSaved,
+  onRefreshShop,
 }: {
   shop: Shop;
   t: Dictionary;
   onSaved: (patch: Partial<Shop>) => void;
+  onRefreshShop: () => Promise<void>;
 }) {
-  const [idFile, setIdFile] = useState<File | null>(null);
-  const [note, setNote] = useState(shop.verification_note ?? "");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [autoError, setAutoError] = useState<string | null>(null);
+  const [showManual, setShowManual] = useState(false);
+
+  const identityStatus = shop.identity_verification_status ?? "none";
+
+  // While Didit is still working on a result, poll for it — the
+  // seller lands back on this page (via the redirect) slightly before
+  // the webhook that actually confirms the result usually arrives.
+  useEffect(() => {
+    if (identityStatus !== "pending") return;
+    const interval = setInterval(() => {
+      onRefreshShop();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [identityStatus, onRefreshShop]);
 
   if (shop.is_verified) {
     return (
@@ -864,6 +887,110 @@ function VerificationPanel({
       </div>
     );
   }
+
+  async function handleStart() {
+    setStarting(true);
+    setAutoError(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not signed in.");
+      const res = await fetch("/api/verification/didit/start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not start verification.");
+      window.location.href = data.url;
+    } catch (err) {
+      setAutoError(err instanceof Error ? err.message : "Could not start verification.");
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+        <p className="text-sm font-semibold">{t.dashboard.verifyAutoTitle}</p>
+        <p className="text-sm text-neutral-600">{t.dashboard.verifyAutoHint}</p>
+
+        {identityStatus === "pending" && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {t.dashboard.identityStatusPending}
+          </p>
+        )}
+        {identityStatus === "in_review" && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {t.dashboard.identityStatusInReview}
+          </p>
+        )}
+        {identityStatus === "declined" && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {t.dashboard.identityStatusDeclined}
+          </p>
+        )}
+        {autoError && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{autoError}</p>
+        )}
+
+        {(identityStatus === "none" || identityStatus === "declined") && (
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={starting}
+            className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+          >
+            {starting
+              ? t.dashboard.verifyAutoStarting
+              : identityStatus === "declined"
+                ? t.dashboard.tryAgain
+                : t.dashboard.verifyAutoButton}
+          </button>
+        )}
+      </div>
+
+      {!showManual ? (
+        <button
+          type="button"
+          onClick={() => setShowManual(true)}
+          className="text-xs text-neutral-500 underline self-start"
+        >
+          {t.dashboard.orManualReview}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setShowManual(false)}
+            className="text-xs text-neutral-500 underline self-start"
+          >
+            {t.dashboard.hideManualReview}
+          </button>
+          <ManualVerificationForm shop={shop} t={t} onSaved={onSaved} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The original human-reviewed path: upload an ID/business document
+// and a note, and Lio looks it over by hand. Kept as a fallback for
+// anyone who can't complete the automatic selfie flow above — patchy
+// internet, no camera, an ID type Didit doesn't recognize, and so on.
+function ManualVerificationForm({
+  shop,
+  t,
+  onSaved,
+}: {
+  shop: Shop;
+  t: Dictionary;
+  onSaved: (patch: Partial<Shop>) => void;
+}) {
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [note, setNote] = useState(shop.verification_note ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleRequest() {
     setSubmitting(true);

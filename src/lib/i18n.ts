@@ -470,6 +470,19 @@ const en = {
     pausedBadge: "Paused",
     payoutHistoryTitle: "Payout history",
     noPayoutsYet: "No payouts yet — money you've been sent for completed orders will show up here.",
+    verifyAutoTitle: "Verify with ID + live selfie",
+    verifyAutoHint:
+      "The fastest way to get verified — usually under 2 minutes. You'll scan your ID and take a quick selfie on a secure page; we never see the photos ourselves, only the result.",
+    verifyAutoButton: "Start verification",
+    verifyAutoStarting: "Starting…",
+    identityStatusPending: "Checking your verification — this can take a minute. Refresh if this doesn't update.",
+    identityStatusInReview:
+      "Your verification needs a closer look from their review team. We'll update this automatically once it's done.",
+    identityStatusDeclined:
+      "That verification attempt didn't go through. You can try again, or use manual document review below instead.",
+    tryAgain: "Try again",
+    orManualReview: "Or submit documents for manual review instead",
+    hideManualReview: "Hide manual review",
   },
   order: {
     title: "Your order",
@@ -1145,6 +1158,19 @@ const fr: typeof en = {
     pausedBadge: "En pause",
     payoutHistoryTitle: "Historique des paiements",
     noPayoutsYet: "Aucun paiement pour le moment — l'argent reçu pour des commandes terminées apparaîtra ici.",
+    verifyAutoTitle: "Vérifier avec pièce d'identité + selfie en direct",
+    verifyAutoHint:
+      "Le moyen le plus rapide d'être vérifié — généralement moins de 2 minutes. Vous scannez votre pièce d'identité et prenez un selfie rapide sur une page sécurisée ; nous ne voyons jamais les photos nous-mêmes, seulement le résultat.",
+    verifyAutoButton: "Démarrer la vérification",
+    verifyAutoStarting: "Démarrage…",
+    identityStatusPending: "Vérification en cours — cela peut prendre une minute. Actualisez si rien ne change.",
+    identityStatusInReview:
+      "Votre vérification nécessite un examen plus approfondi par leur équipe. Nous mettrons à jour ceci automatiquement une fois terminé.",
+    identityStatusDeclined:
+      "Cette tentative de vérification n'a pas abouti. Vous pouvez réessayer, ou utiliser la vérification manuelle des documents ci-dessous.",
+    tryAgain: "Réessayer",
+    orManualReview: "Ou soumettez des documents pour une vérification manuelle à la place",
+    hideManualReview: "Masquer la vérification manuelle",
   },
   order: {
     title: "Votre commande",
