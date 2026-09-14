@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getProductById, getShopRatingSummary } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
@@ -17,6 +18,48 @@ const conditionKey = {
 
 export const dynamic = "force-dynamic";
 
+// Without this, every single product page showed the same generic
+// site title/description in search results and when shared as a link
+// (see layout.tsx's root `metadata`) — so a shared product looked
+// identical to the homepage on Google, WhatsApp, and Facebook. This
+// gives each product its own title, description, and preview image
+// instead.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const product = await getProductById(id);
+  if (!product) return {};
+
+  const title = `${product.title} — ${formatFcfa(product.price_fcfa)} | Buyam Sellam`;
+  const description =
+    product.description?.trim() ||
+    `${product.title}${product.shop ? ` from ${product.shop.shop_name} in ${product.shop.city}` : ""}. Pay by MTN MoMo or Orange Money, held safely until you confirm delivery.`;
+  const image = product.image_urls?.[0];
+  const url = `${getSiteUrl()}/product/${product.id}`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "website",
+      images: image ? [{ url: image }] : undefined,
+    },
+    twitter: {
+      card: image ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: image ? [image] : undefined,
+    },
+  };
+}
+
 export default async function ProductPage({
   params,
 }: {
@@ -33,8 +76,40 @@ export default async function ProductPage({
     : { average: 0, count: 0, completedOrders: 0 };
   const shareUrl = `${getSiteUrl()}/product/${product.id}`;
 
+  // Tells Google this is a product listing (price, availability, who
+  // sells it) so it can show that directly in search results instead
+  // of treating this as a plain article. Deliberately leaves out
+  // "aggregateRating"/"review" — the ratings we have are per-shop, not
+  // per-product, and Google penalizes structured data that claims a
+  // rating for something it doesn't actually measure.
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.title,
+    description: product.description || undefined,
+    image: product.image_urls?.length ? product.image_urls : undefined,
+    brand: product.brand ? { "@type": "Brand", name: product.brand } : undefined,
+    offers: {
+      "@type": "Offer",
+      url: shareUrl,
+      priceCurrency: "XAF",
+      price: product.price_fcfa,
+      availability:
+        product.stock_quantity > 0
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
+      ...(product.shop
+        ? { seller: { "@type": "Organization", name: product.shop.shop_name } }
+        : {}),
+    },
+  };
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 grid sm:grid-cols-2 gap-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+      />
       <div className="aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
         {product.image_urls?.[0] ? (
           // eslint-disable-next-line @next/next/no-img-element

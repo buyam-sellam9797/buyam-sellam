@@ -1,12 +1,53 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
 import { incrementShopViews } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
+import { getSiteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
+
+// Same reasoning as the product page's generateMetadata: without this,
+// every shop's storefront shared the homepage's generic title, so a
+// shop owner sharing their own page on WhatsApp had nothing that told
+// people whose shop it was.
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const shop = await getShopBySlug(slug);
+  if (!shop) return {};
+
+  const title = `${shop.shop_name} — ${shop.city} | Buyam Sellam`;
+  const description =
+    shop.description?.trim() ||
+    `${shop.shop_name}'s shop on Buyam Sellam, based in ${shop.city}. Pay by MTN MoMo or Orange Money, held safely until you confirm delivery.`;
+  const url = `${getSiteUrl()}/shop/${shop.slug}`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: "website",
+      images: shop.logo_url ? [{ url: shop.logo_url }] : undefined,
+    },
+    twitter: {
+      card: shop.logo_url ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: shop.logo_url ? [shop.logo_url] : undefined,
+    },
+  };
+}
 
 export default async function ShopPage({
   params,
