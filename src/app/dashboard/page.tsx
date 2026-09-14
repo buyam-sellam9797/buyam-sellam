@@ -148,9 +148,23 @@ export default function DashboardPage() {
     { key: "trust", label: t.dashboard.tabTrust },
   ];
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/");
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-1">{shop.shop_name}</h1>
+      <div className="flex items-start justify-between gap-4 mb-1">
+        <h1 className="text-2xl font-bold">{shop.shop_name}</h1>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 shrink-0"
+        >
+          {t.dashboard.logout}
+        </button>
+      </div>
       <p className="text-neutral-500 text-sm mb-4">{t.dashboard.sellerDashboard}</p>
 
       {needsActionCount > 0 && (
