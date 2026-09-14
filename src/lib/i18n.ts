@@ -476,6 +476,7 @@ const en = {
     verifyAutoButton: "Start verification",
     verifyAutoStarting: "Starting…",
     identityStatusPending: "Checking your verification — this can take a minute. Refresh if this doesn't update.",
+    identityStartOver: "Didn't finish, or made a mistake? Start over",
     identityStatusInReview:
       "Your verification needs a closer look from their review team. We'll update this automatically once it's done.",
     identityStatusDeclined:
@@ -1164,6 +1165,7 @@ const fr: typeof en = {
     verifyAutoButton: "Démarrer la vérification",
     verifyAutoStarting: "Démarrage…",
     identityStatusPending: "Vérification en cours — cela peut prendre une minute. Actualisez si rien ne change.",
+    identityStartOver: "Pas terminé, ou une erreur ? Recommencer",
     identityStatusInReview:
       "Votre vérification nécessite un examen plus approfondi par leur équipe. Nous mettrons à jour ceci automatiquement une fois terminé.",
     identityStatusDeclined:

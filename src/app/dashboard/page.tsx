@@ -916,9 +916,19 @@ function VerificationPanel({
         <p className="text-sm text-neutral-600">{t.dashboard.verifyAutoHint}</p>
 
         {identityStatus === "pending" && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            {t.dashboard.identityStatusPending}
-          </p>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {t.dashboard.identityStatusPending}
+            </p>
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={starting}
+              className="text-xs text-neutral-500 underline self-start disabled:opacity-60"
+            >
+              {starting ? t.dashboard.verifyAutoStarting : t.dashboard.identityStartOver}
+            </button>
+          </div>
         )}
         {identityStatus === "in_review" && (
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
