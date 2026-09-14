@@ -37,9 +37,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/shops" className="hidden sm:inline hover:text-amber-600">
                   {t.footer.verifiedSellers}
                 </Link>
-                <Link href="/sell" className="hidden sm:inline hover:text-amber-600">
-                  {t.nav.sell}
-                </Link>
                 <Link href="/account" className="hidden sm:inline hover:text-amber-600">
                   {t.nav.account}
                 </Link>

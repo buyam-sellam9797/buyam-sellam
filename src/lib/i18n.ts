@@ -11,7 +11,6 @@ export const locales: Locale[] = ["en", "fr"];
 const en = {
   nav: {
     browse: "Browse",
-    sell: "Sell on Buyam Sellam",
     openShop: "Open a shop",
     account: "Account",
     city: "Cameroon",
@@ -630,7 +629,6 @@ const en = {
 const fr: typeof en = {
   nav: {
     browse: "Parcourir",
-    sell: "Vendre sur Buyam Sellam",
     openShop: "Ouvrir une boutique",
     account: "Compte",
     city: "Cameroun",
