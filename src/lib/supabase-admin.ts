@@ -28,3 +28,29 @@ export async function incrementShopViews(shopId: string): Promise<void> {
     .update({ view_count: (data.view_count ?? 0) + 1 })
     .eq("id", shopId);
 }
+
+// Records an in-app alert for a seller — a new paid order, a buyer's
+// dispute — so they find out from the dashboard's own notification
+// bell instead of only by refreshing it themselves. Always called from
+// a trusted server route with the admin client already in hand there
+// (checkout confirmation, the NotchPay webhook, dispute filing), and
+// deliberately not awaited-and-checked by its callers: a failed insert
+// here should never break the payment or dispute flow that triggered it.
+export async function notifyShop(
+  admin: SupabaseClient,
+  input: {
+    shopId: string;
+    type: "new_order" | "dispute_filed";
+    title: string;
+    body?: string | null;
+    orderId?: string | null;
+  }
+): Promise<void> {
+  await admin.from("notifications").insert({
+    shop_id: input.shopId,
+    type: input.type,
+    title: input.title,
+    body: input.body ?? null,
+    order_id: input.orderId ?? null,
+  });
+}

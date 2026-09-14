@@ -480,6 +480,52 @@ export async function replyToReview(reviewId: string, reply: string): Promise<vo
   if (error) throw new Error(error.message);
 }
 
+export type ShopNotification = {
+  id: string;
+  shop_id: string;
+  type: "new_order" | "dispute_filed";
+  title: string;
+  body: string | null;
+  order_id: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+// The dashboard's notification bell — a new paid order, a buyer's
+// dispute (see migration 017). Capped at 50: this is a "what did I
+// just miss" list, not a full history.
+export async function getMyNotifications(shopId: string): Promise<ShopNotification[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, shop_id, type, title, body, order_id, is_read, created_at")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    console.error("getMyNotifications error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("id", notificationId);
+  if (error) throw new Error(error.message);
+}
+
+export async function markAllNotificationsRead(shopId: string): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("shop_id", shopId)
+    .eq("is_read", false);
+  if (error) throw new Error(error.message);
+}
+
 // Shops that have earned the verified badge, for the "Verified Shops"
 // directory page — ranked so the most established shops lead.
 export async function getVerifiedShops(): Promise<Shop[]> {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
+import { notifyShop } from "@/lib/supabase-admin";
+import { formatFcfa } from "@/lib/format";
 
 // Server-side only — these keys never reach the browser.
 const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
@@ -323,7 +325,7 @@ export async function GET(req: NextRequest) {
           .update({ status: "paid_held", updated_at: new Date().toISOString() })
           .eq("payment_reference", orderReference)
           .eq("status", "pending_payment")
-          .select("id")
+          .select("id, shop_id, total_amount_fcfa")
           .maybeSingle();
 
         if (updatedOrder) {
@@ -332,6 +334,14 @@ export async function GET(req: NextRequest) {
             provider: "notchpay",
             event_type: "payment.complete",
             raw_payload: data,
+          });
+
+          await notifyShop(admin, {
+            shopId: updatedOrder.shop_id,
+            type: "new_order",
+            title: "New order — payment received",
+            body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
+            orderId: updatedOrder.id,
           });
 
           // Stock is only taken off the shelf once payment is actually

@@ -20,6 +20,9 @@ import {
   getShopRatingSummary,
   getShopReviewsForDashboard,
   replyToReview,
+  getMyNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
   type Shop,
   type Product,
   type Order,
@@ -27,6 +30,7 @@ import {
   type ShopRatingSummary,
   type BusinessHours,
   type Review,
+  type ShopNotification,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
@@ -83,6 +87,7 @@ export default function DashboardPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [rating, setRating] = useState<ShopRatingSummary | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [notifications, setNotifications] = useState<ShopNotification[]>([]);
   const [tab, setTab] = useState<Tab>("overview");
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
@@ -106,18 +111,20 @@ export default function DashboardPage() {
     // includeInactive: true — a paused listing still needs to show up
     // here so the seller can turn it back on; only the public storefront
     // hides it.
-    const [myProducts, myOrders, cats, ratingSummary, myReviews] = await Promise.all([
+    const [myProducts, myOrders, cats, ratingSummary, myReviews, myNotifications] = await Promise.all([
       getShopProducts(myShop.id, { includeInactive: true }),
       getMyOrders(myShop.id),
       getCategories(),
       getShopRatingSummary(myShop.id),
       getShopReviewsForDashboard(myShop.id),
+      getMyNotifications(myShop.id),
     ]);
     setProducts(myProducts);
     setOrders(myOrders);
     setCategories(cats);
     setRating(ratingSummary);
     setReviews(myReviews);
+    setNotifications(myNotifications);
     setLoading(false);
   }, [router]);
 
@@ -194,13 +201,27 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-4xl px-4 py-8">
       <div className="flex items-start justify-between gap-4 mb-1">
         <h1 className="text-2xl font-bold">{shop.shop_name}</h1>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 shrink-0"
-        >
-          {t.dashboard.logout}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <NotificationBell
+            notifications={notifications}
+            t={t}
+            onMarkRead={async (id) => {
+              setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+              await markNotificationRead(id).catch(() => {});
+            }}
+            onMarkAllRead={async () => {
+              setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+              await markAllNotificationsRead(shop.id).catch(() => {});
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900"
+          >
+            {t.dashboard.logout}
+          </button>
+        </div>
       </div>
       <p className="text-neutral-500 text-sm mb-4">{t.dashboard.sellerDashboard}</p>
 
@@ -829,6 +850,114 @@ function PayoutHistory({ orders, t }: { orders: Order[]; t: Dictionary }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Turns a timestamp into a short relative label ("5m ago", "2h ago")
+// for the notification dropdown — a full date is more than a seller
+// needs for "did something just happen".
+function relativeTime(iso: string, t: Dictionary): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return t.dashboard.notificationsJustNow;
+  if (minutes < 60) return t.dashboard.notificationsMinutesAgo.replace("{n}", String(minutes));
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t.dashboard.notificationsHoursAgo.replace("{n}", String(hours));
+  const days = Math.floor(hours / 24);
+  return t.dashboard.notificationsDaysAgo.replace("{n}", String(days));
+}
+
+// The bell icon in the dashboard header — new paid orders and buyer
+// disputes (see migration 017), so a seller finds out without having
+// to keep the Orders tab open and refresh it. Kept as a simple
+// dropdown rather than a separate tab: this is meant to be glanced at,
+// not lived in.
+function NotificationBell({
+  notifications,
+  t,
+  onMarkRead,
+  onMarkAllRead,
+}: {
+  notifications: ShopNotification[];
+  t: Dictionary;
+  onMarkRead: (id: string) => void | Promise<void>;
+  onMarkAllRead: () => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={t.dashboard.notificationsTitle}
+        className="relative text-sm rounded-full border border-neutral-300 w-9 h-9 flex items-center justify-center hover:border-neutral-900"
+      >
+        🔔
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <>
+          {/* Click-away layer — closes the dropdown without needing a ref/listener setup. */}
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-10 cursor-default"
+          />
+          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white border border-neutral-200 rounded-xl shadow-lg z-20 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-100">
+              <p className="text-sm font-semibold">{t.dashboard.notificationsTitle}</p>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onMarkAllRead()}
+                  className="text-xs text-amber-600 hover:underline"
+                >
+                  {t.dashboard.notificationsMarkAllRead}
+                </button>
+              )}
+            </div>
+            <div className="max-h-96 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <p className="text-sm text-neutral-500 text-center py-8 px-4">
+                  {t.dashboard.notificationsEmpty}
+                </p>
+              ) : (
+                notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => !n.is_read && onMarkRead(n.id)}
+                    className={`w-full text-left px-4 py-3 border-b border-neutral-50 last:border-0 hover:bg-neutral-50 ${
+                      n.is_read ? "" : "bg-amber-50/60"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="text-base leading-none mt-0.5">
+                        {n.type === "dispute_filed" ? "⚠️" : "🛍️"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{n.title}</p>
+                        {n.body && <p className="text-xs text-neutral-500 mt-0.5">{n.body}</p>}
+                        <p className="text-[11px] text-neutral-400 mt-1">{relativeTime(n.created_at, t)}</p>
+                      </div>
+                      {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

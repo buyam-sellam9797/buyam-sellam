@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/supabase-admin";
+import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 import { verifyNotchPayWebhook, extractNotchPayReference, extractNotchPayEventType } from "@/lib/notchpay";
+import { formatFcfa } from "@/lib/format";
 
 // Before this route existed, an order only flipped from
 // "pending_payment" to "paid_held" when the BUYER'S OWN BROWSER polled
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
       .update({ status: "paid_held", updated_at: new Date().toISOString() })
       .eq("payment_reference", reference)
       .eq("status", "pending_payment")
-      .select("id")
+      .select("id, shop_id, total_amount_fcfa")
       .maybeSingle();
 
     if (updatedOrder) {
@@ -70,6 +71,14 @@ export async function POST(req: NextRequest) {
         provider: "notchpay",
         event_type: eventType,
         raw_payload: payload as object,
+      });
+
+      await notifyShop(admin, {
+        shopId: updatedOrder.shop_id,
+        type: "new_order",
+        title: "New order — payment received",
+        body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
+        orderId: updatedOrder.id,
       });
     }
   } else if (

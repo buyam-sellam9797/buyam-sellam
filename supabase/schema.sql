@@ -234,6 +234,26 @@ create table if not exists disputes (
 );
 
 -- ============================================================
+-- NOTIFICATIONS (migration 017)
+-- In-app alerts for sellers — a new paid order, a buyer's dispute — so
+-- they find out from the dashboard's own bell icon instead of only by
+-- refreshing it themselves.
+-- ============================================================
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references shops(id) on delete cascade,
+  type text not null check (type in ('new_order', 'dispute_filed')),
+  title text not null,
+  body text,
+  order_id uuid references orders(id) on delete set null,
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_shop_id_created_at_idx
+  on notifications (shop_id, created_at desc);
+
+-- ============================================================
 -- ROW LEVEL SECURITY (basic starting policies)
 -- ============================================================
 alter table profiles enable row level security;
@@ -244,6 +264,7 @@ alter table order_items enable row level security;
 alter table reviews enable row level security;
 alter table disputes enable row level security;
 alter table buyer_addresses enable row level security;
+alter table notifications enable row level security;
 
 -- Anyone can read active shops and products (public storefront browsing)
 create policy "Public can view active shops" on shops
@@ -331,6 +352,20 @@ create policy "Sellers reply to reviews on their shop" on reviews
 -- reviews table above.
 create policy "Sellers view disputes on their shop" on disputes
   for select using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
+
+-- Inserts only ever happen from trusted server code (see migration 017's
+-- own comment for why) — these two policies are just what the
+-- dashboard's notification bell needs: read its shop's alerts, and mark
+-- them read.
+create policy "Sellers view notifications on their shop" on notifications
+  for select using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
+
+create policy "Sellers mark their own notifications read" on notifications
+  for update using (
     shop_id in (select id from shops where owner_id = auth.uid())
   );
 

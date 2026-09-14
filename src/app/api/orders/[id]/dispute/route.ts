@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/supabase-admin";
+import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 
 const VALID_REASONS = [
   "not_arrived",
@@ -9,6 +9,15 @@ const VALID_REASONS = [
   "seller_not_responding",
   "other",
 ];
+
+const REASON_LABELS: Record<string, string> = {
+  not_arrived: "it hasn't arrived",
+  wrong_product: "wrong product",
+  damaged: "arrived damaged",
+  different_than_described: "different than described",
+  seller_not_responding: "seller not responding",
+  other: "another reason",
+};
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8MB — generous for a phone photo, small enough to not abuse storage
 
@@ -95,6 +104,14 @@ export async function POST(
     .from("orders")
     .update({ status: "disputed", updated_at: new Date().toISOString() })
     .eq("id", id);
+
+  await notifyShop(admin, {
+    shopId: order.shop_id,
+    type: "dispute_filed",
+    title: "A buyer reported a problem with an order",
+    body: `Reason: ${REASON_LABELS[reason] ?? reason}.${description ? ` "${description}"` : ""}`,
+    orderId: order.id,
+  });
 
   return NextResponse.json({ ok: true });
 }
