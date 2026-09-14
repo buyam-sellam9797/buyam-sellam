@@ -4,6 +4,13 @@ import { getProductById } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
+import { buildWhatsAppLink } from "@/lib/whatsapp";
+
+const conditionKey = {
+  new: "conditionNew",
+  like_new: "conditionLikeNew",
+  used: "conditionUsed",
+} as const;
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +46,11 @@ export default async function ProductPage({
           </p>
         )}
         <h1 className="text-2xl font-bold mt-1">{product.title}</h1>
+
+        <span className="inline-block mt-2 text-xs font-semibold rounded-full bg-neutral-100 px-2.5 py-1">
+          {t.product[conditionKey[product.condition] ?? "conditionNew"]}
+        </span>
+
         {product.description && (
           <p className="text-sm text-neutral-600 mt-2">{product.description}</p>
         )}
@@ -50,6 +62,20 @@ export default async function ProductPage({
             {t.product.soldBy} {product.shop.shop_name}
           </Link>
         )}
+
+        {product.sizes?.length > 0 && (
+          <p className="text-sm mt-3">
+            <span className="text-neutral-500">{t.product.sizesLabel}: </span>
+            {product.sizes.join(", ")}
+          </p>
+        )}
+        {product.colors?.length > 0 && (
+          <p className="text-sm mt-1">
+            <span className="text-neutral-500">{t.product.colorsLabel}: </span>
+            {product.colors.join(", ")}
+          </p>
+        )}
+
         <p className="text-2xl font-semibold mt-4">
           {formatFcfa(product.price_fcfa)}
         </p>
@@ -60,6 +86,22 @@ export default async function ProductPage({
         >
           {t.product.buyNow}
         </Link>
+
+        {product.shop?.whatsapp_number && (
+          <a
+            href={buildWhatsAppLink(
+              product.shop.whatsapp_number,
+              t.product.whatsappMessage
+                .replace("{title}", product.title)
+                .replace("{price}", formatFcfa(product.price_fcfa))
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-block w-full text-center rounded-full border border-green-600 text-green-700 font-semibold px-6 py-3 hover:bg-green-50"
+          >
+            {t.product.chatOnWhatsapp}
+          </a>
+        )}
 
         <div className="mt-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
           {t.product.escrowNotice}

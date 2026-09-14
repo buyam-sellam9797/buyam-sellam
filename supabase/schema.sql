@@ -64,6 +64,9 @@ create table if not exists products (
   price_fcfa integer not null check (price_fcfa > 0),   -- price in CFA francs, whole numbers
   stock_quantity integer not null default 1,
   image_urls jsonb not null default '[]'::jsonb,        -- array of image URLs in Supabase storage
+  condition text not null default 'new' check (condition in ('new', 'like_new', 'used')),
+  sizes jsonb not null default '[]'::jsonb,             -- array of size strings, e.g. ["38","39","40"]
+  colors jsonb not null default '[]'::jsonb,            -- array of color strings
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );

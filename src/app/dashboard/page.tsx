@@ -15,6 +15,7 @@ import {
   markOrderShipped,
   type Shop,
   type Product,
+  type ProductCondition,
   type Order,
   type Category,
 } from "@/lib/supabase";
@@ -260,9 +261,22 @@ function ProductForm({
   const [categoryId, setCategoryId] = useState(
     existingProduct?.category_id ?? categories[0]?.id ?? ""
   );
+  const [condition, setCondition] = useState<ProductCondition>(
+    existingProduct?.condition ?? "new"
+  );
+  const [sizes, setSizes] = useState(existingProduct?.sizes?.join(", ") ?? "");
+  const [colors, setColors] = useState(existingProduct?.colors?.join(", ") ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // "38, 39, 40" -> ["38", "39", "40"]; blank input -> [] rather than [""].
+  function parseList(value: string): string[] {
+    return value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -274,25 +288,20 @@ function ProductForm({
         const url = await uploadProductImage(file, shopId);
         imageUrls = [url];
       }
+      const sharedFields = {
+        categoryId: categoryId || null,
+        title,
+        description,
+        priceFcfa: Number(price),
+        stockQuantity: Number(stock),
+        condition,
+        sizes: parseList(sizes),
+        colors: parseList(colors),
+      };
       if (isEditing && existingProduct) {
-        await updateProduct(existingProduct.id, {
-          categoryId: categoryId || null,
-          title,
-          description,
-          priceFcfa: Number(price),
-          stockQuantity: Number(stock),
-          imageUrls,
-        });
+        await updateProduct(existingProduct.id, { ...sharedFields, imageUrls });
       } else {
-        await createProduct({
-          shopId,
-          categoryId: categoryId || null,
-          title,
-          description,
-          priceFcfa: Number(price),
-          stockQuantity: Number(stock),
-          imageUrls: imageUrls ?? [],
-        });
+        await createProduct({ ...sharedFields, shopId, imageUrls: imageUrls ?? [] });
       }
       onDone();
     } catch (err) {
@@ -362,6 +371,38 @@ function ProductForm({
             </option>
           ))}
         </select>
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.condition}</label>
+        <select
+          value={condition}
+          onChange={(e) => setCondition(e.target.value as ProductCondition)}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+        >
+          <option value="new">{t.dashboard.conditionNew}</option>
+          <option value="like_new">{t.dashboard.conditionLikeNew}</option>
+          <option value="used">{t.dashboard.conditionUsed}</option>
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.sizes}</label>
+          <input
+            value={sizes}
+            onChange={(e) => setSizes(e.target.value)}
+            placeholder={t.dashboard.sizesPlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.colors}</label>
+          <input
+            value={colors}
+            onChange={(e) => setColors(e.target.value)}
+            placeholder={t.dashboard.colorsPlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">

@@ -33,6 +33,8 @@ export type Shop = {
   is_active: boolean;
 };
 
+export type ProductCondition = "new" | "like_new" | "used";
+
 export type Product = {
   id: string;
   shop_id: string;
@@ -42,8 +44,11 @@ export type Product = {
   price_fcfa: number;
   stock_quantity: number;
   image_urls: string[];
+  condition: ProductCondition;
+  sizes: string[];
+  colors: string[];
   is_active: boolean;
-  shop?: Pick<Shop, "shop_name" | "slug" | "city"> | null;
+  shop?: Pick<Shop, "shop_name" | "slug" | "city" | "whatsapp_number"> | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
 
@@ -73,18 +78,30 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-export async function getActiveProducts(categorySlug?: string): Promise<Product[]> {
+export async function getActiveProducts(
+  categorySlug?: string,
+  filters?: { q?: string; minPrice?: number; maxPrice?: number }
+): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, is_active, shop:shops(shop_name, slug, city), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(shop_name, slug, city), category:categories(name, slug)"
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (categorySlug) {
     query = query.eq("category.slug", categorySlug);
+  }
+  if (filters?.q) {
+    query = query.ilike("title", `%${filters.q}%`);
+  }
+  if (filters?.minPrice !== undefined) {
+    query = query.gte("price_fcfa", filters.minPrice);
+  }
+  if (filters?.maxPrice !== undefined) {
+    query = query.lte("price_fcfa", filters.maxPrice);
   }
 
   const { data, error } = await query;
@@ -106,7 +123,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, is_active, shop:shops(shop_name, slug, city), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(shop_name, slug, city, whatsapp_number), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -138,7 +155,7 @@ export async function getShopProducts(shopId: string): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, is_active, category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, category:categories(name, slug)"
     )
     .eq("shop_id", shopId)
     .eq("is_active", true)
@@ -223,6 +240,9 @@ export async function createProduct(input: {
   priceFcfa: number;
   stockQuantity: number;
   imageUrls: string[];
+  condition: ProductCondition;
+  sizes: string[];
+  colors: string[];
 }) {
   const { error } = await supabase.from("products").insert({
     shop_id: input.shopId,
@@ -232,6 +252,9 @@ export async function createProduct(input: {
     price_fcfa: input.priceFcfa,
     stock_quantity: input.stockQuantity,
     image_urls: input.imageUrls,
+    condition: input.condition,
+    sizes: input.sizes,
+    colors: input.colors,
   });
   if (error) throw new Error(error.message);
 }
@@ -245,6 +268,9 @@ export async function updateProduct(
     priceFcfa: number;
     stockQuantity: number;
     imageUrls?: string[];
+    condition: ProductCondition;
+    sizes: string[];
+    colors: string[];
   }
 ) {
   const patch: Record<string, unknown> = {
@@ -253,6 +279,9 @@ export async function updateProduct(
     description: input.description || null,
     price_fcfa: input.priceFcfa,
     stock_quantity: input.stockQuantity,
+    condition: input.condition,
+    sizes: input.sizes,
+    colors: input.colors,
   };
   if (input.imageUrls) patch.image_urls = input.imageUrls;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);

@@ -9,16 +9,23 @@ export const dynamic = "force-dynamic";
 export default async function BrowsePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{ category?: string; q?: string; minPrice?: string; maxPrice?: string }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category } = await searchParams;
+  const { category, q, minPrice, maxPrice } = await searchParams;
+  const minPriceNum = minPrice ? Number(minPrice) : undefined;
+  const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
   const [categories, filtered] = await Promise.all([
     getCategories(),
-    getActiveProducts(category),
+    getActiveProducts(category, {
+      q,
+      minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
+      maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
+    }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
+  const hasFilters = Boolean(q || minPrice || maxPrice || category);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -27,6 +34,45 @@ export default async function BrowsePage({
         {filtered.length} {plural(filtered.length, locale, t.browse.itemOne, t.browse.itemOther)}
         {activeCategory ? ` ${t.browse.inCategory} ${activeCategory.name}` : ""}
       </p>
+
+      <form className="flex flex-wrap gap-2 mb-4" method="GET" action="/browse">
+        {category && <input type="hidden" name="category" value={category} />}
+        <input
+          type="text"
+          name="q"
+          defaultValue={q ?? ""}
+          placeholder={t.browse.searchPlaceholder}
+          className="flex-1 min-w-[10rem] rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          name="minPrice"
+          defaultValue={minPrice ?? ""}
+          placeholder={t.browse.minPrice}
+          className="w-28 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="number"
+          name="maxPrice"
+          defaultValue={maxPrice ?? ""}
+          placeholder={t.browse.maxPrice}
+          className="w-28 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          className="rounded-lg bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-700"
+        >
+          {t.browse.searchButton}
+        </button>
+        {hasFilters && (
+          <Link
+            href="/browse"
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold hover:border-neutral-900"
+          >
+            {t.browse.clearFilters}
+          </Link>
+        )}
+      </form>
 
       <div className="flex flex-wrap gap-2 mb-8">
         <Link
@@ -78,6 +124,11 @@ export default async function BrowsePage({
               <p className="text-xs text-neutral-500 mt-0.5">
                 {p.shop?.shop_name}
               </p>
+              {p.condition !== "new" && (
+                <span className="inline-block mt-1 text-[10px] font-semibold rounded-full bg-neutral-100 px-2 py-0.5">
+                  {p.condition === "like_new" ? t.product.conditionLikeNew : t.product.conditionUsed}
+                </span>
+              )}
               <p className="text-sm font-semibold mt-1">
                 {formatFcfa(p.price_fcfa)}
               </p>

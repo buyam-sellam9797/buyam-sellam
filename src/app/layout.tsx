@@ -49,9 +49,22 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </header>
           <main className="flex-1">{children}</main>
           <footer className="border-t border-neutral-200 bg-white mt-16">
-            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-neutral-500 flex flex-col sm:flex-row gap-2 sm:justify-between">
-              <p>&copy; {new Date().getFullYear()} {t.footer.rights}</p>
-              <p>{t.footer.payWith}</p>
+            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-neutral-500 flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-between">
+                <p>&copy; {new Date().getFullYear()} {t.footer.rights}</p>
+                <p>{t.footer.payWith}</p>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <Link href="/privacy" className="hover:text-amber-600">
+                  {t.footer.privacy}
+                </Link>
+                <Link href="/terms" className="hover:text-amber-600">
+                  {t.footer.terms}
+                </Link>
+                <Link href="/refund" className="hover:text-amber-600">
+                  {t.footer.refund}
+                </Link>
+              </div>
             </div>
           </footer>
         </LocaleProvider>
