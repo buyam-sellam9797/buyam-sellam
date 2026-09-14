@@ -129,6 +129,11 @@ export default function AdminPage() {
   }
   if (!token) return null;
 
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/");
+  }
+
   const TABS: { key: Tab; label: string }[] = [
     { key: "overview", label: t.admin.tabOverview },
     { key: "orders", label: t.admin.tabOrders },
@@ -141,7 +146,16 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">{t.admin.title}</h1>
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <h1 className="text-2xl font-bold">{t.admin.title}</h1>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 shrink-0"
+        >
+          {t.admin.logout}
+        </button>
+      </div>
 
       <div className="flex flex-wrap gap-2 mb-8 border-b border-neutral-200 pb-2">
         {TABS.map((tb) => (
