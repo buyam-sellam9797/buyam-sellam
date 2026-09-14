@@ -40,6 +40,29 @@ export default async function Home() {
               {t.home.openShopCta}
             </Link>
           </div>
+          <div className="mt-6 pt-6 border-t border-white/10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
+            <span className="font-semibold">{t.home.trustStripTitle}</span>
+            <span className="text-neutral-300">{t.home.trustStripSteps}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-amber-50 border-b border-amber-100">
+        <div className="mx-auto max-w-6xl px-4 py-5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
+          <p className="text-xs font-bold tracking-wide text-amber-800">
+            {t.home.payYourWayTitle}
+          </p>
+          <div className="flex items-center gap-3 text-sm font-semibold text-neutral-800">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-200 px-3 py-1">
+              📱 MTN MoMo
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-200 px-3 py-1">
+              📱 Orange Money
+            </span>
+          </div>
+          <p className="text-xs text-amber-800 sm:ml-auto">
+            🔒 {t.home.payYourWayNote}
+          </p>
         </div>
       </section>
 
@@ -95,8 +118,9 @@ export default async function Home() {
                 </div>
                 <div className="p-3">
                   <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-                  <p className="text-xs text-neutral-500 mt-0.5">
+                  <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
                     {p.shop?.shop_name}
+                    {p.shop?.is_verified && <span title="Verified">🟢</span>}
                   </p>
                   <p className="text-sm font-semibold mt-1">
                     {formatFcfa(p.price_fcfa)}

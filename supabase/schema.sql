@@ -133,9 +133,10 @@ create table if not exists payment_events (
 -- ============================================================
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
-  order_id uuid not null references orders(id),
+  order_id uuid not null references orders(id) unique,   -- one review per order
   shop_id uuid not null references shops(id),
-  buyer_id uuid not null references profiles(id),
+  buyer_id uuid references profiles(id),   -- null for guest checkout (buyer_phone identifies them instead)
+  buyer_phone text,
   rating integer not null check (rating between 1 and 5),
   comment text,
   created_at timestamptz not null default now()
@@ -191,6 +192,12 @@ create policy "Sellers update orders on their shop" on orders
 create policy "Public can view reviews" on reviews
   for select using (true);
 
+-- Writing a review itself is done through a trusted server route using
+-- the service role key, not this policy — same reasoning as order
+-- confirmation above: most buyers check out as guests with no
+-- auth.uid() at all, so a public RLS insert policy can't be the only
+-- path in. Kept here so a future logged-in-only write path still has
+-- a sane default.
 create policy "Buyers write reviews on their own completed orders" on reviews
   for insert with check (auth.uid() = buyer_id);
 

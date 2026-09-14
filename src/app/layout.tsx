@@ -7,9 +7,9 @@ import { LocaleProvider } from "@/components/locale-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 
 export const metadata: Metadata = {
-  title: "Buyam Sellam — Shop Douala Fashion & Beauty",
+  title: "Buyam Sellam — Shop Cameroon. Buy with Confidence.",
   description:
-    "Buyam Sellam is Douala's online marketplace for fashion and beauty — real sellers, pay by mobile money, held safely until you confirm delivery.",
+    "Buyam Sellam is Cameroon's trusted online marketplace for fashion and beauty — verified sellers, pay by MTN MoMo or Orange Money, held safely until you confirm delivery.",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

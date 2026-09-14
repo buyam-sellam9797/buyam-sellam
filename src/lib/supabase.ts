@@ -48,9 +48,22 @@ export type Product = {
   sizes: string[];
   colors: string[];
   is_active: boolean;
-  shop?: Pick<Shop, "shop_name" | "slug" | "city" | "whatsapp_number"> | null;
+  shop?: Pick<Shop, "id" | "shop_name" | "slug" | "city" | "whatsapp_number" | "is_verified"> | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
+
+export type Review = {
+  id: string;
+  order_id: string;
+  shop_id: string;
+  buyer_id: string | null;
+  buyer_phone: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+};
+
+export type ShopRatingSummary = { average: number; count: number };
 
 export type Order = {
   id: string;
@@ -86,7 +99,7 @@ export async function getActiveProducts(
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(shop_name, slug, city), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified), category:categories(name, slug)"
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -123,7 +136,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(shop_name, slug, city, whatsapp_number), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -133,6 +146,21 @@ export async function getProductById(id: string): Promise<Product | null> {
     return null;
   }
   return (data as unknown as Product) ?? null;
+}
+
+// Average + count of a shop's reviews, for the trust badges shown on
+// product and shop pages ("⭐ 4.8 · 12 reviews"). Computed client-side
+// from the raw ratings rather than a DB aggregate — review volume per
+// shop is small enough that this is simpler than adding a view/RPC.
+export async function getShopRatingSummary(shopId: string): Promise<ShopRatingSummary> {
+  if (!isSupabaseConfigured) return { average: 0, count: 0 };
+  const { data, error } = await supabase
+    .from("reviews")
+    .select("rating")
+    .eq("shop_id", shopId);
+  if (error || !data || data.length === 0) return { average: 0, count: 0 };
+  const sum = data.reduce((s, r) => s + r.rating, 0);
+  return { average: sum / data.length, count: data.length };
 }
 
 export async function getShopBySlug(slug: string): Promise<Shop | null> {

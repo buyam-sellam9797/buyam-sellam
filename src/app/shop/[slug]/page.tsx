@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getShopBySlug, getShopProducts } from "@/lib/supabase";
+import { getShopBySlug, getShopProducts, getShopRatingSummary } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -18,7 +18,10 @@ export default async function ShopPage({
   const shop = await getShopBySlug(slug);
   if (!shop) notFound();
 
-  const shopProducts = await getShopProducts(shop.id);
+  const [shopProducts, rating] = await Promise.all([
+    getShopProducts(shop.id),
+    getShopRatingSummary(shop.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -36,6 +39,16 @@ export default async function ShopPage({
           <p className="text-sm text-neutral-500">
             {shop.city}
             {shop.is_verified ? ` · ${t.shop.verified}` : ""}
+          </p>
+          <p className="text-sm text-neutral-500 mt-0.5">
+            {rating.count > 0
+              ? `⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
+                  rating.count,
+                  locale,
+                  t.product.reviewOne,
+                  t.product.reviewOther
+                )}`
+              : t.product.newSeller}
           </p>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 
 type PayoutOrder = {
@@ -100,7 +101,15 @@ export default function AdminPage() {
                   {new Date(o.created_at).toLocaleDateString()}
                 </p>
               </div>
-              <p className="text-sm font-semibold whitespace-nowrap">{formatFcfa(o.total_amount_fcfa)}</p>
+              <div className="text-right whitespace-nowrap">
+                <p className="text-sm font-semibold">
+                  {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
+                </p>
+                <p className="text-[11px] text-neutral-400">
+                  {t.admin.ofTotal} {formatFcfa(o.total_amount_fcfa)} · {t.admin.commission}{" "}
+                  {formatFcfa(calculateCommission(o.total_amount_fcfa).commissionFcfa)}
+                </p>
+              </div>
               <button
                 onClick={() => handleMarkPaid(o.id)}
                 disabled={markingId === o.id}

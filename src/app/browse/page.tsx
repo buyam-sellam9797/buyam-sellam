@@ -121,8 +121,9 @@ export default async function BrowsePage({
             </div>
             <div className="p-3">
               <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-              <p className="text-xs text-neutral-500 mt-0.5">
+              <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
                 {p.shop?.shop_name}
+                {p.shop?.is_verified && <span title="Verified">🟢</span>}
               </p>
               {p.condition !== "new" && (
                 <span className="inline-block mt-1 text-[10px] font-semibold rounded-full bg-neutral-100 px-2 py-0.5">

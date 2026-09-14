@@ -20,6 +20,11 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reviewed, setReviewed] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,8 +32,10 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
-        if (data.order) setOrder(data.order);
-        else setNotFound(true);
+        if (data.order) {
+          setOrder(data.order);
+          setReviewed(Boolean(data.reviewed));
+        } else setNotFound(true);
       })
       .catch(() => {
         if (!cancelled) setNotFound(true);
@@ -40,6 +47,32 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       cancelled = true;
     };
   }, [orderId]);
+
+  async function handleSubmitReview() {
+    if (rating < 1) {
+      setReviewError(t.order.reviewErrorPickRating);
+      return;
+    }
+    setSubmittingReview(true);
+    setReviewError(null);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "review", rating, comment }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setReviewError(data.error ?? t.order.reviewErrorGeneric);
+        return;
+      }
+      setReviewed(true);
+    } catch {
+      setReviewError(t.order.reviewErrorGeneric);
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
 
   async function handleConfirm() {
     setConfirming(true);
@@ -117,8 +150,52 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       )}
 
       {order.status === "completed" && (
-        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-          {t.order.alreadyCompleted}
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+            {t.order.alreadyCompleted}
+          </div>
+
+          {reviewed ? (
+            <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+              ⭐ {t.order.reviewThanks}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5">
+              <p className="text-sm font-semibold mb-3">{t.order.reviewPrompt}</p>
+              <div className="flex gap-1 mb-4" role="radiogroup" aria-label={t.order.reviewPrompt}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRating(n)}
+                    aria-label={`${n} star${n > 1 ? "s" : ""}`}
+                    className="text-3xl leading-none"
+                  >
+                    {n <= rating ? "⭐" : "☆"}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder={t.order.reviewCommentPlaceholder}
+                rows={3}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mb-3"
+              />
+              {reviewError && (
+                <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+                  {reviewError}
+                </p>
+              )}
+              <button
+                onClick={handleSubmitReview}
+                disabled={submittingReview}
+                className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
+              >
+                {submittingReview ? t.order.reviewSubmitting : t.order.reviewSubmit}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductById } from "@/lib/supabase";
+import { getProductById, getShopRatingSummary } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
-import { getDictionary } from "@/lib/i18n";
+import { getDictionary, plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { getSiteUrl } from "@/lib/site";
+import { ShareButton } from "@/components/share-button";
 
 const conditionKey = {
   new: "conditionNew",
@@ -24,6 +26,9 @@ export default async function ProductPage({
   const { id } = await params;
   const product = await getProductById(id);
   if (!product) notFound();
+
+  const rating = product.shop ? await getShopRatingSummary(product.shop.id) : { average: 0, count: 0 };
+  const shareUrl = `${getSiteUrl()}/product/${product.id}`;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 grid sm:grid-cols-2 gap-8">
@@ -54,14 +59,6 @@ export default async function ProductPage({
         {product.description && (
           <p className="text-sm text-neutral-600 mt-2">{product.description}</p>
         )}
-        {product.shop && (
-          <Link
-            href={`/shop/${product.shop.slug}`}
-            className="text-sm text-neutral-500 hover:text-amber-600 mt-1 inline-block"
-          >
-            {t.product.soldBy} {product.shop.shop_name}
-          </Link>
-        )}
 
         {product.sizes?.length > 0 && (
           <p className="text-sm mt-3">
@@ -79,6 +76,51 @@ export default async function ProductPage({
         <p className="text-2xl font-semibold mt-4">
           {formatFcfa(product.price_fcfa)}
         </p>
+
+        {product.shop && (
+          <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
+            <Link
+              href={`/shop/${product.shop.slug}`}
+              className="font-medium hover:text-amber-600 flex items-center gap-1.5 flex-wrap"
+            >
+              {product.shop.shop_name}
+              {product.shop.is_verified && (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
+                  🟢 {t.product.verified}
+                </span>
+              )}
+            </Link>
+            <p className="text-neutral-500 mt-1">
+              {rating.count > 0
+                ? `⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
+                    rating.count,
+                    locale,
+                    t.product.reviewOne,
+                    t.product.reviewOther
+                  )}`
+                : t.product.newSeller}
+            </p>
+            <p className="text-neutral-500 mt-1">📍 {product.shop.city}</p>
+            <p className="text-neutral-500 mt-1">🚚 {t.product.deliveryAvailable}</p>
+          </div>
+        )}
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold text-neutral-500 mb-1.5">{t.product.paymentLabel}</p>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-medium">
+              📱 MTN MoMo
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-medium">
+              📱 Orange Money
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+          <p className="font-semibold mb-1">🛡️ {t.product.buyerProtectionTitle}</p>
+          {t.product.escrowNotice}
+        </div>
 
         <Link
           href={`/checkout/${product.id}`}
@@ -103,9 +145,7 @@ export default async function ProductPage({
           </a>
         )}
 
-        <div className="mt-6 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
-          {t.product.escrowNotice}
-        </div>
+        <ShareButton title={product.title} url={shareUrl} />
       </div>
     </div>
   );

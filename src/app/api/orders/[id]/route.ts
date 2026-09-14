@@ -27,7 +27,13 @@ export async function GET(
     return NextResponse.json({ error: "Order not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ order });
+  const { data: existingReview } = await admin
+    .from("reviews")
+    .select("id")
+    .eq("order_id", id)
+    .maybeSingle();
+
+  return NextResponse.json({ order, reviewed: Boolean(existingReview) });
 }
 
 // The buyer taps "I received my order" on that page, which calls this
@@ -44,11 +50,50 @@ export async function POST(
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
 
-  let body: { action?: string };
+  let body: { action?: string; rating?: number; comment?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  if (body.action === "review") {
+    const rating = Number(body.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return NextResponse.json({ error: "Please choose a rating from 1 to 5." }, { status: 400 });
+    }
+
+    const { data: order, error: orderError } = await admin
+      .from("orders")
+      .select("id, status, shop_id, buyer_id, buyer_phone")
+      .eq("id", id)
+      .maybeSingle();
+    if (orderError || !order) {
+      return NextResponse.json({ error: "Order not found." }, { status: 404 });
+    }
+    if (order.status !== "completed") {
+      return NextResponse.json(
+        { error: "You can only review an order once it's completed." },
+        { status: 409 }
+      );
+    }
+
+    const { error: insertError } = await admin.from("reviews").insert({
+      order_id: order.id,
+      shop_id: order.shop_id,
+      buyer_id: order.buyer_id,
+      buyer_phone: order.buyer_phone,
+      rating,
+      comment: typeof body.comment === "string" ? body.comment.trim().slice(0, 500) || null : null,
+    });
+    if (insertError) {
+      if (insertError.code === "23505") {
+        return NextResponse.json({ error: "You've already reviewed this order." }, { status: 409 });
+      }
+      return NextResponse.json({ error: "Could not save your review." }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   if (body.action !== "confirm") {

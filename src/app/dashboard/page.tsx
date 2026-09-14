@@ -20,6 +20,7 @@ import {
   type Category,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
+import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -89,24 +90,28 @@ export default function DashboardPage() {
   }
 
   const heldOrders = orders.filter((o) => o.status === "paid_held").length;
+  // "Owed"/"paid out" are shown net of Buyam Sellam's commission — that's
+  // the amount that actually lands in the seller's hands, not the full
+  // amount the buyer paid.
   const owed = orders
     .filter((o) => o.status === "completed" && !o.payout_sent)
-    .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
+    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
   const paidOut = orders
     .filter((o) => o.status === "completed" && o.payout_sent)
-    .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
+    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-1">{shop.shop_name}</h1>
       <p className="text-neutral-500 text-sm mb-8">{t.dashboard.sellerDashboard}</p>
 
-      <div className="grid sm:grid-cols-4 gap-4 mb-10">
+      <div className="grid sm:grid-cols-4 gap-4 mb-2">
         <Stat label={t.dashboard.listings} value={String(products.length)} />
         <Stat label={t.dashboard.ordersHeld} value={String(heldOrders)} />
         <Stat label={t.dashboard.owed} value={formatFcfa(owed)} />
         <Stat label={t.dashboard.paidOut} value={formatFcfa(paidOut)} />
       </div>
+      <p className="text-xs text-neutral-400 mb-10">{t.dashboard.commissionNote}</p>
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{t.dashboard.yourListings}</h2>
@@ -209,6 +214,11 @@ export default function DashboardPage() {
                   {t.dashboard.statusLabels[o.status] ?? o.status}
                   {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
                 </p>
+                {o.status === "completed" && (
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    {t.dashboard.youReceive} {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
+                  </p>
+                )}
               </div>
               {o.status === "paid_held" && (
                 <button
