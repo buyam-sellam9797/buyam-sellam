@@ -546,26 +546,32 @@ export async function updateProduct(
 // Sellers editing their own shop's storefront info — description and
 // delivery details — from the dashboard (separate from the product
 // form above, since this describes the shop as a whole, not one item).
+// Every field here is optional and only touched when explicitly passed
+// — the onboarding wizard saves one field per step (logo on its own
+// step, description on its own, etc.), and a required field would mean
+// each of those calls silently wipes out everything it didn't mention.
 export async function updateShop(
   shopId: string,
   input: {
-    description: string;
-    deliveryInfo: string;
+    description?: string;
+    deliveryInfo?: string;
     deliveryFeeFcfa?: number | null;
     deliveryEtaText?: string;
     logoUrl?: string;
+    whatsappNumber?: string;
   }
 ) {
   const { error } = await supabase
     .from("shops")
     .update({
-      description: input.description || null,
-      delivery_info: input.deliveryInfo || null,
+      ...(input.description !== undefined ? { description: input.description || null } : {}),
+      ...(input.deliveryInfo !== undefined ? { delivery_info: input.deliveryInfo || null } : {}),
       ...(input.deliveryFeeFcfa !== undefined ? { delivery_fee_fcfa: input.deliveryFeeFcfa } : {}),
       ...(input.deliveryEtaText !== undefined
         ? { delivery_eta_text: input.deliveryEtaText || null }
         : {}),
       ...(input.logoUrl !== undefined ? { logo_url: input.logoUrl || null } : {}),
+      ...(input.whatsappNumber !== undefined ? { whatsapp_number: input.whatsappNumber } : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);

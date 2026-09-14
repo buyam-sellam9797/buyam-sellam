@@ -21,6 +21,7 @@ export function ProductForm({
   t,
   onDone,
   onCancel,
+  cancelLabel,
 }: {
   shopId: string;
   categories: Category[];
@@ -28,6 +29,7 @@ export function ProductForm({
   t: Dictionary;
   onDone: () => void;
   onCancel: () => void;
+  cancelLabel?: string;
 }) {
   const isEditing = Boolean(existingProduct);
   const [title, setTitle] = useState(existingProduct?.title ?? "");
@@ -231,7 +233,7 @@ export function ProductForm({
           onClick={onCancel}
           className="rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold hover:border-neutral-900"
         >
-          {t.dashboard.cancel}
+          {cancelLabel ?? t.dashboard.cancel}
         </button>
       </div>
     </form>
