@@ -189,16 +189,41 @@ function AddressesSection({
   const [neighborhood, setNeighborhood] = useState("");
   const [address, setAddress] = useState("");
   const [isDefault, setIsDefault] = useState(addresses.length === 0);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function useMyLocation() {
+    if (!navigator.geolocation) {
+      setLocationError(t.account.locationUnsupported);
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLatitude(pos.coords.latitude);
+        setLongitude(pos.coords.longitude);
+        setLocating(false);
+      },
+      () => {
+        setLocationError(t.account.locationDenied);
+        setLocating(false);
+      },
+      { timeout: 10000 }
+    );
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      await createAddress({ label, fullName, phone, city, neighborhood, address, isDefault });
+      await createAddress({ label, fullName, phone, city, neighborhood, address, isDefault, latitude, longitude });
       await onChanged();
       setAdding(false);
       setLabel("");
@@ -208,6 +233,8 @@ function AddressesSection({
       setNeighborhood("");
       setAddress("");
       setIsDefault(false);
+      setLatitude(null);
+      setLongitude(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save this address.");
     } finally {
@@ -316,6 +343,21 @@ function AddressesSection({
             <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
             {t.account.makeDefault}
           </label>
+          <div>
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={locating}
+              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+            >
+              {locating
+                ? t.account.locating
+                : latitude != null
+                  ? t.account.locationSet
+                  : t.account.useMyLocation}
+            </button>
+            {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
+          </div>
           {error && (
             <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
           )}

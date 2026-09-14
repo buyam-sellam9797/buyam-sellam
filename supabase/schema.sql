@@ -32,6 +32,8 @@ create table if not exists shops (
   delivery_info text,                 -- free text set by the seller: areas covered, fees, timing
   delivery_fee_fcfa integer,          -- flat delivery fee shown at checkout, if the seller sets one
   delivery_eta_text text,             -- e.g. "24-48h in Douala"
+  latitude double precision,          -- shop's pinned location, optional — enables distance-based delivery pricing and "near me" browse sorting
+  longitude double precision,
   is_verified boolean not null default false,   -- flips true once ID/business check is done
   is_active boolean not null default true,
   verification_requested_at timestamptz,   -- seller asked for a verification review, from the onboarding wizard
@@ -111,6 +113,10 @@ create table if not exists orders (
   delivery_neighborhood text,
   delivery_address text,           -- street/landmark detail
   delivery_notes text,             -- free-text delivery instructions from the buyer
+  delivery_fee_fcfa integer,       -- the delivery fee actually charged (flat, or distance-based — see src/lib/delivery.ts)
+  delivery_latitude double precision,   -- buyer's shared location at checkout, if any (enables distance-based pricing)
+  delivery_longitude double precision,
+  delivery_distance_km numeric,    -- straight-line distance from shop to buyer, when both locations were known
   payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
   payout_sent_at timestamptz,
   accepted_at timestamptz,         -- seller marked "preparing" (before shipping)
@@ -142,6 +148,8 @@ create table if not exists buyer_addresses (
   neighborhood text,
   address text,
   notes text,
+  latitude double precision,   -- optional pinned location, enables distance-based delivery pricing at checkout
+  longitude double precision,
   is_default boolean not null default false,
   created_at timestamptz not null default now()
 );

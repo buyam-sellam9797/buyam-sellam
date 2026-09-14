@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 
 // Server-side only — these keys never reach the browser.
 const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
@@ -27,6 +28,8 @@ type ChargeBody = {
   deliveryNeighborhood?: string;
   deliveryAddress?: string;
   deliveryNotes?: string;
+  deliveryLatitude?: number;
+  deliveryLongitude?: number;
 };
 
 // Starts a NotchPay payment for a real product: looks the product up
@@ -93,7 +96,9 @@ export async function POST(req: NextRequest) {
 
   const { data: product, error: productError } = await admin
     .from("products")
-    .select("id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa)")
+    .select(
+      "id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude)"
+    )
     .eq("id", productId)
     .eq("is_active", true)
     .maybeSingle();
@@ -113,7 +118,30 @@ export async function POST(req: NextRequest) {
   }
 
   const shopRecord = Array.isArray(product.shop) ? product.shop[0] : product.shop;
-  const deliveryFeeFcfa: number = shopRecord?.delivery_fee_fcfa ?? 0;
+  const flatDeliveryFeeFcfa: number = shopRecord?.delivery_fee_fcfa ?? 0;
+
+  // Distance-based delivery pricing: automatic whenever the shop has
+  // pinned its location AND the buyer shared theirs at checkout — the
+  // seller's own flat fee becomes the fallback for everyone else
+  // (guests who didn't share a location, or shops that never pinned
+  // one), so nothing changes for anyone not using location.
+  let deliveryFeeFcfa = flatDeliveryFeeFcfa;
+  let deliveryDistanceKm: number | null = null;
+  if (
+    shopRecord?.latitude != null &&
+    shopRecord?.longitude != null &&
+    typeof body.deliveryLatitude === "number" &&
+    typeof body.deliveryLongitude === "number"
+  ) {
+    deliveryDistanceKm = haversineDistanceKm(
+      shopRecord.latitude,
+      shopRecord.longitude,
+      body.deliveryLatitude,
+      body.deliveryLongitude
+    );
+    deliveryFeeFcfa = calculateDistanceDeliveryFeeFcfa(deliveryDistanceKm, flatDeliveryFeeFcfa);
+  }
+
   const totalAmountFcfa = product.price_fcfa * quantity + deliveryFeeFcfa;
 
   const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -133,6 +161,10 @@ export async function POST(req: NextRequest) {
       delivery_neighborhood: deliveryNeighborhood || null,
       delivery_address: deliveryAddress || null,
       delivery_notes: deliveryNotes || null,
+      delivery_fee_fcfa: deliveryFeeFcfa,
+      delivery_latitude: typeof body.deliveryLatitude === "number" ? body.deliveryLatitude : null,
+      delivery_longitude: typeof body.deliveryLongitude === "number" ? body.deliveryLongitude : null,
+      delivery_distance_km: deliveryDistanceKm,
     })
     .select("id")
     .single();

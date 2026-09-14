@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { haversineDistanceKm } from "@/lib/delivery";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -32,6 +33,8 @@ export type Shop = {
   delivery_info: string | null;
   delivery_fee_fcfa: number | null;
   delivery_eta_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
   is_verified: boolean;
   is_active: boolean;
   verification_requested_at: string | null;
@@ -59,6 +62,8 @@ export type BuyerAddress = {
   neighborhood: string | null;
   address: string | null;
   notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
   is_default: boolean;
   created_at: string;
 };
@@ -90,8 +95,11 @@ export type Product = {
     | "delivery_info"
     | "delivery_fee_fcfa"
     | "delivery_eta_text"
+    | "latitude"
+    | "longitude"
   > | null;
   shopRating?: number | null;
+  distanceKm?: number | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
 
@@ -124,6 +132,10 @@ export type Order = {
   delivery_neighborhood: string | null;
   delivery_address: string | null;
   delivery_notes: string | null;
+  delivery_fee_fcfa: number | null;
+  delivery_latitude: number | null;
+  delivery_longitude: number | null;
+  delivery_distance_km: number | null;
   payout_sent: boolean;
   payout_sent_at: string | null;
   accepted_at: string | null;
@@ -181,7 +193,7 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-export type ProductSort = "newest" | "price_asc" | "price_desc" | "rating_desc";
+export type ProductSort = "newest" | "price_asc" | "price_desc" | "rating_desc" | "nearest";
 
 export async function getActiveProducts(
   categorySlug?: string,
@@ -196,24 +208,27 @@ export async function getActiveProducts(
     brand?: string;
     size?: string;
     color?: string;
+    nearLat?: number;
+    nearLng?: number;
   }
 ): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified, latitude, longitude), category:categories(name, slug)"
     )
     .eq("is_active", true);
 
-  // "rating_desc" can't be pushed down as a DB-level order-by — rating
-  // lives on the shop, aggregated from reviews, not a column on
-  // products — so it's sorted client-side below instead.
+  // "rating_desc" and "nearest" can't be pushed down as a DB-level
+  // order-by — rating is aggregated from reviews (not a products
+  // column) and distance depends on the buyer's own coordinates — so
+  // both are sorted client-side below instead.
   if (filters?.sort === "price_asc") {
     query = query.order("price_fcfa", { ascending: true });
   } else if (filters?.sort === "price_desc") {
     query = query.order("price_fcfa", { ascending: false });
-  } else if (filters?.sort !== "rating_desc") {
+  } else if (filters?.sort !== "rating_desc" && filters?.sort !== "nearest") {
     query = query.order("created_at", { ascending: false });
   }
 
@@ -270,6 +285,30 @@ export async function getActiveProducts(
     rows = rows
       .map((p) => ({ ...p, shopRating: ratings.get(p.shop_id) ?? 0 }))
       .sort((a, b) => (b.shopRating ?? 0) - (a.shopRating ?? 0));
+  } else if (
+    filters?.sort === "nearest" &&
+    typeof filters?.nearLat === "number" &&
+    typeof filters?.nearLng === "number"
+  ) {
+    const nearLat = filters.nearLat;
+    const nearLng = filters.nearLng;
+    // Products whose shop never pinned a location sort to the end
+    // (null distance) rather than being dropped — a shop with no
+    // location is still a real listing, just not distance-sortable.
+    rows = rows
+      .map((p) => ({
+        ...p,
+        distanceKm:
+          p.shop?.latitude != null && p.shop?.longitude != null
+            ? haversineDistanceKm(p.shop.latitude, p.shop.longitude, nearLat, nearLng)
+            : null,
+      }))
+      .sort((a, b) => {
+        if (a.distanceKm == null && b.distanceKm == null) return 0;
+        if (a.distanceKm == null) return 1;
+        if (b.distanceKm == null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
   } else if (!filters?.sort || filters.sort === "newest") {
     // One concrete advantage of verification: on the default browse
     // order, verified shops' listings float to the top. Array.sort is
@@ -312,7 +351,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -612,7 +651,7 @@ export async function getMyBuyerOrders(): Promise<BuyerOrder[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug)"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug)"
     )
     .eq("buyer_id", user.id)
     .order("created_at", { ascending: false });
@@ -652,6 +691,8 @@ export async function createAddress(input: {
   address?: string;
   notes?: string;
   isDefault?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
 }): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
@@ -672,6 +713,8 @@ export async function createAddress(input: {
     address: input.address || null,
     notes: input.notes || null,
     is_default: Boolean(input.isDefault),
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -757,6 +800,8 @@ export async function updateShop(
     deliveryEtaText?: string;
     logoUrl?: string;
     whatsappNumber?: string;
+    latitude?: number | null;
+    longitude?: number | null;
   }
 ) {
   const { error } = await supabase
@@ -770,6 +815,8 @@ export async function updateShop(
         : {}),
       ...(input.logoUrl !== undefined ? { logo_url: input.logoUrl || null } : {}),
       ...(input.whatsappNumber !== undefined ? { whatsapp_number: input.whatsappNumber } : {}),
+      ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
+      ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
@@ -845,7 +892,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, accepted_at, created_at, updated_at"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });

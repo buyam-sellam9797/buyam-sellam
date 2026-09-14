@@ -9,11 +9,12 @@ import {
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
+import NearMeButton from "./near-me-button";
 
 export const dynamic = "force-dynamic";
 
 const VALID_CONDITIONS: ProductCondition[] = ["new", "like_new", "used"];
-const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc", "rating_desc"];
+const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc", "rating_desc", "nearest"];
 
 export default async function BrowsePage({
   searchParams,
@@ -30,11 +31,13 @@ export default async function BrowsePage({
     brand?: string;
     size?: string;
     color?: string;
+    lat?: string;
+    lng?: string;
   }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category, q, minPrice, maxPrice, condition, sort, verified, city, brand, size, color } =
+  const { category, q, minPrice, maxPrice, condition, sort, verified, city, brand, size, color, lat, lng } =
     await searchParams;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
@@ -43,6 +46,8 @@ export default async function BrowsePage({
     : undefined;
   const sortOption = VALID_SORTS.includes(sort as ProductSort) ? (sort as ProductSort) : "newest";
   const verifiedOnly = verified === "1";
+  const nearLat = lat ? Number(lat) : undefined;
+  const nearLng = lng ? Number(lng) : undefined;
   const [categories, cities, filtered] = await Promise.all([
     getCategories(),
     getActiveShopCities(),
@@ -57,6 +62,8 @@ export default async function BrowsePage({
       brand: brand || undefined,
       size: size || undefined,
       color: color || undefined,
+      nearLat: Number.isFinite(nearLat) ? nearLat : undefined,
+      nearLng: Number.isFinite(nearLng) ? nearLng : undefined,
     }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
@@ -82,8 +89,14 @@ export default async function BrowsePage({
         {activeCategory ? ` ${t.browse.inCategory} ${activeCategory.name}` : ""}
       </p>
 
+      <NearMeButton
+        t={{ nearMe: t.browse.nearMe, locating: t.browse.locating, locationDenied: t.browse.locationDenied }}
+      />
+
       <form className="flex flex-wrap gap-2 mb-4" method="GET" action="/browse">
         {category && <input type="hidden" name="category" value={category} />}
+        {lat && <input type="hidden" name="lat" value={lat} />}
+        {lng && <input type="hidden" name="lng" value={lng} />}
         <input
           type="text"
           name="q"
@@ -159,6 +172,7 @@ export default async function BrowsePage({
           <option value="price_asc">{t.browse.sortPriceAsc}</option>
           <option value="price_desc">{t.browse.sortPriceDesc}</option>
           <option value="rating_desc">{t.browse.sortRatingDesc}</option>
+          {lat && lng && <option value="nearest">{t.browse.sortNearest}</option>}
         </select>
         <label className="flex items-center gap-1.5 text-sm rounded-lg border border-neutral-300 px-3 py-2 cursor-pointer">
           <input type="checkbox" name="verified" value="1" defaultChecked={verifiedOnly} />
@@ -241,6 +255,9 @@ export default async function BrowsePage({
               </p>
               {sortOption === "rating_desc" && typeof p.shopRating === "number" && p.shopRating > 0 && (
                 <p className="text-xs text-amber-600 mt-0.5">⭐ {p.shopRating.toFixed(1)}</p>
+              )}
+              {sortOption === "nearest" && typeof p.distanceKm === "number" && (
+                <p className="text-xs text-neutral-500 mt-0.5">📍 {p.distanceKm.toFixed(1)} km</p>
               )}
             </div>
           </Link>

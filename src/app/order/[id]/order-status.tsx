@@ -29,6 +29,8 @@ type OrderInfo = {
   delivery_city?: string | null;
   delivery_neighborhood?: string | null;
   delivery_address?: string | null;
+  delivery_fee_fcfa?: number | null;
+  delivery_distance_km?: number | null;
   shop?: { shop_name: string; whatsapp_number?: string | null; city?: string | null } | null;
 };
 
@@ -264,6 +266,12 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-4">
         <p className="text-xs text-neutral-500">{order.shop?.shop_name}</p>
         <p className="text-lg font-semibold mt-1">{formatFcfa(order.total_amount_fcfa)}</p>
+        {typeof order.delivery_fee_fcfa === "number" && order.delivery_fee_fcfa > 0 && (
+          <p className="text-xs text-neutral-500 mt-0.5">
+            {t.order.deliveryFeeIncluded} {formatFcfa(order.delivery_fee_fcfa)}
+            {typeof order.delivery_distance_km === "number" && ` (${order.delivery_distance_km.toFixed(1)} km)`}
+          </p>
+        )}
         <p className="text-xs text-neutral-500 mt-2">
           {t.order.status}: {t.dashboard.statusLabels[order.status] ?? order.status}
         </p>

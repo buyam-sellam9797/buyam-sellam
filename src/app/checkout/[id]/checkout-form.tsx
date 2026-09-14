@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase, getMyAddresses, type Product, type BuyerAddress } from "@/lib/supabase";
+import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 
@@ -32,9 +33,47 @@ export default function CheckoutForm({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [buyerLat, setBuyerLat] = useState<number | null>(null);
+  const [buyerLng, setBuyerLng] = useState<number | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxQuantity = Math.max(1, product.stock_quantity);
-  const total = product.price_fcfa * quantity + deliveryFee;
+
+  // Automatic, distance-based delivery pricing: once we know both the
+  // shop's pinned location and the buyer's, the flat delivery fee (used
+  // otherwise) is replaced by a price calculated from the real
+  // distance between them. Recomputes live as the buyer shares their
+  // location or picks a different saved address.
+  const distanceKm = useMemo(() => {
+    if (buyerLat == null || buyerLng == null) return null;
+    if (product.shop?.latitude == null || product.shop?.longitude == null) return null;
+    return haversineDistanceKm(product.shop.latitude, product.shop.longitude, buyerLat, buyerLng);
+  }, [buyerLat, buyerLng, product.shop?.latitude, product.shop?.longitude]);
+  const effectiveDeliveryFee =
+    distanceKm != null ? calculateDistanceDeliveryFeeFcfa(distanceKm, deliveryFee) : deliveryFee;
+  const total = product.price_fcfa * quantity + effectiveDeliveryFee;
+
+  function useMyLocation() {
+    if (!navigator.geolocation) {
+      setLocationError(t.checkout.locationUnsupported);
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setBuyerLat(pos.coords.latitude);
+        setBuyerLng(pos.coords.longitude);
+        setLocating(false);
+      },
+      () => {
+        setLocationError(t.checkout.locationDenied);
+        setLocating(false);
+      },
+      { timeout: 10000 }
+    );
+  }
 
   useEffect(() => {
     return () => {
@@ -68,6 +107,8 @@ export default function CheckoutForm({
     setDeliveryNeighborhood(a.neighborhood ?? "");
     setDeliveryAddress(a.address ?? "");
     if (!phone) setPhone(a.phone);
+    setBuyerLat(a.latitude);
+    setBuyerLng(a.longitude);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -92,6 +133,9 @@ export default function CheckoutForm({
           deliveryNeighborhood,
           deliveryAddress,
           deliveryNotes,
+          ...(buyerLat != null && buyerLng != null
+            ? { deliveryLatitude: buyerLat, deliveryLongitude: buyerLng }
+            : {}),
         }),
       });
       const startData = await startRes.json();
@@ -216,10 +260,13 @@ export default function CheckoutForm({
             </button>
           </div>
         </div>
-        {deliveryFee > 0 && (
+        {effectiveDeliveryFee > 0 && (
           <div className="flex items-center justify-between text-sm mt-1.5">
-            <span className="text-neutral-500">{t.checkout.deliveryFeeLabel}</span>
-            <span>{formatFcfa(deliveryFee)}</span>
+            <span className="text-neutral-500">
+              {t.checkout.deliveryFeeLabel}
+              {distanceKm != null && ` (${distanceKm.toFixed(1)} km)`}
+            </span>
+            <span>{formatFcfa(effectiveDeliveryFee)}</span>
           </div>
         )}
         <div className="flex items-center justify-between text-sm font-semibold mt-1.5">
@@ -246,6 +293,23 @@ export default function CheckoutForm({
                 </option>
               ))}
             </select>
+          </div>
+        )}
+        {product.shop?.latitude != null && product.shop?.longitude != null && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={locating}
+              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+            >
+              {locating
+                ? t.checkout.locating
+                : buyerLat != null
+                  ? t.checkout.locationSet
+                  : t.checkout.useMyLocation}
+            </button>
+            {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
           </div>
         )}
         <div className="flex flex-col gap-3">
