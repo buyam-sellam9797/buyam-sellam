@@ -308,6 +308,7 @@ export default function DashboardPage() {
             <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
             <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
           </div>
+          <PayoutDestinationForm shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
           <PayoutHistory orders={orders} t={t} />
         </div>
       )}
@@ -691,6 +692,91 @@ function ProductsPanel({
           <p className="text-sm text-neutral-500 p-8 text-center">
             {products.length === 0 ? t.dashboard.noListingsYet : t.dashboard.noProductsMatchSearch}
           </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Payouts are still sent by hand today (no disbursement API
+// integrated — an admin sends real mobile money and marks it paid).
+// This just gives sellers a fixed place to record which number they
+// want paid to, instead of the admin having to track them down over
+// WhatsApp every time. Nothing here moves money automatically.
+function PayoutDestinationForm({
+  shop,
+  t,
+  onSaved,
+}: {
+  shop: Shop;
+  t: Dictionary;
+  onSaved: (patch: Partial<Shop>) => void;
+}) {
+  const [provider, setProvider] = useState<"mtn" | "orange" | "">(shop.payout_provider ?? "");
+  const [phone, setPhone] = useState(shop.payout_phone_number ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await updateShop(shop.id, {
+        payoutProvider: provider || null,
+        payoutPhoneNumber: phone,
+      });
+      onSaved({ payout_provider: provider || null, payout_phone_number: phone || null });
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your payout details.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+      <p className="text-sm font-semibold">{t.dashboard.payoutDestinationTitle}</p>
+      <p className="text-xs text-neutral-500">{t.dashboard.payoutDestinationHint}</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium block mb-1">{t.dashboard.payoutProviderLabel}</label>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as "mtn" | "orange" | "")}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">{t.dashboard.payoutProviderPlaceholder}</option>
+            <option value="mtn">MTN Mobile Money</option>
+            <option value="orange">Orange Money</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-medium block mb-1">{t.dashboard.payoutPhoneLabel}</label>
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+237 6XX XXX XXX"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+      {error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+      )}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+        >
+          {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
+        </button>
+        {saved && !saving && (
+          <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
     </div>

@@ -57,6 +57,11 @@ create table if not exists shops (
   is_open boolean not null default true,
   closed_message text,
   business_hours jsonb,
+  -- Where a seller wants their payout sent. Payouts are still sent by
+  -- hand today (no disbursement API integrated) — this just gives the
+  -- admin a fixed place to send money instead of asking each time.
+  payout_provider text check (payout_provider in ('mtn', 'orange')),
+  payout_phone_number text,
   created_at timestamptz not null default now()
 );
 

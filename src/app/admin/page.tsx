@@ -79,7 +79,12 @@ type PayoutOrder = {
   total_amount_fcfa: number;
   buyer_phone: string | null;
   created_at: string;
-  shop?: { shop_name: string; whatsapp_number: string | null } | null;
+  shop?: {
+    shop_name: string;
+    whatsapp_number: string | null;
+    payout_provider: "mtn" | "orange" | null;
+    payout_phone_number: string | null;
+  } | null;
 };
 
 function disputeReasonLabel(reason: string, t: Dictionary): string {
@@ -702,7 +707,23 @@ function PayoutsTab({
           <div className="flex-1 min-w-[10rem]">
             <p className="text-sm font-medium">{o.shop?.shop_name}</p>
             <p className="text-xs text-neutral-500">
-              {o.shop?.whatsapp_number ?? o.buyer_phone ?? ""} · {new Date(o.created_at).toLocaleDateString()}
+              {new Date(o.created_at).toLocaleDateString()}
+              {o.shop?.whatsapp_number && ` · WhatsApp: ${o.shop.whatsapp_number}`}
+            </p>
+            <p className="text-xs font-medium mt-0.5">
+              {o.shop?.payout_phone_number ? (
+                <span className="text-neutral-700">
+                  💰{" "}
+                  {o.shop.payout_provider === "mtn"
+                    ? "MTN"
+                    : o.shop.payout_provider === "orange"
+                      ? "Orange"
+                      : ""}{" "}
+                  {o.shop.payout_phone_number}
+                </span>
+              ) : (
+                <span className="text-amber-600">{t.admin.noPayoutDestination}</span>
+              )}
             </p>
           </div>
           <div className="text-right whitespace-nowrap">

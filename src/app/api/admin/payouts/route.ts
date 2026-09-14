@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await check.admin
     .from("orders")
     .select(
-      "id, total_amount_fcfa, buyer_phone, created_at, shop:shops(shop_name, whatsapp_number)"
+      "id, total_amount_fcfa, buyer_phone, created_at, shop:shops(shop_name, whatsapp_number, payout_provider, payout_phone_number)"
     )
     .eq("status", "completed")
     .eq("payout_sent", false)

@@ -51,6 +51,8 @@ export type Shop = {
   is_open: boolean;
   closed_message: string | null;
   business_hours: BusinessHours | null;
+  payout_provider: "mtn" | "orange" | null;
+  payout_phone_number: string | null;
 };
 
 export type BusinessHoursDay = { closed: boolean; open?: string; close?: string };
@@ -853,6 +855,8 @@ export async function updateShop(
     isOpen?: boolean;
     closedMessage?: string;
     businessHours?: BusinessHours | null;
+    payoutProvider?: "mtn" | "orange" | null;
+    payoutPhoneNumber?: string;
   }
 ) {
   const { error } = await supabase
@@ -871,6 +875,10 @@ export async function updateShop(
       ...(input.isOpen !== undefined ? { is_open: input.isOpen } : {}),
       ...(input.closedMessage !== undefined ? { closed_message: input.closedMessage || null } : {}),
       ...(input.businessHours !== undefined ? { business_hours: input.businessHours } : {}),
+      ...(input.payoutProvider !== undefined ? { payout_provider: input.payoutProvider } : {}),
+      ...(input.payoutPhoneNumber !== undefined
+        ? { payout_phone_number: input.payoutPhoneNumber || null }
+        : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
