@@ -37,6 +37,8 @@ type AdminSeller = {
   city: string;
   is_verified: boolean;
   is_active: boolean;
+  verification_requested_at: string | null;
+  view_count: number;
   created_at: string;
   orderCount: number;
   rating: number;
@@ -339,6 +341,11 @@ function SellersTab({
           >
             {s.is_verified ? `🛡️ ${t.admin.verifyBadge}` : t.admin.unverifyBadge}
           </span>
+          {!s.is_verified && s.verification_requested_at && (
+            <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200">
+              {t.admin.verificationRequested}
+            </span>
+          )}
           <button
             onClick={() => toggleVerified(s)}
             disabled={togglingId === s.id}

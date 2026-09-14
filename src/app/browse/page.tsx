@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { getCategories, getActiveProducts, type ProductCondition, type ProductSort } from "@/lib/supabase";
+import {
+  getCategories,
+  getActiveProducts,
+  getActiveShopCities,
+  type ProductCondition,
+  type ProductSort,
+} from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -7,7 +13,7 @@ import { getDictionary, plural } from "@/lib/i18n";
 export const dynamic = "force-dynamic";
 
 const VALID_CONDITIONS: ProductCondition[] = ["new", "like_new", "used"];
-const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc"];
+const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc", "rating_desc"];
 
 export default async function BrowsePage({
   searchParams,
@@ -20,11 +26,16 @@ export default async function BrowsePage({
     condition?: string;
     sort?: string;
     verified?: string;
+    city?: string;
+    brand?: string;
+    size?: string;
+    color?: string;
   }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category, q, minPrice, maxPrice, condition, sort, verified } = await searchParams;
+  const { category, q, minPrice, maxPrice, condition, sort, verified, city, brand, size, color } =
+    await searchParams;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
   const conditionFilter = VALID_CONDITIONS.includes(condition as ProductCondition)
@@ -32,8 +43,9 @@ export default async function BrowsePage({
     : undefined;
   const sortOption = VALID_SORTS.includes(sort as ProductSort) ? (sort as ProductSort) : "newest";
   const verifiedOnly = verified === "1";
-  const [categories, filtered] = await Promise.all([
+  const [categories, cities, filtered] = await Promise.all([
     getCategories(),
+    getActiveShopCities(),
     getActiveProducts(category, {
       q,
       minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
@@ -41,11 +53,25 @@ export default async function BrowsePage({
       condition: conditionFilter,
       sort: sortOption,
       verifiedOnly,
+      city: city || undefined,
+      brand: brand || undefined,
+      size: size || undefined,
+      color: color || undefined,
     }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
   const hasFilters = Boolean(
-    q || minPrice || maxPrice || category || condition || verifiedOnly || (sort && sort !== "newest")
+    q ||
+      minPrice ||
+      maxPrice ||
+      category ||
+      condition ||
+      verifiedOnly ||
+      city ||
+      brand ||
+      size ||
+      color ||
+      (sort && sort !== "newest")
   );
 
   return (
@@ -89,6 +115,41 @@ export default async function BrowsePage({
           <option value="like_new">{t.product.conditionLikeNew}</option>
           <option value="used">{t.product.conditionUsed}</option>
         </select>
+        {cities.length > 0 && (
+          <select
+            name="city"
+            defaultValue={city ?? ""}
+            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">{t.browse.anyLocation}</option>
+            {cities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          type="text"
+          name="brand"
+          defaultValue={brand ?? ""}
+          placeholder={t.browse.brandPlaceholder}
+          className="w-32 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="text"
+          name="size"
+          defaultValue={size ?? ""}
+          placeholder={t.browse.sizePlaceholder}
+          className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <input
+          type="text"
+          name="color"
+          defaultValue={color ?? ""}
+          placeholder={t.browse.colorPlaceholder}
+          className="w-24 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
         <select
           name="sort"
           defaultValue={sortOption}
@@ -97,6 +158,7 @@ export default async function BrowsePage({
           <option value="newest">{t.browse.sortNewest}</option>
           <option value="price_asc">{t.browse.sortPriceAsc}</option>
           <option value="price_desc">{t.browse.sortPriceDesc}</option>
+          <option value="rating_desc">{t.browse.sortRatingDesc}</option>
         </select>
         <label className="flex items-center gap-1.5 text-sm rounded-lg border border-neutral-300 px-3 py-2 cursor-pointer">
           <input type="checkbox" name="verified" value="1" defaultChecked={verifiedOnly} />
@@ -177,6 +239,9 @@ export default async function BrowsePage({
               <p className="text-sm font-semibold mt-1">
                 {formatFcfa(p.price_fcfa)}
               </p>
+              {sortOption === "rating_desc" && typeof p.shopRating === "number" && p.shopRating > 0 && (
+                <p className="text-xs text-amber-600 mt-0.5">⭐ {p.shopRating.toFixed(1)}</p>
+              )}
             </div>
           </Link>
         ))}

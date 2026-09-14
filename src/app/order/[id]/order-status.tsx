@@ -57,7 +57,9 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(false);
-  const [rating, setRating] = useState(0);
+  const [productRating, setProductRating] = useState(0);
+  const [sellerRating, setSellerRating] = useState(0);
+  const [deliveryRating, setDeliveryRating] = useState(0);
   const [comment, setComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   }, [orderId]);
 
   async function handleSubmitReview() {
-    if (rating < 1) {
+    if (productRating < 1 || sellerRating < 1 || deliveryRating < 1) {
       setReviewError(t.order.reviewErrorPickRating);
       return;
     }
@@ -106,7 +108,13 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "review", rating, comment }),
+        body: JSON.stringify({
+          action: "review",
+          productRating,
+          sellerRating,
+          deliveryRating,
+          comment,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -423,19 +431,21 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           ) : (
             <div className="rounded-xl border border-neutral-200 bg-white p-5">
               <p className="text-sm font-semibold mb-3">{t.order.reviewPrompt}</p>
-              <div className="flex gap-1 mb-4" role="radiogroup" aria-label={t.order.reviewPrompt}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setRating(n)}
-                    aria-label={`${n} star${n > 1 ? "s" : ""}`}
-                    className="text-3xl leading-none"
-                  >
-                    {n <= rating ? "⭐" : "☆"}
-                  </button>
-                ))}
-              </div>
+              <StarPicker
+                label={t.order.reviewProductLabel}
+                value={productRating}
+                onChange={setProductRating}
+              />
+              <StarPicker
+                label={t.order.reviewSellerLabel}
+                value={sellerRating}
+                onChange={setSellerRating}
+              />
+              <StarPicker
+                label={t.order.reviewDeliveryLabel}
+                value={deliveryRating}
+                onChange={setDeliveryRating}
+              />
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
@@ -459,6 +469,39 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// One star-rating row inside the post-order review form, split by
+// aspect (product / seller / delivery) rather than a single overall
+// score, so a great seller with a slow courier doesn't get lumped
+// into one number.
+function StarPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  return (
+    <div className="mb-3">
+      <p className="text-xs text-neutral-500 mb-1">{label}</p>
+      <div className="flex gap-1" role="radiogroup" aria-label={label}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            aria-label={`${n} star${n > 1 ? "s" : ""}`}
+            className="text-2xl leading-none"
+          >
+            {n <= value ? "⭐" : "☆"}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const { data: shops, error } = await admin
     .from("shops")
-    .select("id, shop_name, city, is_verified, is_active, created_at")
+    .select("id, shop_name, city, is_verified, is_active, verification_requested_at, view_count, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {

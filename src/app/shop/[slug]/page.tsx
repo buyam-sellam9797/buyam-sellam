@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
+import { incrementShopViews } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -17,6 +18,11 @@ export default async function ShopPage({
   const { slug } = await params;
   const shop = await getShopBySlug(slug);
   if (!shop) notFound();
+
+  // Fire-and-forget: a storefront visit is worth counting for the
+  // seller's dashboard, but should never slow down or break the page
+  // if the write fails for any reason.
+  incrementShopViews(shop.id).catch(() => {});
 
   const [shopProducts, rating, reviews] = await Promise.all([
     getShopProducts(shop.id),
@@ -110,6 +116,12 @@ export default async function ShopPage({
           {reviews.map((r) => (
             <div key={r.id} className="rounded-xl border border-neutral-200 bg-white p-4">
               <p className="text-sm">{"⭐".repeat(r.rating)}</p>
+              {r.product_rating != null && r.seller_rating != null && r.delivery_rating != null && (
+                <p className="text-xs text-neutral-500 mt-1">
+                  {t.shop.reviewProductLabel} {r.product_rating}/5 · {t.shop.reviewSellerLabel}{" "}
+                  {r.seller_rating}/5 · {t.shop.reviewDeliveryLabel} {r.delivery_rating}/5
+                </p>
+              )}
               {r.comment && <p className="text-sm text-neutral-600 mt-1">{r.comment}</p>}
             </div>
           ))}

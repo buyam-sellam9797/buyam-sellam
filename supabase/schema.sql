@@ -34,6 +34,8 @@ create table if not exists shops (
   delivery_eta_text text,             -- e.g. "24-48h in Douala"
   is_verified boolean not null default false,   -- flips true once ID/business check is done
   is_active boolean not null default true,
+  verification_requested_at timestamptz,   -- seller asked for a verification review, from the onboarding wizard
+  view_count integer not null default 0,   -- storefront page views, shown on the seller dashboard
   created_at timestamptz not null default now()
 );
 
@@ -146,7 +148,10 @@ create table if not exists reviews (
   shop_id uuid not null references shops(id),
   buyer_id uuid references profiles(id),   -- null for guest checkout (buyer_phone identifies them instead)
   buyer_phone text,
-  rating integer not null check (rating between 1 and 5),
+  rating integer not null check (rating between 1 and 5),   -- overall rating (average of the three below, when given)
+  product_rating integer check (product_rating between 1 and 5),
+  seller_rating integer check (seller_rating between 1 and 5),
+  delivery_rating integer check (delivery_rating between 1 and 5),
   comment text,
   created_at timestamptz not null default now()
 );

@@ -34,6 +34,8 @@ export type Shop = {
   delivery_eta_text: string | null;
   is_verified: boolean;
   is_active: boolean;
+  verification_requested_at: string | null;
+  view_count: number;
 };
 
 export type ProductCondition = "new" | "like_new" | "used";
@@ -64,6 +66,7 @@ export type Product = {
     | "delivery_fee_fcfa"
     | "delivery_eta_text"
   > | null;
+  shopRating?: number | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
 
@@ -74,6 +77,9 @@ export type Review = {
   buyer_id: string | null;
   buyer_phone: string | null;
   rating: number;
+  product_rating: number | null;
+  seller_rating: number | null;
+  delivery_rating: number | null;
   comment: string | null;
   created_at: string;
 };
@@ -123,6 +129,16 @@ export type Dispute = {
   resolved_at: string | null;
 };
 
+// Distinct cities with at least one active shop, for the browse page's
+// location filter — computed client-side from a small select rather
+// than a DB-level DISTINCT, since the number of active shops is small.
+export async function getActiveShopCities(): Promise<string[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase.from("shops").select("city").eq("is_active", true);
+  if (error || !data) return [];
+  return Array.from(new Set(data.map((s) => s.city).filter(Boolean))).sort();
+}
+
 export async function getCategories(): Promise<Category[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
@@ -136,7 +152,7 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-export type ProductSort = "newest" | "price_asc" | "price_desc";
+export type ProductSort = "newest" | "price_asc" | "price_desc" | "rating_desc";
 
 export async function getActiveProducts(
   categorySlug?: string,
@@ -147,6 +163,10 @@ export async function getActiveProducts(
     condition?: ProductCondition;
     sort?: ProductSort;
     verifiedOnly?: boolean;
+    city?: string;
+    brand?: string;
+    size?: string;
+    color?: string;
   }
 ): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
@@ -157,11 +177,14 @@ export async function getActiveProducts(
     )
     .eq("is_active", true);
 
+  // "rating_desc" can't be pushed down as a DB-level order-by — rating
+  // lives on the shop, aggregated from reviews, not a column on
+  // products — so it's sorted client-side below instead.
   if (filters?.sort === "price_asc") {
     query = query.order("price_fcfa", { ascending: true });
   } else if (filters?.sort === "price_desc") {
     query = query.order("price_fcfa", { ascending: false });
-  } else {
+  } else if (filters?.sort !== "rating_desc") {
     query = query.order("created_at", { ascending: false });
   }
 
@@ -180,6 +203,18 @@ export async function getActiveProducts(
   if (filters?.condition) {
     query = query.eq("condition", filters.condition);
   }
+  if (filters?.brand) {
+    query = query.ilike("brand", `%${filters.brand}%`);
+  }
+  if (filters?.size) {
+    query = query.contains("sizes", [filters.size]);
+  }
+  if (filters?.color) {
+    query = query.contains("colors", [filters.color]);
+  }
+  if (filters?.city) {
+    query = query.eq("shop.city", filters.city);
+  }
 
   const { data, error } = await query;
   if (error) {
@@ -187,15 +222,49 @@ export async function getActiveProducts(
     return [];
   }
   // Supabase's embedded filter syntax above can be unreliable across
-  // versions, so filter defensively here too when a category was requested.
+  // versions, so filter defensively here too when a category/city was
+  // requested via an embedded-table condition.
   let rows = (data ?? []) as unknown as Product[];
   if (categorySlug) {
     rows = rows.filter((p) => p.category?.slug === categorySlug);
   }
+  if (filters?.city) {
+    rows = rows.filter((p) => p.shop?.city === filters.city);
+  }
   if (filters?.verifiedOnly) {
     rows = rows.filter((p) => p.shop?.is_verified);
   }
+
+  if (filters?.sort === "rating_desc") {
+    const shopIds = Array.from(new Set(rows.map((p) => p.shop_id)));
+    const ratings = await getShopRatingsByIds(shopIds);
+    rows = rows
+      .map((p) => ({ ...p, shopRating: ratings.get(p.shop_id) ?? 0 }))
+      .sort((a, b) => (b.shopRating ?? 0) - (a.shopRating ?? 0));
+  }
+
   return rows;
+}
+
+// Average rating per shop, for a batch of shop ids at once — used by
+// the "best rated" browse sort so it's one extra query for the whole
+// page rather than one per product.
+async function getShopRatingsByIds(shopIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (shopIds.length === 0) return result;
+  const { data, error } = await supabase.from("reviews").select("shop_id, rating").in("shop_id", shopIds);
+  if (error || !data) return result;
+  const totals = new Map<string, { sum: number; count: number }>();
+  for (const row of data) {
+    const entry = totals.get(row.shop_id) ?? { sum: 0, count: 0 };
+    entry.sum += row.rating;
+    entry.count += 1;
+    totals.set(row.shop_id, entry);
+  }
+  for (const [shopId, { sum, count }] of totals) {
+    result.set(shopId, count > 0 ? sum / count : 0);
+  }
+  return result;
 }
 
 export async function getProductById(id: string): Promise<Product | null> {
@@ -244,7 +313,9 @@ export async function getShopReviews(shopId: string, limit = 10): Promise<Review
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from("reviews")
-    .select("id, order_id, shop_id, buyer_id, buyer_phone, rating, comment, created_at")
+    .select(
+      "id, order_id, shop_id, buyer_id, buyer_phone, rating, product_rating, seller_rating, delivery_rating, comment, created_at"
+    )
     .eq("shop_id", shopId)
     .not("comment", "is", null)
     .order("created_at", { ascending: false })
@@ -482,6 +553,7 @@ export async function updateShop(
     deliveryInfo: string;
     deliveryFeeFcfa?: number | null;
     deliveryEtaText?: string;
+    logoUrl?: string;
   }
 ) {
   const { error } = await supabase
@@ -493,7 +565,20 @@ export async function updateShop(
       ...(input.deliveryEtaText !== undefined
         ? { delivery_eta_text: input.deliveryEtaText || null }
         : {}),
+      ...(input.logoUrl !== undefined ? { logo_url: input.logoUrl || null } : {}),
     })
+    .eq("id", shopId);
+  if (error) throw new Error(error.message);
+}
+
+// Marks the shop as having asked a human at Buyam Sellam to review it
+// for the verified badge — surfaced in the admin Sellers tab. Doesn't
+// verify anything itself (that's still a manual admin decision), it
+// just puts the shop on the list to look at.
+export async function requestShopVerification(shopId: string) {
+  const { error } = await supabase
+    .from("shops")
+    .update({ verification_requested_at: new Date().toISOString() })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
 }
@@ -501,6 +586,17 @@ export async function updateShop(
 export async function deleteProduct(productId: string) {
   const { error } = await supabase.from("products").delete().eq("id", productId);
   if (error) throw new Error(error.message);
+}
+
+export async function uploadShopLogo(file: File, shopId: string): Promise<string> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `${shopId}/logo-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, file, { cacheControl: "3600", upsert: true });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function uploadProductImage(file: File, shopId: string): Promise<string> {

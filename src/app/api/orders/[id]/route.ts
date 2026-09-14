@@ -57,7 +57,13 @@ export async function POST(
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
 
-  let body: { action?: string; rating?: number; comment?: string };
+  let body: {
+    action?: string;
+    productRating?: number;
+    sellerRating?: number;
+    deliveryRating?: number;
+    comment?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -65,10 +71,21 @@ export async function POST(
   }
 
   if (body.action === "review") {
-    const rating = Number(body.rating);
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      return NextResponse.json({ error: "Please choose a rating from 1 to 5." }, { status: 400 });
+    const productRating = Number(body.productRating);
+    const sellerRating = Number(body.sellerRating);
+    const deliveryRating = Number(body.deliveryRating);
+    const subRatings = [productRating, sellerRating, deliveryRating];
+    if (subRatings.some((r) => !Number.isInteger(r) || r < 1 || r > 5)) {
+      return NextResponse.json(
+        { error: "Please rate the product, seller, and delivery from 1 to 5." },
+        { status: 400 }
+      );
     }
+    // Overall rating (what every existing aggregate — shop rating
+    // summaries, admin stats, the homepage average — reads) is the
+    // rounded average of the three aspects, so none of that code needs
+    // to know the review got more detailed.
+    const rating = Math.round((productRating + sellerRating + deliveryRating) / 3);
 
     const { data: order, error: orderError } = await admin
       .from("orders")
@@ -91,6 +108,9 @@ export async function POST(
       buyer_id: order.buyer_id,
       buyer_phone: order.buyer_phone,
       rating,
+      product_rating: productRating,
+      seller_rating: sellerRating,
+      delivery_rating: deliveryRating,
       comment: typeof body.comment === "string" ? body.comment.trim().slice(0, 500) || null : null,
     });
     if (insertError) {
