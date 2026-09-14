@@ -39,7 +39,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "settings" | "trust";
+type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -145,8 +145,24 @@ export default function DashboardPage() {
     { key: "orders", label: t.dashboard.tabOrders },
     { key: "products", label: t.dashboard.tabProducts },
     { key: "settings", label: t.dashboard.tabSettings },
+    { key: "payments", label: t.dashboard.tabPayments },
     { key: "trust", label: t.dashboard.tabTrust },
   ];
+
+  // How much of "Complete your shop" is done — a quick, honest signal
+  // for a brand-new seller who'd otherwise have no idea what's left
+  // before their shop looks real to a buyer. Verification isn't
+  // counted here since it's a separate, optional step (see the Trust
+  // tab) rather than a basic setup task.
+  const checklist: { key: string; label: string; done: boolean; goTab: Tab }[] = [
+    { key: "description", label: t.dashboard.checklistDescription, done: !!shop.description, goTab: "settings" },
+    { key: "logo", label: t.dashboard.checklistLogo, done: !!shop.logo_url, goTab: "settings" },
+    { key: "whatsapp", label: t.dashboard.checklistWhatsapp, done: !!shop.whatsapp_number, goTab: "settings" },
+    { key: "delivery", label: t.dashboard.checklistDelivery, done: !!shop.delivery_info, goTab: "settings" },
+    { key: "product", label: t.dashboard.checklistProduct, done: products.length > 0, goTab: "products" },
+  ];
+  const checklistDoneCount = checklist.filter((c) => c.done).length;
+  const checklistPercent = Math.round((checklistDoneCount / checklist.length) * 100);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -205,6 +221,37 @@ export default function DashboardPage() {
 
       {tab === "overview" && (
         <div>
+          {checklistPercent < 100 && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold">{t.dashboard.checklistTitle}</p>
+                <p className="text-sm text-neutral-500">{checklistPercent}%</p>
+              </div>
+              <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden mb-4">
+                <div
+                  className="h-full bg-amber-500 rounded-full"
+                  style={{ width: `${checklistPercent}%` }}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                {checklist.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setTab(c.goTab)}
+                    disabled={c.done}
+                    className={`flex items-center gap-2 text-sm text-left ${
+                      c.done ? "text-neutral-400" : "text-neutral-900 hover:text-amber-700"
+                    }`}
+                  >
+                    <span>{c.done ? "☑" : "☐"}</span>
+                    <span className={c.done ? "line-through" : ""}>{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid sm:grid-cols-3 gap-4 mb-4">
             <Stat label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
             <Stat label={t.dashboard.orders} value={String(orders.length)} />
@@ -243,15 +290,29 @@ export default function DashboardPage() {
 
       {tab === "settings" && <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />}
 
+      {tab === "payments" && (
+        <div className="flex flex-col gap-6">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+          </div>
+          <PayoutHistory orders={orders} t={t} />
+        </div>
+      )}
+
       {tab === "trust" && (
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-4">
+          {!shop.is_verified && (
+            <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+              {t.dashboard.verificationOptionalNote}
+            </p>
+          )}
           <VerificationPanel
             shop={shop}
             t={t}
             onSaved={(updated) => setShop({ ...shop, ...updated })}
             onRefreshShop={loadData}
           />
-          <PayoutHistory orders={orders} t={t} />
         </div>
       )}
     </div>
@@ -553,7 +614,21 @@ function ProductsPanel({
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-neutral-500">{p.category?.name}</p>
+                <p className="text-xs text-neutral-500">
+                  {p.category?.name}
+                  {p.category?.name ? " · " : ""}
+                  {p.stock_quantity <= 0 ? (
+                    <span className="text-red-600 font-medium">{t.dashboard.outOfStockBadge}</span>
+                  ) : p.stock_quantity <= 3 ? (
+                    <span className="text-amber-600 font-medium">
+                      {t.dashboard.lowStockBadge} ({p.stock_quantity})
+                    </span>
+                  ) : (
+                    <span>
+                      {t.dashboard.inStockLabel} {p.stock_quantity}
+                    </span>
+                  )}
+                </p>
               </div>
               <p className="text-sm font-semibold whitespace-nowrap">{formatFcfa(p.price_fcfa)}</p>
               <button
