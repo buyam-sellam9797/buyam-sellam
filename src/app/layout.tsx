@@ -34,6 +34,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/browse" className="hover:text-amber-600">
                   {t.nav.browse}
                 </Link>
+                <Link href="/shops" className="hidden sm:inline hover:text-amber-600">
+                  {t.footer.verifiedSellers}
+                </Link>
                 <Link href="/sell" className="hidden sm:inline hover:text-amber-600">
                   {t.nav.sell}
                 </Link>
@@ -49,21 +52,92 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </header>
           <main className="flex-1">{children}</main>
           <footer className="border-t border-neutral-200 bg-white mt-16">
-            <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-neutral-500 flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row gap-2 sm:justify-between">
+            <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-neutral-500">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
+                <div>
+                  <p className="text-xs font-semibold text-neutral-900 mb-3">{t.footer.shopHeading}</p>
+                  <ul className="space-y-2 text-xs">
+                    <li>
+                      <Link href="/browse" className="hover:text-amber-600">
+                        {t.footer.browse}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/shops" className="hover:text-amber-600">
+                        {t.footer.verifiedSellers}
+                      </Link>
+                    </li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-neutral-900 mb-3">{t.footer.sellHeading}</p>
+                  <ul className="space-y-2 text-xs">
+                    <li>
+                      <Link href="/sell" className="hover:text-amber-600">
+                        {t.footer.openShop}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/login" className="hover:text-amber-600">
+                        {t.footer.sellerLogin}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/help#selling" className="hover:text-amber-600">
+                        {t.footer.sellerGuide}
+                      </Link>
+                    </li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-neutral-900 mb-3">{t.footer.helpHeading}</p>
+                  <ul className="space-y-2 text-xs">
+                    <li>
+                      <Link href="/help" className="hover:text-amber-600">
+                        {t.footer.helpCentre}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/help#buyer-protection" className="hover:text-amber-600">
+                        {t.footer.buyerProtection}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/refund" className="hover:text-amber-600">
+                        {t.footer.refund}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/help#contact" className="hover:text-amber-600">
+                        {t.footer.contactUs}
+                      </Link>
+                    </li>
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-neutral-900 mb-3">{t.footer.legalHeading}</p>
+                  <ul className="space-y-2 text-xs">
+                    <li>
+                      <Link href="/privacy" className="hover:text-amber-600">
+                        {t.footer.privacy}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/terms" className="hover:text-amber-600">
+                        {t.footer.terms}
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/refund" className="hover:text-amber-600">
+                        {t.footer.refund}
+                      </Link>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <div className="mt-8 pt-6 border-t border-neutral-100 flex flex-col sm:flex-row gap-2 sm:justify-between text-xs">
                 <p>&copy; {new Date().getFullYear()} {t.footer.rights}</p>
                 <p>{t.footer.payWith}</p>
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                <Link href="/privacy" className="hover:text-amber-600">
-                  {t.footer.privacy}
-                </Link>
-                <Link href="/terms" className="hover:text-amber-600">
-                  {t.footer.terms}
-                </Link>
-                <Link href="/refund" className="hover:text-amber-600">
-                  {t.footer.refund}
-                </Link>
               </div>
             </div>
           </footer>

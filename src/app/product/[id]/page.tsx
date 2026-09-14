@@ -27,7 +27,9 @@ export default async function ProductPage({
   const product = await getProductById(id);
   if (!product) notFound();
 
-  const rating = product.shop ? await getShopRatingSummary(product.shop.id) : { average: 0, count: 0 };
+  const rating = product.shop
+    ? await getShopRatingSummary(product.shop.id)
+    : { average: 0, count: 0, completedOrders: 0 };
   const shareUrl = `${getSiteUrl()}/product/${product.id}`;
 
   return (
@@ -51,6 +53,9 @@ export default async function ProductPage({
           </p>
         )}
         <h1 className="text-2xl font-bold mt-1">{product.title}</h1>
+        {product.brand && (
+          <p className="text-sm text-neutral-500 mt-0.5">{product.brand}</p>
+        )}
 
         <span className="inline-block mt-2 text-xs font-semibold rounded-full bg-neutral-100 px-2.5 py-1">
           {t.product[conditionKey[product.condition] ?? "conditionNew"]}
@@ -85,8 +90,8 @@ export default async function ProductPage({
             >
               {product.shop.shop_name}
               {product.shop.is_verified && (
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700">
-                  🟢 {t.product.verified}
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                  🛡️ {t.product.verified}
                 </span>
               )}
             </Link>
@@ -99,9 +104,18 @@ export default async function ProductPage({
                     t.product.reviewOther
                   )}`
                 : t.product.newSeller}
+              {rating.completedOrders > 0 &&
+                ` · ${rating.completedOrders} ${plural(
+                  rating.completedOrders,
+                  locale,
+                  t.product.orderOne,
+                  t.product.orderOther
+                )}`}
             </p>
             <p className="text-neutral-500 mt-1">📍 {product.shop.city}</p>
-            <p className="text-neutral-500 mt-1">🚚 {t.product.deliveryAvailable}</p>
+            <p className="text-neutral-500 mt-1">
+              🚚 {product.shop.delivery_info || t.product.deliveryAvailable}
+            </p>
           </div>
         )}
 
@@ -145,7 +159,13 @@ export default async function ProductPage({
           </a>
         )}
 
-        <ShareButton title={product.title} url={shareUrl} />
+        <ShareButton
+          title={product.title}
+          url={shareUrl}
+          message={t.product.shareMessage
+            .replace("{title}", product.title)
+            .replace("{price}", formatFcfa(product.price_fcfa))}
+        />
       </div>
     </div>
   );

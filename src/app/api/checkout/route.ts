@@ -21,6 +21,11 @@ type ChargeBody = {
   productId: string;
   provider: "mtn" | "orange";
   phone: string;
+  deliveryName?: string;
+  deliveryCity?: string;
+  deliveryNeighborhood?: string;
+  deliveryAddress?: string;
+  deliveryNotes?: string;
 };
 
 // Starts a NotchPay payment for a real product: looks the product up
@@ -51,9 +56,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { productId, provider, phone } = body;
+  const {
+    productId,
+    provider,
+    phone,
+    deliveryName,
+    deliveryCity,
+    deliveryNeighborhood,
+    deliveryAddress,
+    deliveryNotes,
+  } = body;
   if (!productId || !provider || !phone) {
     return NextResponse.json({ error: "Missing product, provider, or phone." }, { status: 400 });
+  }
+  if (!deliveryName || !deliveryCity) {
+    return NextResponse.json(
+      { error: "Please tell us who to deliver this to, and which city." },
+      { status: 400 }
+    );
   }
 
   const { data: product, error: productError } = await admin
@@ -78,6 +98,11 @@ export async function POST(req: NextRequest) {
       payment_provider: "notchpay",
       payment_reference: orderReference,
       buyer_phone: phone,
+      delivery_name: deliveryName,
+      delivery_city: deliveryCity,
+      delivery_neighborhood: deliveryNeighborhood || null,
+      delivery_address: deliveryAddress || null,
+      delivery_notes: deliveryNotes || null,
     })
     .select("id")
     .single();

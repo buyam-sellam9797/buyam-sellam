@@ -13,6 +13,7 @@ import {
   deleteProduct,
   uploadProductImage,
   markOrderShipped,
+  updateShop,
   type Shop,
   type Product,
   type ProductCondition,
@@ -112,6 +113,8 @@ export default function DashboardPage() {
         <Stat label={t.dashboard.paidOut} value={formatFcfa(paidOut)} />
       </div>
       <p className="text-xs text-neutral-400 mb-10">{t.dashboard.commissionNote}</p>
+
+      <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{t.dashboard.yourListings}</h2>
@@ -239,6 +242,71 @@ export default function DashboardPage() {
   );
 }
 
+function ShopSettingsForm({
+  shop,
+  t,
+  onSaved,
+}: {
+  shop: Shop;
+  t: Dictionary;
+  onSaved: (shop: Shop) => void;
+}) {
+  const [description, setDescription] = useState(shop.description ?? "");
+  const [deliveryInfo, setDeliveryInfo] = useState(shop.delivery_info ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await updateShop(shop.id, { description, deliveryInfo });
+      onSaved({ ...shop, description: description || null, delivery_info: deliveryInfo || null });
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-10 flex flex-col gap-4">
+      <p className="text-sm font-semibold">{t.dashboard.shopSettingsTitle}</p>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.shopDescriptionLabel}</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t.dashboard.shopDescriptionPlaceholder}
+          rows={2}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.shopDeliveryInfoLabel}</label>
+        <textarea
+          value={deliveryInfo}
+          onChange={(e) => setDeliveryInfo(e.target.value)}
+          placeholder={t.dashboard.shopDeliveryInfoPlaceholder}
+          rows={2}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+        >
+          {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
+        </button>
+        {saved && !saving && (
+          <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4">
@@ -266,6 +334,7 @@ function ProductForm({
   const isEditing = Boolean(existingProduct);
   const [title, setTitle] = useState(existingProduct?.title ?? "");
   const [description, setDescription] = useState(existingProduct?.description ?? "");
+  const [brand, setBrand] = useState(existingProduct?.brand ?? "");
   const [price, setPrice] = useState(existingProduct ? String(existingProduct.price_fcfa) : "");
   const [stock, setStock] = useState(existingProduct ? String(existingProduct.stock_quantity) : "1");
   const [categoryId, setCategoryId] = useState(
@@ -302,6 +371,7 @@ function ProductForm({
         categoryId: categoryId || null,
         title,
         description,
+        brand,
         priceFcfa: Number(price),
         stockQuantity: Number(stock),
         condition,
@@ -341,6 +411,15 @@ function ProductForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={2}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.brand}</label>
+        <input
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+          placeholder={t.dashboard.brandPlaceholder}
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
       </div>

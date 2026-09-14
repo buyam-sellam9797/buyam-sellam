@@ -29,6 +29,7 @@ create table if not exists shops (
   whatsapp_number text,               -- for buyer/seller contact fallback
   city text default 'Douala',
   logo_url text,
+  delivery_info text,                 -- free text set by the seller: areas covered, fees, timing
   is_verified boolean not null default false,   -- flips true once ID/business check is done
   is_active boolean not null default true,
   created_at timestamptz not null default now()
@@ -61,6 +62,7 @@ create table if not exists products (
   category_id uuid references categories(id),
   title text not null,
   description text,
+  brand text,
   price_fcfa integer not null check (price_fcfa > 0),   -- price in CFA francs, whole numbers
   stock_quantity integer not null default 1,
   image_urls jsonb not null default '[]'::jsonb,        -- array of image URLs in Supabase storage
@@ -97,7 +99,11 @@ create table if not exists orders (
   payment_provider text,           -- 'campay' | 'notchpay'
   payment_reference text,          -- ID returned by the payment provider
   delivery_method text,            -- 'seller_delivery' | 'pickup' | 'moto_partner'
-  delivery_notes text,
+  delivery_name text,              -- recipient name, collected at checkout
+  delivery_city text,
+  delivery_neighborhood text,
+  delivery_address text,           -- street/landmark detail
+  delivery_notes text,             -- free-text delivery instructions from the buyer
   payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
   payout_sent_at timestamptz,
   created_at timestamptz not null default now(),

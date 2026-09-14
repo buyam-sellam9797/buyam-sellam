@@ -1,22 +1,52 @@
 import Link from "next/link";
-import { getCategories, getActiveProducts } from "@/lib/supabase";
+import { getCategories, getActiveProducts, getHomeStats } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
-import { getDictionary } from "@/lib/i18n";
+import { getDictionary, plural } from "@/lib/i18n";
 
 // This page lists live products/categories from Supabase — never cache
 // it statically, or new sellers/listings wouldn't show up until the
 // next deploy.
 export const dynamic = "force-dynamic";
 
+// The stats strip only ever shows real counts (see getHomeStats) — and
+// only once there's actually something worth bragging about. A "0
+// orders completed" badge would undercut trust rather than build it,
+// so each figure has its own small threshold before it's shown, and
+// the whole strip disappears if nothing clears it yet.
+const MIN_PRODUCTS_TO_SHOW = 5;
+const MIN_SELLERS_TO_SHOW = 3;
+const MIN_ORDERS_TO_SHOW = 10;
+const MIN_REVIEWS_TO_SHOW = 5;
+
 export default async function Home() {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const [categories, products] = await Promise.all([
+  const [categories, products, stats] = await Promise.all([
     getCategories(),
     getActiveProducts(),
+    getHomeStats(),
   ]);
   const featured = products.slice(0, 4);
+
+  const statItems = [
+    stats.productCount >= MIN_PRODUCTS_TO_SHOW && {
+      value: `${stats.productCount}+`,
+      label: plural(stats.productCount, locale, t.home.statsProductsOne, t.home.statsProductsOther),
+    },
+    stats.verifiedShopCount >= MIN_SELLERS_TO_SHOW && {
+      value: `${stats.verifiedShopCount}+`,
+      label: plural(stats.verifiedShopCount, locale, t.home.statsSellersOne, t.home.statsSellersOther),
+    },
+    stats.completedOrderCount >= MIN_ORDERS_TO_SHOW && {
+      value: `${stats.completedOrderCount}+`,
+      label: plural(stats.completedOrderCount, locale, t.home.statsOrdersOne, t.home.statsOrdersOther),
+    },
+    stats.reviewCount >= MIN_REVIEWS_TO_SHOW && {
+      value: `⭐ ${stats.averageRating.toFixed(1)}/5`,
+      label: t.home.statsRating,
+    },
+  ].filter(Boolean) as { value: string; label: string }[];
 
   return (
     <div>
@@ -44,6 +74,17 @@ export default async function Home() {
             <span className="font-semibold">{t.home.trustStripTitle}</span>
             <span className="text-neutral-300">{t.home.trustStripSteps}</span>
           </div>
+
+          {statItems.length > 0 && (
+            <div className="mt-2 pt-6 border-t border-white/10 grid grid-cols-2 sm:flex sm:flex-wrap gap-x-8 gap-y-4">
+              {statItems.map((item, i) => (
+                <div key={i}>
+                  <p className="text-xl font-bold">{item.value}</p>
+                  <p className="text-xs text-neutral-400">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

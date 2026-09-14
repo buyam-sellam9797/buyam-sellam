@@ -1,31 +1,47 @@
 import Link from "next/link";
-import { getCategories, getActiveProducts } from "@/lib/supabase";
+import { getCategories, getActiveProducts, type ProductCondition, type ProductSort } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
+const VALID_CONDITIONS: ProductCondition[] = ["new", "like_new", "used"];
+const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc"];
+
 export default async function BrowsePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; q?: string; minPrice?: string; maxPrice?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    q?: string;
+    minPrice?: string;
+    maxPrice?: string;
+    condition?: string;
+    sort?: string;
+  }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category, q, minPrice, maxPrice } = await searchParams;
+  const { category, q, minPrice, maxPrice, condition, sort } = await searchParams;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
+  const conditionFilter = VALID_CONDITIONS.includes(condition as ProductCondition)
+    ? (condition as ProductCondition)
+    : undefined;
+  const sortOption = VALID_SORTS.includes(sort as ProductSort) ? (sort as ProductSort) : "newest";
   const [categories, filtered] = await Promise.all([
     getCategories(),
     getActiveProducts(category, {
       q,
       minPrice: Number.isFinite(minPriceNum) ? minPriceNum : undefined,
       maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
+      condition: conditionFilter,
+      sort: sortOption,
     }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
-  const hasFilters = Boolean(q || minPrice || maxPrice || category);
+  const hasFilters = Boolean(q || minPrice || maxPrice || category || condition || (sort && sort !== "newest"));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -58,6 +74,25 @@ export default async function BrowsePage({
           placeholder={t.browse.maxPrice}
           className="w-28 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
+        <select
+          name="condition"
+          defaultValue={conditionFilter ?? ""}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+        >
+          <option value="">{t.browse.anyCondition}</option>
+          <option value="new">{t.product.conditionNew}</option>
+          <option value="like_new">{t.product.conditionLikeNew}</option>
+          <option value="used">{t.product.conditionUsed}</option>
+        </select>
+        <select
+          name="sort"
+          defaultValue={sortOption}
+          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+        >
+          <option value="newest">{t.browse.sortNewest}</option>
+          <option value="price_asc">{t.browse.sortPriceAsc}</option>
+          <option value="price_desc">{t.browse.sortPriceDesc}</option>
+        </select>
         <button
           type="submit"
           className="rounded-lg bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-700"

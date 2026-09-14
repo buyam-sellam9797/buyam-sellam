@@ -9,3 +9,21 @@ export function getSiteUrl(): string {
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "https://www.buyamsellam.shop";
 }
+
+// Platform-level support contact (not a seller's shop number) — used on the
+// order status page's "Report a problem" link, the Privacy Policy contact
+// section, and the Help Centre. Set these as real env vars in Vercel once
+// there's a real support line/inbox; until then this falls back to a
+// clearly-a-placeholder value rather than silently pointing nowhere.
+export function getSupportWhatsapp(): string {
+  return process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || "+237600000000";
+}
+
+export function getSupportEmail(): string {
+  return process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "support@buyamsellam.shop";
+}
+
+export function buildSupportWhatsAppLink(message: string): string {
+  const digits = getSupportWhatsapp().replace(/[^\d]/g, "");
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}

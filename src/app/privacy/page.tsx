@@ -1,18 +1,21 @@
 import { getLocale } from "@/lib/get-locale";
+import { getSupportWhatsapp, getSupportEmail } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export default async function PrivacyPage() {
   const locale = await getLocale();
+  const whatsapp = getSupportWhatsapp();
+  const email = getSupportEmail();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
-      {locale === "fr" ? <PrivacyFr /> : <PrivacyEn />}
+      {locale === "fr" ? <PrivacyFr whatsapp={whatsapp} email={email} /> : <PrivacyEn whatsapp={whatsapp} email={email} />}
     </div>
   );
 }
 
-function PrivacyEn() {
+function PrivacyEn({ whatsapp, email }: { whatsapp: string; email: string }) {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold mb-1">Privacy Policy</h1>
@@ -60,14 +63,31 @@ function PrivacyEn() {
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Contact us</h2>
       <p>
-        If you have questions about your data, or want it deleted, message us on WhatsApp using the
-        number listed on the shop you dealt with, or contact Buyam Sellam directly.
+        If you have questions about your data, or want it deleted, reach Buyam Sellam Customer
+        Support directly — WhatsApp is fastest, but email works too.
       </p>
+      <ul className="mt-2 space-y-1">
+        <li>
+          <span className="text-neutral-500">WhatsApp: </span>
+          <a href={`https://wa.me/${whatsapp.replace(/[^\d]/g, "")}`} className="text-amber-600 hover:underline">
+            {whatsapp}
+          </a>
+        </li>
+        <li>
+          <span className="text-neutral-500">Email: </span>
+          <a href={`mailto:${email}`} className="text-amber-600 hover:underline">
+            {email}
+          </a>
+        </li>
+        <li>
+          <span className="text-neutral-500">Hours: </span>Monday–Saturday, 8am–7pm (Cameroon time)
+        </li>
+      </ul>
     </div>
   );
 }
 
-function PrivacyFr() {
+function PrivacyFr({ whatsapp, email }: { whatsapp: string; email: string }) {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold mb-1">Politique de confidentialité</h1>
@@ -117,9 +137,27 @@ function PrivacyFr() {
 
       <h2 className="text-lg font-semibold mt-6 mb-2">Nous contacter</h2>
       <p>
-        Pour toute question sur vos données, ou pour demander leur suppression, contactez-nous via
-        WhatsApp au numéro indiqué sur la boutique concernée, ou contactez directement Buyam Sellam.
+        Pour toute question sur vos données, ou pour demander leur suppression, contactez directement
+        le service client de Buyam Sellam — WhatsApp est le plus rapide, mais l&rsquo;email fonctionne
+        aussi.
       </p>
+      <ul className="mt-2 space-y-1">
+        <li>
+          <span className="text-neutral-500">WhatsApp : </span>
+          <a href={`https://wa.me/${whatsapp.replace(/[^\d]/g, "")}`} className="text-amber-600 hover:underline">
+            {whatsapp}
+          </a>
+        </li>
+        <li>
+          <span className="text-neutral-500">Email : </span>
+          <a href={`mailto:${email}`} className="text-amber-600 hover:underline">
+            {email}
+          </a>
+        </li>
+        <li>
+          <span className="text-neutral-500">Horaires : </span>Lundi–samedi, 8h–19h (heure du Cameroun)
+        </li>
+      </ul>
     </div>
   );
 }

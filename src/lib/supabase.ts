@@ -29,6 +29,7 @@ export type Shop = {
   whatsapp_number: string | null;
   city: string;
   logo_url: string | null;
+  delivery_info: string | null;
   is_verified: boolean;
   is_active: boolean;
 };
@@ -41,6 +42,7 @@ export type Product = {
   category_id: string | null;
   title: string;
   description: string | null;
+  brand: string | null;
   price_fcfa: number;
   stock_quantity: number;
   image_urls: string[];
@@ -48,7 +50,10 @@ export type Product = {
   sizes: string[];
   colors: string[];
   is_active: boolean;
-  shop?: Pick<Shop, "id" | "shop_name" | "slug" | "city" | "whatsapp_number" | "is_verified"> | null;
+  shop?: Pick<
+    Shop,
+    "id" | "shop_name" | "slug" | "city" | "whatsapp_number" | "is_verified" | "delivery_info"
+  > | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
 
@@ -63,7 +68,7 @@ export type Review = {
   created_at: string;
 };
 
-export type ShopRatingSummary = { average: number; count: number };
+export type ShopRatingSummary = { average: number; count: number; completedOrders: number };
 
 export type Order = {
   id: string;
@@ -73,9 +78,15 @@ export type Order = {
   payment_provider: string | null;
   payment_reference: string | null;
   buyer_phone: string | null;
+  delivery_name: string | null;
+  delivery_city: string | null;
+  delivery_neighborhood: string | null;
+  delivery_address: string | null;
+  delivery_notes: string | null;
   payout_sent: boolean;
   payout_sent_at: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 export async function getCategories(): Promise<Category[]> {
@@ -91,18 +102,33 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
+export type ProductSort = "newest" | "price_asc" | "price_desc";
+
 export async function getActiveProducts(
   categorySlug?: string,
-  filters?: { q?: string; minPrice?: number; maxPrice?: number }
+  filters?: {
+    q?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    condition?: ProductCondition;
+    sort?: ProductSort;
+  }
 ): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified), category:categories(name, slug)"
     )
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
+    .eq("is_active", true);
+
+  if (filters?.sort === "price_asc") {
+    query = query.order("price_fcfa", { ascending: true });
+  } else if (filters?.sort === "price_desc") {
+    query = query.order("price_fcfa", { ascending: false });
+  } else {
+    query = query.order("created_at", { ascending: false });
+  }
 
   if (categorySlug) {
     query = query.eq("category.slug", categorySlug);
@@ -115,6 +141,9 @@ export async function getActiveProducts(
   }
   if (filters?.maxPrice !== undefined) {
     query = query.lte("price_fcfa", filters.maxPrice);
+  }
+  if (filters?.condition) {
+    query = query.eq("condition", filters.condition);
   }
 
   const { data, error } = await query;
@@ -136,7 +165,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -148,19 +177,104 @@ export async function getProductById(id: string): Promise<Product | null> {
   return (data as unknown as Product) ?? null;
 }
 
-// Average + count of a shop's reviews, for the trust badges shown on
-// product and shop pages ("⭐ 4.8 · 12 reviews"). Computed client-side
-// from the raw ratings rather than a DB aggregate — review volume per
-// shop is small enough that this is simpler than adding a view/RPC.
+// Average + count of a shop's reviews, plus how many orders it has
+// actually completed — the trust badges shown on product/shop pages
+// ("🛡️ Verified · 43 orders · ⭐ 4.8 · 12 reviews"). Computed
+// client-side from raw rows rather than a DB aggregate — review/order
+// volume per shop is small enough that this is simpler than a view/RPC.
 export async function getShopRatingSummary(shopId: string): Promise<ShopRatingSummary> {
-  if (!isSupabaseConfigured) return { average: 0, count: 0 };
+  if (!isSupabaseConfigured) return { average: 0, count: 0, completedOrders: 0 };
+  const [{ data: reviews, error: reviewsError }, { count: completedOrders }] = await Promise.all([
+    supabase.from("reviews").select("rating").eq("shop_id", shopId),
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", shopId)
+      .eq("status", "completed"),
+  ]);
+  if (reviewsError || !reviews || reviews.length === 0) {
+    return { average: 0, count: 0, completedOrders: completedOrders ?? 0 };
+  }
+  const sum = reviews.reduce((s, r) => s + r.rating, 0);
+  return { average: sum / reviews.length, count: reviews.length, completedOrders: completedOrders ?? 0 };
+}
+
+// Most recent reviews for a shop's public page — capped, since a
+// storefront needs a handful of representative reviews, not its
+// entire history.
+export async function getShopReviews(shopId: string, limit = 10): Promise<Review[]> {
+  if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from("reviews")
-    .select("rating")
-    .eq("shop_id", shopId);
-  if (error || !data || data.length === 0) return { average: 0, count: 0 };
-  const sum = data.reduce((s, r) => s + r.rating, 0);
-  return { average: sum / data.length, count: data.length };
+    .select("id, order_id, shop_id, buyer_id, buyer_phone, rating, comment, created_at")
+    .eq("shop_id", shopId)
+    .not("comment", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("getShopReviews error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+// Shops that have earned the verified badge, for the "Verified Shops"
+// directory page — ranked so the most established shops lead.
+export async function getVerifiedShops(): Promise<Shop[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("shops")
+    .select("*")
+    .eq("is_verified", true)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("getVerifiedShops error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export type HomeStats = {
+  productCount: number;
+  verifiedShopCount: number;
+  completedOrderCount: number;
+  averageRating: number;
+  reviewCount: number;
+};
+
+// Real, live counts for the homepage's social-proof strip. Only ever
+// the actual numbers — the strip itself decides whether they're worth
+// showing yet (see the homepage), rather than ever faking a number.
+export async function getHomeStats(): Promise<HomeStats> {
+  if (!isSupabaseConfigured) {
+    return { productCount: 0, verifiedShopCount: 0, completedOrderCount: 0, averageRating: 0, reviewCount: 0 };
+  }
+  const [
+    { count: productCount },
+    { count: verifiedShopCount },
+    { count: completedOrderCount },
+    { data: ratingRows },
+  ] = await Promise.all([
+    supabase.from("products").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabase
+      .from("shops")
+      .select("id", { count: "exact", head: true })
+      .eq("is_verified", true)
+      .eq("is_active", true),
+    supabase.from("orders").select("id", { count: "exact", head: true }).eq("status", "completed"),
+    supabase.from("reviews").select("rating"),
+  ]);
+  const reviewCount = ratingRows?.length ?? 0;
+  const averageRating =
+    reviewCount > 0 ? ratingRows!.reduce((sum, r) => sum + r.rating, 0) / reviewCount : 0;
+  return {
+    productCount: productCount ?? 0,
+    verifiedShopCount: verifiedShopCount ?? 0,
+    completedOrderCount: completedOrderCount ?? 0,
+    averageRating,
+    reviewCount,
+  };
 }
 
 export async function getShopBySlug(slug: string): Promise<Shop | null> {
@@ -265,6 +379,7 @@ export async function createProduct(input: {
   categoryId: string | null;
   title: string;
   description: string;
+  brand: string;
   priceFcfa: number;
   stockQuantity: number;
   imageUrls: string[];
@@ -277,6 +392,7 @@ export async function createProduct(input: {
     category_id: input.categoryId,
     title: input.title,
     description: input.description || null,
+    brand: input.brand || null,
     price_fcfa: input.priceFcfa,
     stock_quantity: input.stockQuantity,
     image_urls: input.imageUrls,
@@ -293,6 +409,7 @@ export async function updateProduct(
     categoryId: string | null;
     title: string;
     description: string;
+    brand: string;
     priceFcfa: number;
     stockQuantity: number;
     imageUrls?: string[];
@@ -305,6 +422,7 @@ export async function updateProduct(
     category_id: input.categoryId,
     title: input.title,
     description: input.description || null,
+    brand: input.brand || null,
     price_fcfa: input.priceFcfa,
     stock_quantity: input.stockQuantity,
     condition: input.condition,
@@ -313,6 +431,23 @@ export async function updateProduct(
   };
   if (input.imageUrls) patch.image_urls = input.imageUrls;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
+  if (error) throw new Error(error.message);
+}
+
+// Sellers editing their own shop's storefront info — description and
+// delivery details — from the dashboard (separate from the product
+// form above, since this describes the shop as a whole, not one item).
+export async function updateShop(
+  shopId: string,
+  input: { description: string; deliveryInfo: string }
+) {
+  const { error } = await supabase
+    .from("shops")
+    .update({
+      description: input.description || null,
+      delivery_info: input.deliveryInfo || null,
+    })
+    .eq("id", shopId);
   if (error) throw new Error(error.message);
 }
 
@@ -336,7 +471,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, payout_sent, payout_sent_at, created_at"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, created_at, updated_at"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });

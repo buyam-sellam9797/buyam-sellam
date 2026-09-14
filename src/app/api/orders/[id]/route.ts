@@ -19,7 +19,9 @@ export async function GET(
 
   const { data: order, error } = await admin
     .from("orders")
-    .select("id, status, total_amount_fcfa, created_at, shop:shops(shop_name)")
+    .select(
+      "id, status, total_amount_fcfa, created_at, updated_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -27,13 +29,18 @@ export async function GET(
     return NextResponse.json({ error: "Order not found." }, { status: 404 });
   }
 
+  const { data: items } = await admin
+    .from("order_items")
+    .select("quantity, product:products(title)")
+    .eq("order_id", id);
+
   const { data: existingReview } = await admin
     .from("reviews")
     .select("id")
     .eq("order_id", id)
     .maybeSingle();
 
-  return NextResponse.json({ order, reviewed: Boolean(existingReview) });
+  return NextResponse.json({ order, items: items ?? [], reviewed: Boolean(existingReview) });
 }
 
 // The buyer taps "I received my order" on that page, which calls this
@@ -105,7 +112,9 @@ export async function POST(
     .update({ status: "completed", updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "shipped")
-    .select("id, status, total_amount_fcfa, created_at, shop:shops(shop_name)")
+    .select(
+      "id, status, total_amount_fcfa, created_at, updated_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
+    )
     .maybeSingle();
 
   if (error) {

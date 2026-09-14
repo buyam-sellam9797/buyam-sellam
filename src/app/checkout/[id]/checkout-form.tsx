@@ -12,6 +12,11 @@ export default function CheckoutForm({ product }: { product: Product }) {
   const { t } = useLocale();
   const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
   const [phone, setPhone] = useState("");
+  const [deliveryName, setDeliveryName] = useState("");
+  const [deliveryCity, setDeliveryCity] = useState(product.shop?.city ?? "");
+  const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
   const [status, setStatus] = useState<Status>("form");
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -36,6 +41,11 @@ export default function CheckoutForm({ product }: { product: Product }) {
           productId: product.id,
           provider,
           phone,
+          deliveryName,
+          deliveryCity,
+          deliveryNeighborhood,
+          deliveryAddress,
+          deliveryNotes,
         }),
       });
       const startData = await startRes.json();
@@ -119,6 +129,51 @@ export default function CheckoutForm({ product }: { product: Product }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div>
+        <p className="text-sm font-semibold mb-2">{t.checkout.deliveryInfoTitle}</p>
+        <div className="flex flex-col gap-3">
+          <input
+            required
+            value={deliveryName}
+            onChange={(e) => setDeliveryName(e.target.value)}
+            placeholder={t.checkout.deliveryNamePlaceholder}
+            aria-label={t.checkout.deliveryNameLabel}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              required
+              value={deliveryCity}
+              onChange={(e) => setDeliveryCity(e.target.value)}
+              placeholder={t.checkout.deliveryCityLabel}
+              aria-label={t.checkout.deliveryCityLabel}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <input
+              value={deliveryNeighborhood}
+              onChange={(e) => setDeliveryNeighborhood(e.target.value)}
+              placeholder={t.checkout.deliveryNeighborhoodPlaceholder}
+              aria-label={t.checkout.deliveryNeighborhoodLabel}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <input
+            value={deliveryAddress}
+            onChange={(e) => setDeliveryAddress(e.target.value)}
+            placeholder={t.checkout.deliveryAddressPlaceholder}
+            aria-label={t.checkout.deliveryAddressLabel}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          <textarea
+            value={deliveryNotes}
+            onChange={(e) => setDeliveryNotes(e.target.value)}
+            placeholder={t.checkout.deliveryNotesLabel}
+            rows={2}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      <div>
         <label className="text-sm font-medium block mb-2">{t.checkout.payWithLabel}</label>
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -166,6 +221,9 @@ export default function CheckoutForm({ product }: { product: Product }) {
       {status === "waiting" && (
         <p className="text-xs text-neutral-500 text-center">{t.checkout.waitingNote}</p>
       )}
+      <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
+        {t.checkout.protectionNotice}
+      </p>
     </form>
   );
 }

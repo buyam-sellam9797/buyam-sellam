@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getShopBySlug, getShopProducts, getShopRatingSummary } from "@/lib/supabase";
+import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -18,9 +18,10 @@ export default async function ShopPage({
   const shop = await getShopBySlug(slug);
   if (!shop) notFound();
 
-  const [shopProducts, rating] = await Promise.all([
+  const [shopProducts, rating, reviews] = await Promise.all([
     getShopProducts(shop.id),
     getShopRatingSummary(shop.id),
+    getShopReviews(shop.id),
   ]);
 
   return (
@@ -35,11 +36,15 @@ export default async function ShopPage({
           )}
         </div>
         <div>
-          <h1 className="text-xl font-bold">{shop.shop_name}</h1>
-          <p className="text-sm text-neutral-500">
-            {shop.city}
-            {shop.is_verified ? ` · ${t.shop.verified}` : ""}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold">{shop.shop_name}</h1>
+            {shop.is_verified && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+                🛡️ {t.shop.verified}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-neutral-500 mt-1">📍 {shop.city}</p>
           <p className="text-sm text-neutral-500 mt-0.5">
             {rating.count > 0
               ? `⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
@@ -49,9 +54,20 @@ export default async function ShopPage({
                   t.product.reviewOther
                 )}`
               : t.product.newSeller}
+            {rating.completedOrders > 0 &&
+              ` · ${rating.completedOrders} ${plural(
+                rating.completedOrders,
+                locale,
+                t.product.orderOne,
+                t.product.orderOther
+              )}`}
           </p>
         </div>
       </div>
+
+      {shop.description && (
+        <p className="text-sm text-neutral-600 mb-8 -mt-4">{shop.description}</p>
+      )}
 
       <h2 className="text-sm font-semibold text-neutral-500 mb-3">
         {shopProducts.length} {plural(shopProducts.length, locale, t.shop.listingOne, t.shop.listingOther)}
@@ -85,6 +101,20 @@ export default async function ShopPage({
           </p>
         )}
       </div>
+
+      <h2 className="text-sm font-semibold text-neutral-500 mt-10 mb-3">{t.shop.reviewsTitle}</h2>
+      {reviews.length === 0 ? (
+        <p className="text-neutral-500 text-sm">{t.shop.noReviews}</p>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {reviews.map((r) => (
+            <div key={r.id} className="rounded-xl border border-neutral-200 bg-white p-4">
+              <p className="text-sm">{"⭐".repeat(r.rating)}</p>
+              {r.comment && <p className="text-sm text-neutral-600 mt-1">{r.comment}</p>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
