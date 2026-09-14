@@ -7,6 +7,7 @@ import { getDictionary, plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site";
 import { ShareButton } from "@/components/share-button";
+import { BuyNowButton } from "@/components/buy-now-button";
 
 const conditionKey = {
   new: "conditionNew",
@@ -116,6 +117,15 @@ export default async function ProductPage({
             <p className="text-neutral-500 mt-1">
               🚚 {product.shop.delivery_info || t.product.deliveryAvailable}
             </p>
+            {(product.shop.delivery_fee_fcfa != null || product.shop.delivery_eta_text) && (
+              <p className="text-neutral-500 mt-1">
+                {product.shop.delivery_fee_fcfa != null &&
+                  `${t.product.deliveryFeeLabel}: ${formatFcfa(product.shop.delivery_fee_fcfa)}`}
+                {product.shop.delivery_fee_fcfa != null && product.shop.delivery_eta_text && " · "}
+                {product.shop.delivery_eta_text &&
+                  `${t.product.deliveryEtaLabel}: ${product.shop.delivery_eta_text}`}
+              </p>
+            )}
           </div>
         )}
 
@@ -136,12 +146,7 @@ export default async function ProductPage({
           {t.product.escrowNotice}
         </div>
 
-        <Link
-          href={`/checkout/${product.id}`}
-          className="mt-6 inline-block w-full text-center rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700"
-        >
-          {t.product.buyNow}
-        </Link>
+        <BuyNowButton productId={product.id} stock={product.stock_quantity} />
 
         {product.shop?.whatsapp_number && (
           <a

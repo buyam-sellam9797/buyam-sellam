@@ -1,35 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminClient } from "@/lib/supabase-admin";
-
-// Every request here must prove it's Lio (or another admin), and that
-// check happens on the server against the real database — never just
-// by hiding the /admin page in the UI, which anyone could bypass by
-// calling this API directly.
-async function requireAdmin(req: NextRequest) {
-  const admin = getAdminClient();
-  if (!admin) return { error: "Server is not configured.", status: 500 } as const;
-
-  const authHeader = req.headers.get("authorization") ?? "";
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  if (!token) return { error: "Not signed in.", status: 401 } as const;
-
-  const { data: userData, error: userError } = await admin.auth.getUser(token);
-  if (userError || !userData?.user) {
-    return { error: "Not signed in.", status: 401 } as const;
-  }
-
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("role")
-    .eq("id", userData.user.id)
-    .maybeSingle();
-
-  if (profile?.role !== "admin") {
-    return { error: "You're not authorized to view this page.", status: 403 } as const;
-  }
-
-  return { admin } as const;
-}
+import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
 
 // Lists every order that's ready for a real-world payout: the buyer
 // confirmed receipt (status = completed) but Lio hasn't sent the
@@ -37,7 +7,7 @@ async function requireAdmin(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const check = await requireAdmin(req);
   if ("error" in check) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+    return adminErrorResponse(check);
   }
 
   const { data, error } = await check.admin
@@ -61,7 +31,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const check = await requireAdmin(req);
   if ("error" in check) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+    return adminErrorResponse(check);
   }
 
   let body: { orderId?: string };

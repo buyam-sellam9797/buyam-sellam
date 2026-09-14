@@ -13,12 +13,15 @@ import {
   deleteProduct,
   uploadProductImage,
   markOrderShipped,
+  markOrderAccepted,
   updateShop,
+  getShopRatingSummary,
   type Shop,
   type Product,
   type ProductCondition,
   type Order,
   type Category,
+  type ShopRatingSummary,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
@@ -37,7 +40,12 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [rating, setRating] = useState<ShopRatingSummary | null>(null);
   const [formState, setFormState] = useState<FormState>({ mode: "closed" });
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  // new Date() is impure, so "today" is captured once via a lazy
+  // initializer rather than read directly during render.
+  const [today] = useState<string>(() => new Date().toDateString());
 
   const loadData = useCallback(async () => {
     const {
@@ -53,14 +61,16 @@ export default function DashboardPage() {
       return;
     }
     setShop(myShop);
-    const [myProducts, myOrders, cats] = await Promise.all([
+    const [myProducts, myOrders, cats, ratingSummary] = await Promise.all([
       getShopProducts(myShop.id),
       getMyOrders(myShop.id),
       getCategories(),
+      getShopRatingSummary(myShop.id),
     ]);
     setProducts(myProducts);
     setOrders(myOrders);
     setCategories(cats);
+    setRating(ratingSummary);
     setLoading(false);
   }, [router]);
 
@@ -78,6 +88,16 @@ export default function DashboardPage() {
     loadData();
   }
 
+  async function handleAccept(orderId: string) {
+    setAcceptingId(orderId);
+    try {
+      await markOrderAccepted(orderId);
+      loadData();
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
   if (loading) {
     return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">{t.dashboard.loading}</div>;
   }
@@ -90,29 +110,43 @@ export default function DashboardPage() {
     );
   }
 
-  const heldOrders = orders.filter((o) => o.status === "paid_held").length;
-  // "Owed"/"paid out" are shown net of Buyam Sellam's commission — that's
-  // the amount that actually lands in the seller's hands, not the full
-  // amount the buyer paid.
+  // "Balance held"/"available"/"paid out" are shown net of Buyam
+  // Sellam's commission — that's the amount that actually lands in the
+  // seller's hands, not the full amount the buyer paid.
+  const balanceHeld = orders
+    .filter((o) => o.status === "paid_held" || o.status === "shipped")
+    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
   const owed = orders
     .filter((o) => o.status === "completed" && !o.payout_sent)
     .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
   const paidOut = orders
     .filter((o) => o.status === "completed" && o.payout_sent)
     .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+  const todaySales = orders
+    .filter((o) => new Date(o.created_at).toDateString() === today && o.status !== "pending_payment" && o.status !== "cancelled")
+    .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-1">{shop.shop_name}</h1>
       <p className="text-neutral-500 text-sm mb-8">{t.dashboard.sellerDashboard}</p>
 
-      <div className="grid sm:grid-cols-4 gap-4 mb-2">
+      <div className="grid sm:grid-cols-3 gap-4 mb-4">
+        <Stat label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
+        <Stat label={t.dashboard.orders} value={String(orders.length)} />
         <Stat label={t.dashboard.listings} value={String(products.length)} />
-        <Stat label={t.dashboard.ordersHeld} value={String(heldOrders)} />
-        <Stat label={t.dashboard.owed} value={formatFcfa(owed)} />
-        <Stat label={t.dashboard.paidOut} value={formatFcfa(paidOut)} />
       </div>
-      <p className="text-xs text-neutral-400 mb-10">{t.dashboard.commissionNote}</p>
+      <div className="grid sm:grid-cols-3 gap-4 mb-2">
+        <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+        <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+        <Stat
+          label={t.dashboard.rating}
+          value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
+        />
+      </div>
+      <p className="text-xs text-neutral-400 mb-10">
+        {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
+      </p>
 
       <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />
 
@@ -214,7 +248,9 @@ export default function DashboardPage() {
                 <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
                 <p className="text-xs text-neutral-500">
                   {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
-                  {t.dashboard.statusLabels[o.status] ?? o.status}
+                  {o.status === "paid_held" && o.accepted_at
+                    ? t.dashboard.preparingStatus
+                    : t.dashboard.statusLabels[o.status] ?? o.status}
                   {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
                 </p>
                 {o.status === "completed" && (
@@ -223,6 +259,15 @@ export default function DashboardPage() {
                   </p>
                 )}
               </div>
+              {o.status === "paid_held" && !o.accepted_at && (
+                <button
+                  onClick={() => handleAccept(o.id)}
+                  disabled={acceptingId === o.id}
+                  className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+                >
+                  {acceptingId === o.id ? t.dashboard.accepting : t.dashboard.acceptOrder}
+                </button>
+              )}
               {o.status === "paid_held" && (
                 <button
                   onClick={async () => {
@@ -253,6 +298,10 @@ function ShopSettingsForm({
 }) {
   const [description, setDescription] = useState(shop.description ?? "");
   const [deliveryInfo, setDeliveryInfo] = useState(shop.delivery_info ?? "");
+  const [deliveryFee, setDeliveryFee] = useState(
+    shop.delivery_fee_fcfa != null ? String(shop.delivery_fee_fcfa) : ""
+  );
+  const [deliveryEta, setDeliveryEta] = useState(shop.delivery_eta_text ?? "");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -260,8 +309,20 @@ function ShopSettingsForm({
     setSaving(true);
     setSaved(false);
     try {
-      await updateShop(shop.id, { description, deliveryInfo });
-      onSaved({ ...shop, description: description || null, delivery_info: deliveryInfo || null });
+      const deliveryFeeFcfa = deliveryFee.trim() ? Number(deliveryFee) : null;
+      await updateShop(shop.id, {
+        description,
+        deliveryInfo,
+        deliveryFeeFcfa,
+        deliveryEtaText: deliveryEta,
+      });
+      onSaved({
+        ...shop,
+        description: description || null,
+        delivery_info: deliveryInfo || null,
+        delivery_fee_fcfa: deliveryFeeFcfa,
+        delivery_eta_text: deliveryEta || null,
+      });
       setSaved(true);
     } finally {
       setSaving(false);
@@ -290,6 +351,28 @@ function ShopSettingsForm({
           rows={2}
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.shopDeliveryFeeLabel}</label>
+          <input
+            type="number"
+            min={0}
+            value={deliveryFee}
+            onChange={(e) => setDeliveryFee(e.target.value)}
+            placeholder={t.dashboard.shopDeliveryFeePlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium block mb-1">{t.dashboard.shopDeliveryEtaLabel}</label>
+          <input
+            value={deliveryEta}
+            onChange={(e) => setDeliveryEta(e.target.value)}
+            placeholder={t.dashboard.shopDeliveryEtaPlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <button

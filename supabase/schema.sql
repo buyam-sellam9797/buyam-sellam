@@ -30,6 +30,8 @@ create table if not exists shops (
   city text default 'Douala',
   logo_url text,
   delivery_info text,                 -- free text set by the seller: areas covered, fees, timing
+  delivery_fee_fcfa integer,          -- flat delivery fee shown at checkout, if the seller sets one
+  delivery_eta_text text,             -- e.g. "24-48h in Douala"
   is_verified boolean not null default false,   -- flips true once ID/business check is done
   is_active boolean not null default true,
   created_at timestamptz not null default now()
@@ -106,6 +108,7 @@ create table if not exists orders (
   delivery_notes text,             -- free-text delivery instructions from the buyer
   payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
   payout_sent_at timestamptz,
+  accepted_at timestamptz,         -- seller marked "preparing" (before shipping)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -149,6 +152,27 @@ create table if not exists reviews (
 );
 
 -- ============================================================
+-- DISPUTES
+-- A structured "report a problem" record — reason, description, and
+-- an optional evidence photo — so a buyer's report is something admin
+-- can actually review and resolve, not just a WhatsApp message.
+-- ============================================================
+create table if not exists disputes (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references orders(id) on delete cascade,
+  shop_id uuid not null references shops(id),
+  buyer_phone text,
+  reason text not null,
+  description text,
+  photo_url text,
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  resolution text,
+  resolved_action text check (resolved_action in ('refunded', 'released')),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+-- ============================================================
 -- ROW LEVEL SECURITY (basic starting policies)
 -- ============================================================
 alter table profiles enable row level security;
@@ -157,6 +181,7 @@ alter table products enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table reviews enable row level security;
+alter table disputes enable row level security;
 
 -- Anyone can read active shops and products (public storefront browsing)
 create policy "Public can view active shops" on shops
@@ -207,8 +232,17 @@ create policy "Public can view reviews" on reviews
 create policy "Buyers write reviews on their own completed orders" on reviews
   for insert with check (auth.uid() = buyer_id);
 
+-- Disputes are only ever read/written through trusted server routes
+-- using the service-role key — most buyers are guests with no
+-- auth.uid() to check a write policy against, same reasoning as the
+-- reviews table above.
+create policy "Sellers view disputes on their shop" on disputes
+  for select using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
+
 -- ============================================================
--- STORAGE — public bucket for product photos
+-- STORAGE — public buckets for product photos and dispute evidence
 -- ============================================================
 insert into storage.buckets (id, name, public)
 values ('product-images', 'product-images', true)
@@ -225,3 +259,10 @@ create policy "Authenticated sellers can update their product images" on storage
 
 create policy "Authenticated sellers can delete their product images" on storage.objects
   for delete using (bucket_id = 'product-images' and auth.role() = 'authenticated');
+
+insert into storage.buckets (id, name, public)
+values ('dispute-evidence', 'dispute-evidence', true)
+on conflict (id) do nothing;
+
+create policy "Public can view dispute evidence" on storage.objects
+  for select using (bucket_id = 'dispute-evidence');

@@ -20,7 +20,7 @@ export async function GET(
   const { data: order, error } = await admin
     .from("orders")
     .select(
-      "id, status, total_amount_fcfa, created_at, updated_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
+      "id, status, total_amount_fcfa, created_at, updated_at, accepted_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
     )
     .eq("id", id)
     .maybeSingle();
@@ -113,7 +113,7 @@ export async function POST(
     .eq("id", id)
     .eq("status", "shipped")
     .select(
-      "id, status, total_amount_fcfa, created_at, updated_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
+      "id, status, total_amount_fcfa, created_at, updated_at, accepted_at, delivery_name, delivery_city, delivery_neighborhood, delivery_address, shop:shops(shop_name, whatsapp_number, city)"
     )
     .maybeSingle();
 

@@ -30,6 +30,8 @@ export type Shop = {
   city: string;
   logo_url: string | null;
   delivery_info: string | null;
+  delivery_fee_fcfa: number | null;
+  delivery_eta_text: string | null;
   is_verified: boolean;
   is_active: boolean;
 };
@@ -52,7 +54,15 @@ export type Product = {
   is_active: boolean;
   shop?: Pick<
     Shop,
-    "id" | "shop_name" | "slug" | "city" | "whatsapp_number" | "is_verified" | "delivery_info"
+    | "id"
+    | "shop_name"
+    | "slug"
+    | "city"
+    | "whatsapp_number"
+    | "is_verified"
+    | "delivery_info"
+    | "delivery_fee_fcfa"
+    | "delivery_eta_text"
   > | null;
   category?: Pick<Category, "name" | "slug"> | null;
 };
@@ -85,8 +95,32 @@ export type Order = {
   delivery_notes: string | null;
   payout_sent: boolean;
   payout_sent_at: string | null;
+  accepted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type DisputeReason =
+  | "not_arrived"
+  | "wrong_product"
+  | "damaged"
+  | "different_than_described"
+  | "seller_not_responding"
+  | "other";
+
+export type Dispute = {
+  id: string;
+  order_id: string;
+  shop_id: string;
+  buyer_phone: string | null;
+  reason: DisputeReason;
+  description: string | null;
+  photo_url: string | null;
+  status: "open" | "resolved";
+  resolution: string | null;
+  resolved_action: "refunded" | "released" | null;
+  created_at: string;
+  resolved_at: string | null;
 };
 
 export async function getCategories(): Promise<Category[]> {
@@ -112,6 +146,7 @@ export async function getActiveProducts(
     maxPrice?: number;
     condition?: ProductCondition;
     sort?: ProductSort;
+    verifiedOnly?: boolean;
   }
 ): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
@@ -153,9 +188,12 @@ export async function getActiveProducts(
   }
   // Supabase's embedded filter syntax above can be unreliable across
   // versions, so filter defensively here too when a category was requested.
-  const rows = (data ?? []) as unknown as Product[];
+  let rows = (data ?? []) as unknown as Product[];
   if (categorySlug) {
-    return rows.filter((p) => p.category?.slug === categorySlug);
+    rows = rows.filter((p) => p.category?.slug === categorySlug);
+  }
+  if (filters?.verifiedOnly) {
+    rows = rows.filter((p) => p.shop?.is_verified);
   }
   return rows;
 }
@@ -165,7 +203,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -439,13 +477,22 @@ export async function updateProduct(
 // form above, since this describes the shop as a whole, not one item).
 export async function updateShop(
   shopId: string,
-  input: { description: string; deliveryInfo: string }
+  input: {
+    description: string;
+    deliveryInfo: string;
+    deliveryFeeFcfa?: number | null;
+    deliveryEtaText?: string;
+  }
 ) {
   const { error } = await supabase
     .from("shops")
     .update({
       description: input.description || null,
       delivery_info: input.deliveryInfo || null,
+      ...(input.deliveryFeeFcfa !== undefined ? { delivery_fee_fcfa: input.deliveryFeeFcfa } : {}),
+      ...(input.deliveryEtaText !== undefined
+        ? { delivery_eta_text: input.deliveryEtaText || null }
+        : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
@@ -471,7 +518,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, created_at, updated_at"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, accepted_at, created_at, updated_at"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
@@ -480,6 +527,18 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
     return [];
   }
   return data ?? [];
+}
+
+// Seller taps "Accept order" on a freshly paid-held order — purely a
+// visual "I've seen this, I'm preparing it" signal for the buyer's
+// tracking page. It never changes orders.status (still paid_held), so
+// it can't interfere with the payment/escrow state machine.
+export async function markOrderAccepted(orderId: string) {
+  const { error } = await supabase
+    .from("orders")
+    .update({ accepted_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if (error) throw new Error(error.message);
 }
 
 export async function markOrderShipped(orderId: string) {

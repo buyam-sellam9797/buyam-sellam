@@ -6,9 +6,17 @@ import { useLocale } from "@/components/locale-provider";
 import { formatFcfa } from "@/lib/format";
 import { plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
-import { buildSupportWhatsAppLink } from "@/lib/site";
 
 const AUTO_RELEASE_DAYS = 5;
+
+const DISPUTE_REASONS = [
+  "not_arrived",
+  "wrong_product",
+  "damaged",
+  "different_than_described",
+  "seller_not_responding",
+  "other",
+] as const;
 
 type OrderInfo = {
   id: string;
@@ -16,6 +24,7 @@ type OrderInfo = {
   total_amount_fcfa: number;
   created_at: string;
   updated_at: string;
+  accepted_at?: string | null;
   delivery_name?: string | null;
   delivery_city?: string | null;
   delivery_neighborhood?: string | null;
@@ -28,11 +37,12 @@ type OrderItem = {
   product?: { title: string } | null;
 };
 
-const STEP_ORDER = ["paid_held", "shipped", "completed"] as const;
+const STEP_ORDER = ["paid_held", "preparing", "shipped", "completed"] as const;
 
-function stepIndexFor(status: string): number {
-  if (status === "shipped") return 1;
-  if (status === "completed") return 2;
+function stepIndexFor(order: OrderInfo): number {
+  if (order.status === "completed") return 3;
+  if (order.status === "shipped") return 2;
+  if (order.accepted_at) return 1;
   // pending_payment shouldn't really reach this page, but treat it as
   // "not yet held" rather than crashing the stepper.
   return 0;
@@ -51,6 +61,13 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   const [comment, setComment] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportPhoto, setReportPhoto] = useState<File | null>(null);
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
   // Date.now() is impure, so it's read via a lazy initializer (runs
   // once, on mount) rather than directly during render.
   const [now] = useState<number>(() => Date.now());
@@ -126,6 +143,34 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
     }
   }
 
+  async function handleSubmitReport() {
+    if (!reportReason) {
+      setReportError(t.order.reportErrorPickReason);
+      return;
+    }
+    setSubmittingReport(true);
+    setReportError(null);
+    try {
+      const form = new FormData();
+      form.set("reason", reportReason);
+      form.set("description", reportDescription);
+      if (reportPhoto) form.set("photo", reportPhoto);
+      const res = await fetch(`/api/orders/${orderId}/dispute`, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        setReportError(data.error ?? t.order.reportErrorGeneric);
+        return;
+      }
+      setReportSubmitted(true);
+      setShowReportForm(false);
+      setOrder((prev) => (prev ? { ...prev, status: "disputed" } : prev));
+    } catch {
+      setReportError(t.order.reportErrorGeneric);
+    } finally {
+      setSubmittingReport(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-center text-neutral-500 text-sm py-10">{t.dashboard.loading}</p>;
   }
@@ -141,8 +186,9 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
     );
   }
 
-  const stepIndex = stepIndexFor(order.status);
+  const stepIndex = stepIndexFor(order);
   const isTerminalIssue = ["disputed", "refunded", "cancelled"].includes(order.status);
+  const stepLabels = [t.order.stepHeld, t.order.stepPreparing, t.order.stepShipped, t.order.stepCompleted];
 
   let daysLeft: number | null = null;
   if (order.status === "shipped") {
@@ -163,11 +209,6 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
         t.order.chatWithSellerMessage.replace("{id}", order.id.slice(0, 8))
       )
     : null;
-  const reportHref = buildSupportWhatsAppLink(
-    t.order.reportProblemMessage
-      .replace("{id}", order.id.slice(0, 8))
-      .replace("{status}", t.dashboard.statusLabels[order.status] ?? order.status)
-  );
 
   return (
     <div>
@@ -192,10 +233,23 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
             ))}
           </div>
           <div className="flex justify-between mt-1.5 text-[11px] text-neutral-500">
-            <span className={stepIndex === 0 ? "font-semibold text-neutral-900" : ""}>{t.order.stepHeld}</span>
-            <span className={stepIndex === 1 ? "font-semibold text-neutral-900" : ""}>{t.order.stepShipped}</span>
-            <span className={stepIndex === 2 ? "font-semibold text-neutral-900" : ""}>{t.order.stepCompleted}</span>
+            {stepLabels.map((label, i) => (
+              <span
+                key={i}
+                className={`${i === STEP_ORDER.length - 1 ? "text-right" : ""} ${
+                  i === stepIndex ? "font-semibold text-neutral-900" : ""
+                }`}
+              >
+                {label}
+              </span>
+            ))}
           </div>
+        </div>
+      )}
+
+      {order.status === "disputed" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-4">
+          {reportSubmitted ? t.order.reportThanks : t.order.disputedBanner}
         </div>
       )}
 
@@ -227,7 +281,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       </div>
 
       {(chatHref || !isTerminalIssue) && (
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-4">
           {chatHref && (
             <a
               href={chatHref}
@@ -239,15 +293,85 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
             </a>
           )}
           {!isTerminalIssue && (
-            <a
-              href={reportHref}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setShowReportForm((s) => !s)}
               className="flex-1 text-center rounded-full border border-neutral-300 text-neutral-700 text-sm font-semibold px-4 py-2.5 hover:border-neutral-900"
             >
               {t.order.reportProblem}
-            </a>
+            </button>
           )}
+        </div>
+      )}
+
+      {showReportForm && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-6 flex flex-col gap-3">
+          <p className="text-sm font-semibold">{t.order.reportFormTitle}</p>
+          <div>
+            <label className="text-sm font-medium block mb-1">{t.order.reasonLabel}</label>
+            <select
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+            >
+              <option value="">{t.order.reasonPlaceholder}</option>
+              {DISPUTE_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {
+                    {
+                      not_arrived: t.order.reasonNotArrived,
+                      wrong_product: t.order.reasonWrongProduct,
+                      damaged: t.order.reasonDamaged,
+                      different_than_described: t.order.reasonDifferent,
+                      seller_not_responding: t.order.reasonSellerNotResponding,
+                      other: t.order.reasonOther,
+                    }[r]
+                  }
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium block mb-1">{t.order.reportDescriptionLabel}</label>
+            <textarea
+              value={reportDescription}
+              onChange={(e) => setReportDescription(e.target.value)}
+              placeholder={t.order.reportDescriptionPlaceholder}
+              rows={3}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium block mb-1">{t.order.reportPhotoLabel}</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setReportPhoto(e.target.files?.[0] ?? null)}
+              className="w-full text-sm"
+            />
+          </div>
+          {reportError && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {reportError}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleSubmitReport}
+              disabled={submittingReport}
+              className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {submittingReport ? t.order.reportSubmitting : t.order.reportSubmit}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReportForm(false)}
+              className="rounded-full border border-neutral-300 px-6 py-2.5 text-sm font-semibold hover:border-neutral-900"
+            >
+              {t.order.reportCancel}
+            </button>
+          </div>
         </div>
       )}
 
@@ -263,9 +387,11 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
             <p>{t.order.autoReleaseNotice}</p>
             {daysLeft !== null && (
               <p className="mt-2 font-semibold">
-                {daysLeft > 0
+                {daysLeft > 1
                   ? `${daysLeft} ${plural(daysLeft, locale, t.order.daysLeftOne, t.order.daysLeftOther)}`
-                  : t.order.releaseToday}
+                  : daysLeft === 1
+                    ? t.order.releaseTomorrow
+                    : t.order.releaseToday}
               </p>
             )}
           </div>

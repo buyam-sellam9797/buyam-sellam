@@ -19,17 +19,19 @@ export default async function BrowsePage({
     maxPrice?: string;
     condition?: string;
     sort?: string;
+    verified?: string;
   }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category, q, minPrice, maxPrice, condition, sort } = await searchParams;
+  const { category, q, minPrice, maxPrice, condition, sort, verified } = await searchParams;
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
   const conditionFilter = VALID_CONDITIONS.includes(condition as ProductCondition)
     ? (condition as ProductCondition)
     : undefined;
   const sortOption = VALID_SORTS.includes(sort as ProductSort) ? (sort as ProductSort) : "newest";
+  const verifiedOnly = verified === "1";
   const [categories, filtered] = await Promise.all([
     getCategories(),
     getActiveProducts(category, {
@@ -38,10 +40,13 @@ export default async function BrowsePage({
       maxPrice: Number.isFinite(maxPriceNum) ? maxPriceNum : undefined,
       condition: conditionFilter,
       sort: sortOption,
+      verifiedOnly,
     }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
-  const hasFilters = Boolean(q || minPrice || maxPrice || category || condition || (sort && sort !== "newest"));
+  const hasFilters = Boolean(
+    q || minPrice || maxPrice || category || condition || verifiedOnly || (sort && sort !== "newest")
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -93,6 +98,10 @@ export default async function BrowsePage({
           <option value="price_asc">{t.browse.sortPriceAsc}</option>
           <option value="price_desc">{t.browse.sortPriceDesc}</option>
         </select>
+        <label className="flex items-center gap-1.5 text-sm rounded-lg border border-neutral-300 px-3 py-2 cursor-pointer">
+          <input type="checkbox" name="verified" value="1" defaultChecked={verifiedOnly} />
+          🛡️ {t.browse.verifiedOnly}
+        </label>
         <button
           type="submit"
           className="rounded-lg bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-700"

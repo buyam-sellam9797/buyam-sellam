@@ -19,6 +19,7 @@ function getAdminClient() {
 
 type ChargeBody = {
   productId: string;
+  quantity?: number;
   provider: "mtn" | "orange";
   phone: string;
   deliveryName?: string;
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const { data: product, error: productError } = await admin
     .from("products")
-    .select("id, shop_id, title, price_fcfa, is_active")
+    .select("id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa)")
     .eq("id", productId)
     .eq("is_active", true)
     .maybeSingle();
@@ -87,6 +88,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This product is no longer available." }, { status: 404 });
   }
 
+  const requestedQuantity = Number(body.quantity);
+  const quantity =
+    Number.isInteger(requestedQuantity) && requestedQuantity > 0 ? requestedQuantity : 1;
+  if (quantity > product.stock_quantity) {
+    return NextResponse.json(
+      { error: `Only ${product.stock_quantity} left in stock.` },
+      { status: 409 }
+    );
+  }
+
+  const shopRecord = Array.isArray(product.shop) ? product.shop[0] : product.shop;
+  const deliveryFeeFcfa: number = shopRecord?.delivery_fee_fcfa ?? 0;
+  const totalAmountFcfa = product.price_fcfa * quantity + deliveryFeeFcfa;
+
   const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const { data: order, error: orderError } = await admin
@@ -94,7 +109,7 @@ export async function POST(req: NextRequest) {
     .insert({
       shop_id: product.shop_id,
       status: "pending_payment",
-      total_amount_fcfa: product.price_fcfa,
+      total_amount_fcfa: totalAmountFcfa,
       payment_provider: "notchpay",
       payment_reference: orderReference,
       buyer_phone: phone,
@@ -114,7 +129,7 @@ export async function POST(req: NextRequest) {
   await admin.from("order_items").insert({
     order_id: order.id,
     product_id: product.id,
-    quantity: 1,
+    quantity,
     unit_price_fcfa: product.price_fcfa,
   });
 
@@ -127,7 +142,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount: product.price_fcfa,
+        amount: totalAmountFcfa,
         currency: "XAF",
         description: product.title,
         reference: orderReference,
@@ -254,6 +269,29 @@ export async function GET(req: NextRequest) {
             event_type: "payment.complete",
             raw_payload: data,
           });
+
+          // Stock is only taken off the shelf once payment is actually
+          // confirmed — never at checkout start, so an abandoned mobile
+          // money prompt never permanently reserves inventory. This is a
+          // simple read-then-write (not an atomic decrement), which is an
+          // accepted simplification at this order volume.
+          const { data: items } = await admin
+            .from("order_items")
+            .select("product_id, quantity")
+            .eq("order_id", updatedOrder.id);
+          for (const item of items ?? []) {
+            const { data: prod } = await admin
+              .from("products")
+              .select("stock_quantity")
+              .eq("id", item.product_id)
+              .maybeSingle();
+            if (prod) {
+              await admin
+                .from("products")
+                .update({ stock_quantity: Math.max(0, prod.stock_quantity - item.quantity) })
+                .eq("id", item.product_id);
+            }
+          }
         }
       }
     }

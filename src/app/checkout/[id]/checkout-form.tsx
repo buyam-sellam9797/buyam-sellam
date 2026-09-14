@@ -8,10 +8,19 @@ import { useLocale } from "@/components/locale-provider";
 
 type Status = "form" | "waiting" | "held" | "failed";
 
-export default function CheckoutForm({ product }: { product: Product }) {
+export default function CheckoutForm({
+  product,
+  initialQuantity = 1,
+  deliveryFee = 0,
+}: {
+  product: Product;
+  initialQuantity?: number;
+  deliveryFee?: number;
+}) {
   const { t } = useLocale();
   const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
   const [phone, setPhone] = useState("");
+  const [quantity, setQuantity] = useState(initialQuantity);
   const [deliveryName, setDeliveryName] = useState("");
   const [deliveryCity, setDeliveryCity] = useState(product.shop?.city ?? "");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
@@ -21,6 +30,8 @@ export default function CheckoutForm({ product }: { product: Product }) {
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const maxQuantity = Math.max(1, product.stock_quantity);
+  const total = product.price_fcfa * quantity + deliveryFee;
 
   useEffect(() => {
     return () => {
@@ -39,6 +50,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: product.id,
+          quantity,
           provider,
           phone,
           deliveryName,
@@ -95,7 +107,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
         <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-900">
           <p className="font-semibold mb-1">{t.checkout.heldTitle}</p>
           <p>
-            {formatFcfa(product.price_fcfa)} {t.checkout.heldBody}
+            {formatFcfa(total)} {t.checkout.heldBody}
           </p>
         </div>
         {orderId && (
@@ -128,6 +140,60 @@ export default function CheckoutForm({ product }: { product: Product }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <p className="text-xs font-semibold text-neutral-500 mb-3">{t.checkout.orderSummaryTitle}</p>
+        <div className="flex gap-3 items-center mb-3">
+          <div className="w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
+            {product.image_urls?.[0] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={product.image_urls[0]} alt={product.title} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-2xl">🛍️</span>
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium">{product.title}</p>
+            <p className="text-xs text-neutral-500">{product.shop?.shop_name}</p>
+          </div>
+        </div>
+        <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
+          <span className="text-neutral-500">{t.checkout.productLabel}</span>
+          <span>{formatFcfa(product.price_fcfa)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm mt-1.5">
+          <span className="text-neutral-500">{t.checkout.quantityLabel}</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+              className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+              aria-label="Decrease quantity"
+            >
+              −
+            </button>
+            <span className="w-5 text-center">{quantity}</span>
+            <button
+              type="button"
+              onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
+              className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+              aria-label="Increase quantity"
+            >
+              +
+            </button>
+          </div>
+        </div>
+        {deliveryFee > 0 && (
+          <div className="flex items-center justify-between text-sm mt-1.5">
+            <span className="text-neutral-500">{t.checkout.deliveryFeeLabel}</span>
+            <span>{formatFcfa(deliveryFee)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between text-sm font-semibold mt-1.5">
+          <span>{t.checkout.totalLabel}</span>
+          <span>{formatFcfa(total)}</span>
+        </div>
+      </div>
+
       <div>
         <p className="text-sm font-semibold mb-2">{t.checkout.deliveryInfoTitle}</p>
         <div className="flex flex-col gap-3">
@@ -216,7 +282,7 @@ export default function CheckoutForm({ product }: { product: Product }) {
         disabled={status === "waiting"}
         className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
       >
-        {status === "waiting" ? t.checkout.checkingPhone : `${t.checkout.payButton} ${formatFcfa(product.price_fcfa)}`}
+        {status === "waiting" ? t.checkout.checkingPhone : `${t.checkout.payButton} ${formatFcfa(total)}`}
       </button>
       {status === "waiting" && (
         <p className="text-xs text-neutral-500 text-center">{t.checkout.waitingNote}</p>
