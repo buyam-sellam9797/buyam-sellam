@@ -46,9 +46,14 @@ export default function LoginPage() {
           />
         </div>
         <div>
-          <label className="text-sm font-medium block mb-2" htmlFor="password">
-            {t.login.password}
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium" htmlFor="password">
+              {t.login.password}
+            </label>
+            <Link href="/forgot-password" className="text-xs text-amber-600 hover:underline">
+              {t.login.forgotPassword}
+            </Link>
+          </div>
           <input
             id="password"
             type="password"
