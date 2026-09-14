@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
   createProduct,
   updateProduct,
@@ -199,12 +200,13 @@ export function ProductForm({
           {isEditing ? t.dashboard.photoKeepCurrent : ""}
         </label>
         {isEditing && existingProduct?.image_urls?.[0] && !file && (
-          <div className="w-16 h-16 rounded-lg overflow-hidden mb-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+          <div className="relative w-16 h-16 rounded-lg overflow-hidden mb-2">
+            <Image
               src={existingProduct.image_urls[0]}
               alt={existingProduct.title}
-              className="w-full h-full object-cover"
+              fill
+              sizes="64px"
+              className="object-cover"
             />
           </div>
         )}

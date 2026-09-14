@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
@@ -74,10 +75,9 @@ export default async function ShopPage({
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="rounded-xl bg-white border border-neutral-200 p-6 mb-8 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-700 overflow-hidden">
+        <div className="relative w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-2xl font-bold text-amber-700 overflow-hidden">
           {shop.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={shop.logo_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+            <Image src={shop.logo_url} alt={shop.shop_name} fill sizes="64px" className="object-cover" />
           ) : (
             shop.shop_name.charAt(0)
           )}
@@ -132,10 +132,15 @@ export default async function ShopPage({
             href={`/product/${p.id}`}
             className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
           >
-            <div className="aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+            <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
               {p.image_urls?.[0] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.image_urls[0]} alt={p.title} className="w-full h-full object-cover" />
+                <Image
+                  src={p.image_urls[0]}
+                  alt={p.title}
+                  fill
+                  sizes="(max-width: 640px) 50vw, 25vw"
+                  className="object-cover"
+                />
               ) : (
                 <span className="text-5xl">🛍️</span>
               )}

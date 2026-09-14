@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getProductById, getShopRatingSummary } from "@/lib/supabase";
@@ -110,13 +111,15 @@ export default async function ProductPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
-      <div className="aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
+      <div className="relative aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
         {product.image_urls?.[0] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={product.image_urls[0]}
             alt={product.title}
-            className="w-full h-full object-cover"
+            fill
+            sizes="(max-width: 640px) 100vw, 448px"
+            preload
+            className="object-cover"
           />
         ) : (
           <span className="text-8xl">🛍️</span>

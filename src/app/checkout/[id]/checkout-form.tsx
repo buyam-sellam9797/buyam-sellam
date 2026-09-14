@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase, getMyAddresses, type Product, type BuyerAddress } from "@/lib/supabase";
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 import { formatFcfa } from "@/lib/format";
@@ -221,10 +222,9 @@ export default function CheckoutForm({
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
         <p className="text-xs font-semibold text-neutral-500 mb-3">{t.checkout.orderSummaryTitle}</p>
         <div className="flex gap-3 items-center mb-3">
-          <div className="w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
+          <div className="relative w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
             {product.image_urls?.[0] ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={product.image_urls[0]} alt={product.title} className="w-full h-full object-cover" />
+              <Image src={product.image_urls[0]} alt={product.title} fill sizes="56px" className="object-cover" />
             ) : (
               <span className="text-2xl">🛍️</span>
             )}

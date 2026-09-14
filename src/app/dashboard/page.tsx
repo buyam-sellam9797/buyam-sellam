@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   supabase,
@@ -622,10 +623,9 @@ function ProductsPanel({
         {filtered.map((p) => (
           <div key={p.id} className={p.is_active ? "" : "opacity-60"}>
             <div className="flex items-center gap-3 p-4">
-              <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden shrink-0">
+              <div className="relative w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden shrink-0">
                 {p.image_urls?.[0] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.image_urls[0]} alt={p.title} className="w-full h-full object-cover" />
+                  <Image src={p.image_urls[0]} alt={p.title} fill sizes="48px" className="object-cover" />
                 ) : (
                   "🛍️"
                 )}
@@ -1275,8 +1275,12 @@ function ShopSettingsForm({
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopLogoLabel}</label>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-lg font-bold text-amber-700 overflow-hidden shrink-0">
+          <div className="relative w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-lg font-bold text-amber-700 overflow-hidden shrink-0">
             {logoFile ? (
+              // A local file the seller just picked, previewed straight from
+              // their device before it's even uploaded — next/image can only
+              // optimize a real URL it can fetch, not a blob: one, and there's
+              // no network cost here to optimize away anyway.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={URL.createObjectURL(logoFile)}
@@ -1284,8 +1288,7 @@ function ShopSettingsForm({
                 className="w-full h-full object-cover"
               />
             ) : shop.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={shop.logo_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+              <Image src={shop.logo_url} alt={shop.shop_name} fill sizes="48px" className="object-cover" />
             ) : (
               shop.shop_name.charAt(0)
             )}

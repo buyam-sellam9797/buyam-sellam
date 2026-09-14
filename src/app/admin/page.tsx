@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
@@ -597,12 +598,9 @@ function DisputesTab({
               </p>
             )}
             {d.photo_url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={d.photo_url}
-                alt="Evidence"
-                className="w-24 h-24 object-cover rounded-lg mt-2 mb-2 border border-amber-200"
-              />
+              <div className="relative w-24 h-24 rounded-lg mt-2 mb-2 border border-amber-200 overflow-hidden">
+                <Image src={d.photo_url} alt="Evidence" fill sizes="96px" className="object-cover" />
+              </div>
             )}
             <textarea
               value={resolutionNotes[d.id] ?? ""}

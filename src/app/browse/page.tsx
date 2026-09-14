@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   getCategories,
   getActiveProducts,
@@ -227,13 +228,14 @@ export default async function BrowsePage({
             href={`/product/${p.id}`}
             className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
           >
-            <div className="aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+            <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
               {p.image_urls?.[0] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={p.image_urls[0]}
                   alt={p.title}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 640px) 50vw, 25vw"
+                  className="object-cover"
                 />
               ) : (
                 <span className="text-5xl">🛍️</span>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getVerifiedShops, getShopRatingSummary } from "@/lib/supabase";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -26,10 +27,9 @@ export default async function VerifiedShopsPage() {
             const rating = ratings[i];
             return (
               <div key={shop.id} className="flex items-center gap-4 p-4">
-                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-lg font-bold text-amber-700 overflow-hidden shrink-0">
+                <div className="relative w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-lg font-bold text-amber-700 overflow-hidden shrink-0">
                   {shop.logo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={shop.logo_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+                    <Image src={shop.logo_url} alt={shop.shop_name} fill sizes="48px" className="object-cover" />
                   ) : (
                     shop.shop_name.charAt(0)
                   )}
