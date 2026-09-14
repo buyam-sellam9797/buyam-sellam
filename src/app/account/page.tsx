@@ -11,6 +11,7 @@ import {
   getMyAddresses,
   createAddress,
   deleteAddress,
+  getMyShop,
   type BuyerProfile,
   type BuyerOrder,
   type BuyerAddress,
@@ -25,6 +26,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<BuyerProfile | null>(null);
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
+  const [hasShop, setHasShop] = useState(false);
 
   const loadData = useCallback(async () => {
     const {
@@ -34,14 +36,20 @@ export default function AccountPage() {
       router.push("/login");
       return;
     }
-    const [myProfile, myOrders, myAddresses] = await Promise.all([
+    // Buyer accounts and seller accounts share the same login, so
+    // someone who owns a shop and lands here (e.g. via the "Account"
+    // link in the header) still needs a way back to their dashboard —
+    // otherwise this page is a dead end for them.
+    const [myProfile, myOrders, myAddresses, myShop] = await Promise.all([
       getMyProfile(),
       getMyBuyerOrders(),
       getMyAddresses(),
+      getMyShop(),
     ]);
     setProfile(myProfile);
     setOrders(myOrders);
     setAddresses(myAddresses);
+    setHasShop(!!myShop);
     setLoading(false);
   }, [router]);
 
@@ -78,6 +86,15 @@ export default function AccountPage() {
           {t.account.logout}
         </button>
       </div>
+
+      {hasShop && (
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 hover:bg-amber-100 self-start"
+        >
+          {t.account.goToSellerDashboard}
+        </Link>
+      )}
 
       <ProfileSection profile={profile} t={t} onSaved={(p) => setProfile((prev) => (prev ? { ...prev, ...p } : prev))} />
 
