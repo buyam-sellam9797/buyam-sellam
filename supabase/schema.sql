@@ -205,7 +205,11 @@ create table if not exists reviews (
   seller_rating integer check (seller_rating between 1 and 5),
   delivery_rating integer check (delivery_rating between 1 and 5),
   comment text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- A seller's public reply to this review (e.g. thanking a buyer or
+  -- addressing a complaint). Null until the seller writes one.
+  seller_reply text,
+  seller_reply_at timestamptz
 );
 
 -- ============================================================
@@ -310,6 +314,16 @@ create policy "Public can view reviews" on reviews
 -- a sane default.
 create policy "Buyers write reviews on their own completed orders" on reviews
   for insert with check (auth.uid() = buyer_id);
+
+-- A seller can reply to reviews left on their own shop (see migration
+-- 016). RLS is row-level only, so this technically also permits
+-- updating other columns on the row via a direct API call — the same
+-- accepted trade-off as "Sellers update orders on their shop" below;
+-- the app's own UI only ever writes seller_reply/seller_reply_at.
+create policy "Sellers reply to reviews on their shop" on reviews
+  for update using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
 
 -- Disputes are only ever read/written through trusted server routes
 -- using the service-role key — most buyers are guests with no

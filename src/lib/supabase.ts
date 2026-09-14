@@ -139,6 +139,8 @@ export type Review = {
   delivery_rating: number | null;
   comment: string | null;
   created_at: string;
+  seller_reply: string | null;
+  seller_reply_at: string | null;
 };
 
 export type ShopRatingSummary = { average: number; count: number; completedOrders: number };
@@ -433,7 +435,7 @@ export async function getShopReviews(shopId: string, limit = 10): Promise<Review
   const { data, error } = await supabase
     .from("reviews")
     .select(
-      "id, order_id, shop_id, buyer_id, buyer_phone, rating, product_rating, seller_rating, delivery_rating, comment, created_at"
+      "id, order_id, shop_id, buyer_id, buyer_phone, rating, product_rating, seller_rating, delivery_rating, comment, created_at, seller_reply, seller_reply_at"
     )
     .eq("shop_id", shopId)
     .not("comment", "is", null)
@@ -444,6 +446,38 @@ export async function getShopReviews(shopId: string, limit = 10): Promise<Review
     return [];
   }
   return data ?? [];
+}
+
+// Every review left on a shop, for the seller's own Reviews tab — no
+// comment filter (a bare star rating with no text is still something
+// a seller should see) and no small cap, since this is the seller's
+// own full history rather than a storefront preview.
+export async function getShopReviewsForDashboard(shopId: string): Promise<Review[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("reviews")
+    .select(
+      "id, order_id, shop_id, buyer_id, buyer_phone, rating, product_rating, seller_rating, delivery_rating, comment, created_at, seller_reply, seller_reply_at"
+    )
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    console.error("getShopReviewsForDashboard error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+// Seller writes or edits their public reply to a review left on their
+// own shop. RLS (see migration 016) only allows this for reviews on a
+// shop the logged-in seller owns.
+export async function replyToReview(reviewId: string, reply: string): Promise<void> {
+  const { error } = await supabase
+    .from("reviews")
+    .update({ seller_reply: reply, seller_reply_at: new Date().toISOString() })
+    .eq("id", reviewId);
+  if (error) throw new Error(error.message);
 }
 
 // Shops that have earned the verified badge, for the "Verified Shops"

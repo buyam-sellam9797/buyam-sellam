@@ -129,6 +129,12 @@ export default async function ShopPage({
                 </p>
               )}
               {r.comment && <p className="text-sm text-neutral-600 mt-1">{r.comment}</p>}
+              {r.seller_reply && (
+                <div className="mt-2 rounded-lg bg-neutral-50 border border-neutral-200 px-3 py-2">
+                  <p className="text-xs font-semibold text-neutral-700">{t.shop.sellerReplyLabel}</p>
+                  <p className="text-xs text-neutral-600 mt-0.5">{r.seller_reply}</p>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -17,12 +17,15 @@ import {
   markOrderAccepted,
   updateShop,
   getShopRatingSummary,
+  getShopReviewsForDashboard,
+  replyToReview,
   type Shop,
   type Product,
   type Order,
   type Category,
   type ShopRatingSummary,
   type BusinessHours,
+  type Review,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
@@ -40,7 +43,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust";
+type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust" | "reviews";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -78,6 +81,7 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rating, setRating] = useState<ShopRatingSummary | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [tab, setTab] = useState<Tab>("overview");
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
@@ -101,16 +105,18 @@ export default function DashboardPage() {
     // includeInactive: true — a paused listing still needs to show up
     // here so the seller can turn it back on; only the public storefront
     // hides it.
-    const [myProducts, myOrders, cats, ratingSummary] = await Promise.all([
+    const [myProducts, myOrders, cats, ratingSummary, myReviews] = await Promise.all([
       getShopProducts(myShop.id, { includeInactive: true }),
       getMyOrders(myShop.id),
       getCategories(),
       getShopRatingSummary(myShop.id),
+      getShopReviewsForDashboard(myShop.id),
     ]);
     setProducts(myProducts);
     setOrders(myOrders);
     setCategories(cats);
     setRating(ratingSummary);
+    setReviews(myReviews);
     setLoading(false);
   }, [router]);
 
@@ -159,6 +165,7 @@ export default function DashboardPage() {
     { key: "settings", label: t.dashboard.tabSettings },
     { key: "payments", label: t.dashboard.tabPayments },
     { key: "trust", label: t.dashboard.tabTrust },
+    { key: "reviews", label: t.dashboard.tabReviews },
   ];
 
   // How much of "Complete your shop" is done — a quick, honest signal
@@ -328,6 +335,8 @@ export default function DashboardPage() {
           />
         </div>
       )}
+
+      {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
     </div>
   );
 }
@@ -816,6 +825,128 @@ function PayoutHistory({ orders, t }: { orders: Order[]; t: Dictionary }) {
               <p className="text-xs text-neutral-400">{o.buyer_phone ?? t.dashboard.unknownBuyer}</p>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Reviews tab — every review a buyer has left on this shop, with
+// the product/seller/delivery breakdown (when given) and a place for
+// the seller to write a public reply. Replies show up on the shop's
+// public page right under the review itself.
+function ReviewsPanel({
+  reviews,
+  t,
+  onChanged,
+}: {
+  reviews: Review[];
+  t: Dictionary;
+  onChanged: () => Promise<void>;
+}) {
+  if (reviews.length === 0) {
+    return (
+      <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
+        {t.dashboard.reviewsEmpty}
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {reviews.map((r) => (
+        <ReviewCard key={r.id} review={r} t={t} onChanged={onChanged} />
+      ))}
+    </div>
+  );
+}
+
+function ReviewCard({
+  review,
+  t,
+  onChanged,
+}: {
+  review: Review;
+  t: Dictionary;
+  onChanged: () => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(review.seller_reply ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    if (!draft.trim()) return;
+    setSaving(true);
+    try {
+      await replyToReview(review.id, draft.trim());
+      await onChanged();
+      setSaved(true);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm">{"⭐".repeat(review.rating)}</p>
+        <p className="text-xs text-neutral-400">
+          {t.dashboard.reviewFromLabel} {review.buyer_phone ?? t.dashboard.reviewAnonymousBuyer} ·{" "}
+          {new Date(review.created_at).toLocaleDateString()}
+        </p>
+      </div>
+      {review.product_rating != null && review.seller_rating != null && review.delivery_rating != null && (
+        <p className="text-xs text-neutral-500 mt-1">
+          {t.shop.reviewProductLabel} {review.product_rating}/5 · {t.shop.reviewSellerLabel}{" "}
+          {review.seller_rating}/5 · {t.shop.reviewDeliveryLabel} {review.delivery_rating}/5
+        </p>
+      )}
+      <p className="text-sm text-neutral-700 mt-2">
+        {review.comment || <span className="text-neutral-400 italic">{t.dashboard.reviewNoComment}</span>}
+      </p>
+
+      {review.seller_reply && !editing ? (
+        <div className="mt-3 rounded-lg bg-neutral-50 border border-neutral-200 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-neutral-700">{t.dashboard.reviewYourReply}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(review.seller_reply ?? "");
+                setSaved(false);
+                setEditing(true);
+              }}
+              className="text-xs text-neutral-500 hover:text-neutral-900 underline"
+            >
+              {t.dashboard.reviewEditReply}
+            </button>
+          </div>
+          <p className="text-sm text-neutral-600 mt-1">{review.seller_reply}</p>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={t.dashboard.reviewReplyPlaceholder}
+            rows={2}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !draft.trim()}
+              className="text-xs rounded-full bg-neutral-900 text-white px-4 py-1.5 disabled:opacity-60 self-start"
+            >
+              {saving ? t.dashboard.saving : t.dashboard.reviewReplyButton}
+            </button>
+            {saved && !saving && (
+              <span className="text-xs text-green-700">{t.dashboard.reviewReplySaved}</span>
+            )}
+          </div>
         </div>
       )}
     </div>
