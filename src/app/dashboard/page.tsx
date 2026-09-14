@@ -43,7 +43,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust" | "reviews";
+type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust" | "reviews" | "analytics";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -166,6 +166,7 @@ export default function DashboardPage() {
     { key: "payments", label: t.dashboard.tabPayments },
     { key: "trust", label: t.dashboard.tabTrust },
     { key: "reviews", label: t.dashboard.tabReviews },
+    { key: "analytics", label: t.dashboard.tabAnalytics },
   ];
 
   // How much of "Complete your shop" is done — a quick, honest signal
@@ -337,6 +338,8 @@ export default function DashboardPage() {
       )}
 
       {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
+
+      {tab === "analytics" && <AnalyticsPanel shop={shop} orders={orders} t={t} />}
     </div>
   );
 }
@@ -949,6 +952,108 @@ function ReviewCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// The Analytics tab. Built entirely from data already loaded for the
+// other tabs (orders + their line items, and the shop's running view
+// counter) — no new tracking tables yet, so "views" is a single
+// all-time total rather than a day-by-day series. If a real daily
+// views history is wanted later, that needs its own events table.
+function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: Dictionary }) {
+  // Same definition of "a real order" used for the Overview tab's
+  // today's-sales figure: everything except abandoned/cancelled checkouts.
+  const successfulOrders = orders.filter(
+    (o) => o.status !== "pending_payment" && o.status !== "cancelled"
+  );
+
+  const days = (() => {
+    const arr: { key: string; label: string; amount: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      arr.push({
+        key: d.toDateString(),
+        label: d.toLocaleDateString(undefined, { weekday: "short" }),
+        amount: 0,
+      });
+    }
+    return arr;
+  })();
+  const byDay = new Map(days.map((d) => [d.key, d]));
+  successfulOrders.forEach((o) => {
+    const bucket = byDay.get(new Date(o.created_at).toDateString());
+    if (bucket) bucket.amount += o.total_amount_fcfa;
+  });
+  const maxAmount = Math.max(1, ...days.map((d) => d.amount));
+  const totalLast14 = days.reduce((sum, d) => sum + d.amount, 0);
+
+  const conversionRate = shop.view_count > 0 ? (successfulOrders.length / shop.view_count) * 100 : null;
+
+  const productTotals = new Map<string, { title: string; quantity: number }>();
+  successfulOrders.forEach((o) => {
+    o.items?.forEach((item) => {
+      if (!item.product) return;
+      const existing = productTotals.get(item.product.id);
+      if (existing) {
+        existing.quantity += item.quantity;
+      } else {
+        productTotals.set(item.product.id, { title: item.product.title, quantity: item.quantity });
+      }
+    });
+  });
+  const topProducts = [...productTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} />
+        <Stat
+          label={t.dashboard.analyticsConversionLabel}
+          value={conversionRate == null ? t.dashboard.noRatingYet : `${conversionRate.toFixed(1)}%`}
+        />
+        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} />
+      </div>
+      <p className="text-xs text-neutral-400 -mt-4">{t.dashboard.analyticsConversionHint}</p>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+        <p className="text-sm font-semibold mb-4">{t.dashboard.analyticsSalesTitle}</p>
+        {totalLast14 === 0 ? (
+          <p className="text-sm text-neutral-500 text-center py-8">{t.dashboard.analyticsNoSales}</p>
+        ) : (
+          <div className="flex items-end gap-1.5 h-32">
+            {days.map((d) => (
+              <div key={d.key} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                <div
+                  title={`${d.label} · ${formatFcfa(d.amount)}`}
+                  className="w-full max-w-[24px] rounded-t bg-neutral-900"
+                  style={{ height: `${Math.max(2, (d.amount / maxAmount) * 100)}%` }}
+                />
+                <span className="text-[10px] text-neutral-400">{d.label[0]}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+        <p className="text-sm font-semibold mb-3">{t.dashboard.analyticsTopProductsTitle}</p>
+        {topProducts.length === 0 ? (
+          <p className="text-sm text-neutral-500 text-center py-4">{t.dashboard.analyticsNoProductSales}</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {topProducts.map((p) => (
+              <div key={p.title} className="flex items-center justify-between text-sm">
+                <span className="truncate pr-3">{p.title}</span>
+                <span className="text-neutral-500 shrink-0">
+                  {p.quantity} {t.dashboard.analyticsSoldLabel}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
