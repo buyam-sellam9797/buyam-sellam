@@ -9,6 +9,7 @@ import {
   getMyOrders,
   getCategories,
   deleteProduct,
+  setProductActive,
   uploadShopLogo,
   uploadVerificationDocument,
   requestShopVerification,
@@ -26,23 +27,47 @@ import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
+import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
 type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product: Product };
 
+// The dashboard used to be one long page: shop setup, verification,
+// listings, and orders all stacked in a single scroll. Those four
+// things get touched at very different frequencies (orders daily,
+// listings whenever stock changes, shop setup and verification almost
+// never), so they're now separate tabs a seller can jump straight to.
+type Tab = "overview" | "orders" | "products" | "settings" | "trust";
+
+type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
+
+// Groups a raw order status (plus the "accepted" flag, which never
+// changes orders.status itself) into the friendlier buckets the
+// Orders tab's filter buttons use. "action" — paid but not yet
+// accepted — is the one that actually needs the seller to do
+// something right now.
+function orderBucket(o: Order): OrderFilter | "other" {
+  if (o.status === "paid_held" && !o.accepted_at) return "action";
+  if (o.status === "paid_held" && o.accepted_at) return "preparing";
+  if (o.status === "shipped") return "shipped";
+  if (o.status === "completed") return "completed";
+  if (o.status === "disputed" || o.status === "refunded" || o.status === "cancelled") return "issues";
+  return "other"; // pending_payment — abandoned/incomplete checkouts, shown only under "All"
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [loading, setLoading] = useState(true);
   const [shop, setShop] = useState<Shop | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [rating, setRating] = useState<ShopRatingSummary | null>(null);
-  const [formState, setFormState] = useState<FormState>({ mode: "closed" });
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("overview");
+  const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
   // initializer rather than read directly during render.
   const [today] = useState<string>(() => new Date().toDateString());
@@ -61,8 +86,11 @@ export default function DashboardPage() {
       return;
     }
     setShop(myShop);
+    // includeInactive: true — a paused listing still needs to show up
+    // here so the seller can turn it back on; only the public storefront
+    // hides it.
     const [myProducts, myOrders, cats, ratingSummary] = await Promise.all([
-      getShopProducts(myShop.id),
+      getShopProducts(myShop.id, { includeInactive: true }),
       getMyOrders(myShop.id),
       getCategories(),
       getShopRatingSummary(myShop.id),
@@ -81,22 +109,6 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, [loadData]);
-
-  async function handleDelete(productId: string) {
-    if (!window.confirm(t.dashboard.removeConfirm)) return;
-    await deleteProduct(productId);
-    loadData();
-  }
-
-  async function handleAccept(orderId: string) {
-    setAcceptingId(orderId);
-    try {
-      await markOrderAccepted(orderId);
-      loadData();
-    } finally {
-      setAcceptingId(null);
-    }
-  }
 
   if (loading) {
     return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">{t.dashboard.loading}</div>;
@@ -126,42 +138,363 @@ export default function DashboardPage() {
     .filter((o) => new Date(o.created_at).toDateString() === today && o.status !== "pending_payment" && o.status !== "cancelled")
     .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
 
+  const needsActionCount = orders.filter((o) => orderBucket(o) === "action").length;
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "overview", label: t.dashboard.tabOverview },
+    { key: "orders", label: t.dashboard.tabOrders },
+    { key: "products", label: t.dashboard.tabProducts },
+    { key: "settings", label: t.dashboard.tabSettings },
+    { key: "trust", label: t.dashboard.tabTrust },
+  ];
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-1">{shop.shop_name}</h1>
-      <p className="text-neutral-500 text-sm mb-8">{t.dashboard.sellerDashboard}</p>
+      <p className="text-neutral-500 text-sm mb-4">{t.dashboard.sellerDashboard}</p>
 
-      <div className="grid sm:grid-cols-3 gap-4 mb-4">
-        <Stat label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
-        <Stat label={t.dashboard.orders} value={String(orders.length)} />
-        <Stat label={t.dashboard.listings} value={String(products.length)} />
-      </div>
-      <div className="grid sm:grid-cols-3 gap-4 mb-2">
-        <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-        <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
-        <Stat
-          label={t.dashboard.rating}
-          value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
-        />
-      </div>
-      <div className="grid sm:grid-cols-3 gap-4 mb-2">
-        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} />
-      </div>
-      <p className="text-xs text-neutral-400 mb-10">
-        {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
-      </p>
-
-      <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />
-
-      <VerificationPanel shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
-
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">{t.dashboard.yourListings}</h2>
+      {needsActionCount > 0 && (
         <button
-          onClick={() =>
-            setFormState((s) => (s.mode === "add" ? { mode: "closed" } : { mode: "add" }))
-          }
-          className="text-sm rounded-full bg-neutral-900 text-white px-4 py-1.5"
+          type="button"
+          onClick={() => {
+            setTab("orders");
+            setOrderFilter("action");
+          }}
+          className="w-full text-left rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm font-medium mb-6 hover:bg-amber-100"
+        >
+          ⚠️ {needsActionCount}{" "}
+          {plural(needsActionCount, locale, t.dashboard.needsActionOne, t.dashboard.needsActionOther)}
+        </button>
+      )}
+
+      <div className="flex gap-1 mb-8 border-b border-neutral-200 overflow-x-auto">
+        {tabs.map((tb) => (
+          <button
+            key={tb.key}
+            type="button"
+            onClick={() => setTab(tb.key)}
+            className={`flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 border-b-2 whitespace-nowrap ${
+              tab === tb.key
+                ? "border-neutral-900 text-neutral-900"
+                : "border-transparent text-neutral-500 hover:text-neutral-900"
+            }`}
+          >
+            {tb.label}
+            {tb.key === "orders" && needsActionCount > 0 && (
+              <span className="inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold w-4 h-4">
+                {needsActionCount}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div>
+          <div className="grid sm:grid-cols-3 gap-4 mb-4">
+            <Stat label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
+            <Stat label={t.dashboard.orders} value={String(orders.length)} />
+            <Stat label={t.dashboard.listings} value={String(products.length)} />
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 mb-2">
+            <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat
+              label={t.dashboard.rating}
+              value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
+            />
+          </div>
+          <div className="grid sm:grid-cols-3 gap-4 mb-2">
+            <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} />
+          </div>
+          <p className="text-xs text-neutral-400">
+            {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
+          </p>
+        </div>
+      )}
+
+      {tab === "orders" && (
+        <OrdersPanel
+          orders={orders}
+          filter={orderFilter}
+          onFilterChange={setOrderFilter}
+          t={t}
+          onChanged={loadData}
+        />
+      )}
+
+      {tab === "products" && (
+        <ProductsPanel shop={shop} products={products} categories={categories} t={t} onChanged={loadData} />
+      )}
+
+      {tab === "settings" && <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />}
+
+      {tab === "trust" && (
+        <div className="flex flex-col gap-8">
+          <VerificationPanel shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
+          <PayoutHistory orders={orders} t={t} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Orders tab. Filters group orders into the buckets a seller
+// actually thinks in ("what needs my attention right now" vs "already
+// shipped"), and each row expands to show what was ordered and where
+// it's going — before this, an order was just an amount and a phone
+// number, with no way to know what to pack.
+function OrdersPanel({
+  orders,
+  filter,
+  onFilterChange,
+  t,
+  onChanged,
+}: {
+  orders: Order[];
+  filter: OrderFilter;
+  onFilterChange: (f: OrderFilter) => void;
+  t: Dictionary;
+  onChanged: () => Promise<void>;
+}) {
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [shippingId, setShippingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Orders needing action always float to the top, regardless of sort —
+  // that's the whole point of calling them out.
+  const sorted = [...orders].sort((a, b) => {
+    const rank = (o: Order) => (orderBucket(o) === "action" ? 0 : 1);
+    const diff = rank(a) - rank(b);
+    if (diff !== 0) return diff;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const filtered = filter === "all" ? sorted : sorted.filter((o) => orderBucket(o) === filter);
+
+  const counts: Record<OrderFilter, number> = {
+    all: orders.length,
+    action: orders.filter((o) => orderBucket(o) === "action").length,
+    preparing: orders.filter((o) => orderBucket(o) === "preparing").length,
+    shipped: orders.filter((o) => orderBucket(o) === "shipped").length,
+    completed: orders.filter((o) => orderBucket(o) === "completed").length,
+    issues: orders.filter((o) => orderBucket(o) === "issues").length,
+  };
+
+  const filterButtons: { key: OrderFilter; label: string }[] = [
+    { key: "all", label: t.dashboard.filterAll },
+    { key: "action", label: t.dashboard.filterAction },
+    { key: "preparing", label: t.dashboard.filterPreparing },
+    { key: "shipped", label: t.dashboard.filterShipped },
+    { key: "completed", label: t.dashboard.filterCompleted },
+    { key: "issues", label: t.dashboard.filterIssues },
+  ];
+
+  async function handleAccept(orderId: string) {
+    setAcceptingId(orderId);
+    try {
+      await markOrderAccepted(orderId);
+      await onChanged();
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  async function handleShip(orderId: string) {
+    setShippingId(orderId);
+    try {
+      await markOrderShipped(orderId);
+      await onChanged();
+    } finally {
+      setShippingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {filterButtons.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => onFilterChange(f.key)}
+            className={`text-xs rounded-full px-3 py-1.5 border ${
+              filter === f.key
+                ? "bg-neutral-900 text-white border-neutral-900"
+                : "border-neutral-300 hover:border-neutral-900"
+            }`}
+          >
+            {f.label} ({counts[f.key] ?? 0})
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
+          {orders.length === 0 ? t.dashboard.noOrdersYet : t.dashboard.noOrdersForFilter}
+        </p>
+      ) : (
+        <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+          {filtered.map((o) => {
+            const bucket = orderBucket(o);
+            const isExpanded = expandedId === o.id;
+            const deliveryLines = [
+              o.delivery_name,
+              [o.delivery_neighborhood, o.delivery_city].filter(Boolean).join(", "),
+              o.delivery_address,
+            ].filter(Boolean) as string[];
+            return (
+              <div key={o.id} className="p-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => setExpandedId(isExpanded ? null : o.id)}
+                  >
+                    <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
+                    <p className="text-xs text-neutral-500">
+                      {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
+                      {o.status === "paid_held" && o.accepted_at
+                        ? t.dashboard.preparingStatus
+                        : t.dashboard.statusLabels[o.status] ?? o.status}
+                      {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
+                    </p>
+                    {o.status === "completed" && (
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {t.dashboard.youReceive} {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
+                      </p>
+                    )}
+                  </div>
+                  {bucket === "action" && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 rounded-full px-2 py-1 shrink-0">
+                      {t.dashboard.filterAction}
+                    </span>
+                  )}
+                  {o.status === "paid_held" && !o.accepted_at && (
+                    <button
+                      type="button"
+                      onClick={() => handleAccept(o.id)}
+                      disabled={acceptingId === o.id}
+                      className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 shrink-0"
+                    >
+                      {acceptingId === o.id ? t.dashboard.accepting : t.dashboard.acceptOrder}
+                    </button>
+                  )}
+                  {o.status === "paid_held" && (
+                    <button
+                      type="button"
+                      onClick={() => handleShip(o.id)}
+                      disabled={shippingId === o.id}
+                      className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 shrink-0"
+                    >
+                      {t.dashboard.markShipped}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : o.id)}
+                    aria-label="toggle details"
+                    className="text-neutral-400 text-xs shrink-0 px-1"
+                  >
+                    {isExpanded ? "▲" : "▼"}
+                  </button>
+                </div>
+
+                {isExpanded && (
+                  <div className="mt-3 pt-3 border-t border-neutral-100">
+                    <p className="text-xs font-semibold text-neutral-500 mb-1">{t.dashboard.itemsPurchased}</p>
+                    {o.items && o.items.length > 0 ? (
+                      <ul className="text-sm text-neutral-700 space-y-0.5 mb-3">
+                        {o.items.map((item, i) => (
+                          <li key={i}>
+                            {item.quantity}× {item.product?.title ?? ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-neutral-400 mb-3">{t.dashboard.noItemsRecorded}</p>
+                    )}
+                    {deliveryLines.length > 0 && (
+                      <>
+                        <p className="text-xs font-semibold text-neutral-500 mb-1">{t.order.deliveryTo}</p>
+                        <div className="text-sm text-neutral-700 mb-1">
+                          {deliveryLines.map((line, i) => (
+                            <p key={i}>{line}</p>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {o.delivery_notes && <p className="text-xs text-neutral-500 italic">{o.delivery_notes}</p>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Products tab. Same add/edit form as before, plus a search box
+// (so this still works once a shop has 50 items instead of 2) and a
+// Pause/Activate toggle so a seller who's temporarily out of stock
+// doesn't have to delete and recreate the listing.
+function ProductsPanel({
+  shop,
+  products,
+  categories,
+  t,
+  onChanged,
+}: {
+  shop: Shop;
+  products: Product[];
+  categories: Category[];
+  t: Dictionary;
+  onChanged: () => Promise<void>;
+}) {
+  const [formState, setFormState] = useState<FormState>({ mode: "closed" });
+  const [search, setSearch] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const filtered = search.trim()
+    ? products.filter((p) => p.title.toLowerCase().includes(search.trim().toLowerCase()))
+    : products;
+
+  async function handleDelete(productId: string) {
+    if (!window.confirm(t.dashboard.removeConfirm)) return;
+    setDeletingId(productId);
+    try {
+      await deleteProduct(productId);
+      await onChanged();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleToggleActive(product: Product) {
+    setTogglingId(product.id);
+    try {
+      await setProductActive(product.id, !product.is_active);
+      await onChanged();
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t.dashboard.searchProductsPlaceholder}
+          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="button"
+          onClick={() => setFormState((s) => (s.mode === "add" ? { mode: "closed" } : { mode: "add" }))}
+          className="text-sm rounded-full bg-neutral-900 text-white px-4 py-1.5 shrink-0"
         >
           {formState.mode === "add" ? t.dashboard.cancel : t.dashboard.addProduct}
         </button>
@@ -172,17 +505,17 @@ export default function DashboardPage() {
           shopId={shop.id}
           categories={categories}
           t={t}
-          onDone={() => {
+          onDone={async () => {
             setFormState({ mode: "closed" });
-            loadData();
+            await onChanged();
           }}
           onCancel={() => setFormState({ mode: "closed" })}
         />
       )}
 
       <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
-        {products.map((p) => (
-          <div key={p.id}>
+        {filtered.map((p) => (
+          <div key={p.id} className={p.is_active ? "" : "opacity-60"}>
             <div className="flex items-center gap-3 p-4">
               <div className="w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden shrink-0">
                 {p.image_urls?.[0] ? (
@@ -193,7 +526,14 @@ export default function DashboardPage() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{p.title}</p>
+                <p className="text-sm font-medium truncate">
+                  {p.title}
+                  {!p.is_active && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 bg-neutral-100 rounded-full px-2 py-0.5 align-middle">
+                      {t.dashboard.pausedBadge}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-neutral-500">{p.category?.name}</p>
               </div>
               <p className="text-sm font-semibold whitespace-nowrap">{formatFcfa(p.price_fcfa)}</p>
@@ -210,8 +550,16 @@ export default function DashboardPage() {
                 {t.dashboard.edit}
               </button>
               <button
+                onClick={() => handleToggleActive(p)}
+                disabled={togglingId === p.id}
+                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 shrink-0 disabled:opacity-60"
+              >
+                {p.is_active ? t.dashboard.pauseListing : t.dashboard.activateListing}
+              </button>
+              <button
                 onClick={() => handleDelete(p.id)}
-                className="text-xs rounded-full border border-red-200 text-red-700 px-3 py-1.5 hover:border-red-400 shrink-0"
+                disabled={deletingId === p.id}
+                className="text-xs rounded-full border border-red-200 text-red-700 px-3 py-1.5 hover:border-red-400 shrink-0 disabled:opacity-60"
               >
                 {t.dashboard.delete}
               </button>
@@ -223,9 +571,9 @@ export default function DashboardPage() {
                   categories={categories}
                   existingProduct={p}
                   t={t}
-                  onDone={() => {
+                  onDone={async () => {
                     setFormState({ mode: "closed" });
-                    loadData();
+                    await onChanged();
                   }}
                   onCancel={() => setFormState({ mode: "closed" })}
                 />
@@ -233,57 +581,47 @@ export default function DashboardPage() {
             )}
           </div>
         ))}
-        {products.length === 0 && (
+        {filtered.length === 0 && (
           <p className="text-sm text-neutral-500 p-8 text-center">
-            {t.dashboard.noListingsYet}
+            {products.length === 0 ? t.dashboard.noListingsYet : t.dashboard.noProductsMatchSearch}
           </p>
         )}
       </div>
+    </div>
+  );
+}
 
-      <h2 className="text-lg font-semibold mt-10 mb-4">{t.dashboard.orders}</h2>
-      {orders.length === 0 ? (
-        <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
-          {t.dashboard.noOrdersYet}
+// Part of the Trust & payouts tab — a plain record of money actually
+// sent, since before this a seller could only see a live "amount
+// owed" number with no history of what was already paid and when.
+// Nothing new to fetch: payout_sent/payout_sent_at were already on
+// every order, just never shown anywhere on the dashboard.
+function PayoutHistory({ orders, t }: { orders: Order[]; t: Dictionary }) {
+  const paidOrders = orders
+    .filter((o) => o.status === "completed" && o.payout_sent)
+    .sort(
+      (a, b) =>
+        new Date(b.payout_sent_at ?? b.updated_at).getTime() - new Date(a.payout_sent_at ?? a.updated_at).getTime()
+    );
+
+  return (
+    <div>
+      <p className="text-sm font-semibold mb-3">{t.dashboard.payoutHistoryTitle}</p>
+      {paidOrders.length === 0 ? (
+        <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-6 text-center">
+          {t.dashboard.noPayoutsYet}
         </p>
       ) : (
         <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
-          {orders.map((o) => (
-            <div key={o.id} className="flex items-center gap-3 p-4">
-              <div className="flex-1">
-                <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
+          {paidOrders.map((o) => (
+            <div key={o.id} className="flex items-center justify-between p-4 text-sm">
+              <div>
+                <p className="font-medium">{formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}</p>
                 <p className="text-xs text-neutral-500">
-                  {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
-                  {o.status === "paid_held" && o.accepted_at
-                    ? t.dashboard.preparingStatus
-                    : t.dashboard.statusLabels[o.status] ?? o.status}
-                  {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
+                  {o.payout_sent_at ? new Date(o.payout_sent_at).toLocaleDateString() : ""}
                 </p>
-                {o.status === "completed" && (
-                  <p className="text-xs text-neutral-400 mt-0.5">
-                    {t.dashboard.youReceive} {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
-                  </p>
-                )}
               </div>
-              {o.status === "paid_held" && !o.accepted_at && (
-                <button
-                  onClick={() => handleAccept(o.id)}
-                  disabled={acceptingId === o.id}
-                  className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
-                >
-                  {acceptingId === o.id ? t.dashboard.accepting : t.dashboard.acceptOrder}
-                </button>
-              )}
-              {o.status === "paid_held" && (
-                <button
-                  onClick={async () => {
-                    await markOrderShipped(o.id);
-                    loadData();
-                  }}
-                  className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900"
-                >
-                  {t.dashboard.markShipped}
-                </button>
-              )}
+              <p className="text-xs text-neutral-400">{o.buyer_phone ?? t.dashboard.unknownBuyer}</p>
             </div>
           ))}
         </div>
@@ -380,7 +718,7 @@ function ShopSettingsForm({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-10 flex flex-col gap-4">
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-4">
       <p className="text-sm font-semibold">{t.dashboard.shopSettingsTitle}</p>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopLogoLabel}</label>
@@ -513,7 +851,7 @@ function VerificationPanel({
 
   if (shop.is_verified) {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 p-5 mb-10 text-sm text-green-800">
+      <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-800">
         🛡️ {t.dashboard.verificationVerified}
       </div>
     );
@@ -521,7 +859,7 @@ function VerificationPanel({
 
   if (shop.verification_requested_at) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 mb-10 text-sm text-amber-900">
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
         {t.dashboard.verificationPending}
       </div>
     );
@@ -545,7 +883,7 @@ function VerificationPanel({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-10 flex flex-col gap-3">
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
       <p className="text-sm font-semibold">{t.dashboard.verificationTitle}</p>
       <p className="text-sm text-neutral-600">{t.sell.step8Body}</p>
       {shop.verification_rejected_reason && (

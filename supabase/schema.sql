@@ -266,6 +266,18 @@ create policy "Sellers update orders on their shop" on orders
     shop_id in (select id from shops where owner_id = auth.uid())
   );
 
+-- Lets the seller dashboard show what was actually ordered (product +
+-- quantity), not just a total amount — without this, order_items has
+-- RLS on but no read policy, so it would come back empty for sellers.
+create policy "Sellers view order items for their own orders" on order_items
+  for select using (
+    order_id in (
+      select id from orders where shop_id in (
+        select id from shops where owner_id = auth.uid()
+      )
+    )
+  );
+
 create policy "Public can view reviews" on reviews
   for select using (true);
 

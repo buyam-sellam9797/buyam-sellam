@@ -141,6 +141,22 @@ export type Order = {
   accepted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Only present when fetched via getMyOrders (the seller dashboard) —
+  // other order reads (buyer order history, guest tracking) don't join
+  // this in, so it's optional rather than always required.
+  items?: OrderLineItem[];
+};
+
+// One line of a seller's order — which product, how many, and the
+// price it was bought at (kept even if the seller later changes the
+// product's price, since this is what was actually charged). Only
+// populated on getMyOrders (the seller dashboard) for now — this is
+// the "what do I actually pack in the box" information that was
+// missing before.
+export type OrderLineItem = {
+  quantity: number;
+  unit_price_fcfa: number;
+  product: { id: string; title: string; image_urls: string[] } | null;
 };
 
 export type BuyerOrder = Order & {
@@ -480,16 +496,26 @@ export async function getShopBySlug(slug: string): Promise<Shop | null> {
   return data;
 }
 
-export async function getShopProducts(shopId: string): Promise<Product[]> {
+// By default this only returns live, buyable listings (used by the
+// public shop page and the onboarding wizard's "do I have any
+// products yet" check). Pass includeInactive: true for the seller's
+// own dashboard, where a paused listing still needs to show up so the
+// seller can turn it back on — it just shouldn't show to buyers.
+export async function getShopProducts(
+  shopId: string,
+  opts?: { includeInactive?: boolean }
+): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
+  let query = supabase
     .from("products")
     .select(
       "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, category:categories(name, slug)"
     )
-    .eq("shop_id", shopId)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
+    .eq("shop_id", shopId);
+  if (!opts?.includeInactive) {
+    query = query.eq("is_active", true);
+  }
+  const { data, error } = await query.order("created_at", { ascending: false });
   if (error) {
     console.error("getShopProducts error:", error.message);
     return [];
@@ -851,6 +877,15 @@ export async function deleteProduct(productId: string) {
   if (error) throw new Error(error.message);
 }
 
+// Pausing hides a listing from buyers (same effect as deleting, as far
+// as the storefront is concerned) without losing it — a seller who's
+// temporarily out of stock can flip it back on later instead of
+// re-creating the whole listing from scratch.
+export async function setProductActive(productId: string, isActive: boolean) {
+  const { error } = await supabase.from("products").update({ is_active: isActive }).eq("id", productId);
+  if (error) throw new Error(error.message);
+}
+
 export async function uploadShopLogo(file: File, shopId: string): Promise<string> {
   const ext = file.name.split(".").pop() || "jpg";
   const path = `${shopId}/logo-${Date.now()}.${ext}`;
@@ -892,7 +927,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
@@ -900,7 +935,32 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
     console.error("getMyOrders error:", error.message);
     return [];
   }
-  return data ?? [];
+  // order_items comes back as its own array per order (a seller needed
+  // an RLS policy added specifically to read it — see
+  // migration_012_seller_order_items_policy.sql); product nested inside
+  // each item can come back as an object or a single-item array
+  // depending on how Supabase resolves the relationship, same quirk as
+  // the shop join elsewhere in this file, so it's normalized the same way.
+  return (data ?? []).map((row) => {
+    const rawItems = (row as unknown as { order_items?: unknown }).order_items;
+    const items: OrderLineItem[] = Array.isArray(rawItems)
+      ? (rawItems as Array<{
+          quantity: number;
+          unit_price_fcfa: number;
+          product:
+            | { id: string; title: string; image_urls: string[] }
+            | { id: string; title: string; image_urls: string[] }[]
+            | null;
+        }>).map((item) => ({
+          quantity: item.quantity,
+          unit_price_fcfa: item.unit_price_fcfa,
+          product: Array.isArray(item.product) ? (item.product[0] ?? null) : item.product,
+        }))
+      : [];
+    const { order_items: _omit, ...rest } = row as Record<string, unknown>;
+    void _omit;
+    return { ...rest, items } as Order;
+  });
 }
 
 // Seller taps "Accept order" on a freshly paid-held order — purely a
