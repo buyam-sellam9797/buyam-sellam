@@ -127,6 +127,26 @@ create table if not exists order_items (
 );
 
 -- ============================================================
+-- BUYER ADDRESSES
+-- Saved delivery addresses for logged-in buyers, so checkout can be a
+-- one-tap pick instead of retyping everything each time. Guests never
+-- touch this table — they just fill delivery fields directly at checkout.
+-- ============================================================
+create table if not exists buyer_addresses (
+  id uuid primary key default gen_random_uuid(),
+  buyer_id uuid not null references profiles(id) on delete cascade,
+  label text,
+  full_name text not null,
+  phone text not null,
+  city text not null,
+  neighborhood text,
+  address text,
+  notes text,
+  is_default boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- ============================================================
 -- PAYMENT EVENTS
 -- Audit trail of every webhook received from Campay/NotchPay,
 -- so a payment dispute can always be traced back to raw data.
@@ -190,6 +210,7 @@ alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table reviews enable row level security;
 alter table disputes enable row level security;
+alter table buyer_addresses enable row level security;
 
 -- Anyone can read active shops and products (public storefront browsing)
 create policy "Public can view active shops" on shops
@@ -212,16 +233,17 @@ create policy "Sellers manage their own products" on products
   );
 
 -- A buyer sees their own orders; a seller sees orders placed on their shop.
--- Note: there is currently no buyer signup/login at all (every buyer
--- checks out as a guest, identified only by buyer_phone) — so
--- buyer_id is always null and these two buyer_id-based policies never
--- actually match anything today. They're left in place, inert, as the
--- sane default for if/when logged-in buyer accounts are added; every
--- buyer-facing read/write in the app currently goes through trusted
--- server routes using the service-role key instead (see /api/orders,
--- /api/checkout).
+-- Buyers can be logged in (buyer_id set, read directly through these
+-- policies via the buyer's own session) or guests (buyer_id null,
+-- identified only by buyer_phone — those reads/writes go through
+-- trusted server routes using the service-role key instead, e.g.
+-- /api/orders/[id] and /api/orders/lookup, since a guest has no
+-- auth.uid() for RLS to check against).
 create policy "Buyers view their own orders" on orders
   for select using (auth.uid() = buyer_id);
+
+create policy "Buyers manage their own addresses" on buyer_addresses
+  for all using (auth.uid() = buyer_id) with check (auth.uid() = buyer_id);
 
 create policy "Sellers view orders on their shop" on orders
   for select using (

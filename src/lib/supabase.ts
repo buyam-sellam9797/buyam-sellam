@@ -41,6 +41,28 @@ export type Shop = {
   verification_rejected_reason: string | null;
 };
 
+export type BuyerProfile = {
+  id: string;
+  role: string;
+  full_name: string | null;
+  phone_number: string | null;
+  city: string | null;
+};
+
+export type BuyerAddress = {
+  id: string;
+  buyer_id: string;
+  label: string | null;
+  full_name: string;
+  phone: string;
+  city: string;
+  neighborhood: string | null;
+  address: string | null;
+  notes: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
 export type ProductCondition = "new" | "like_new" | "used";
 
 export type Product = {
@@ -107,6 +129,10 @@ export type Order = {
   accepted_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type BuyerOrder = Order & {
+  shop: Pick<Shop, "shop_name" | "slug"> | null;
 };
 
 export type DisputeReason =
@@ -495,6 +521,164 @@ export async function createSellerAccount(input: {
   if (!res.ok) throw new Error(data.error ?? "Could not create your shop.");
 
   return { hasSession: Boolean(signUpData.session), slug: data.slug };
+}
+
+// Same shape of account as a seller (Supabase Auth + a profiles row),
+// just role: 'buyer' and no shop. Also routed through a server route
+// for the same reason as createSellerAccount: right after sign-up there
+// may not be an active session yet if email confirmation is required.
+export async function createBuyerAccount(input: {
+  fullName: string;
+  email: string;
+  password: string;
+  phone: string;
+  city: string;
+  locale?: "en" | "fr";
+}): Promise<{ hasSession: boolean }> {
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: input.email,
+    password: input.password,
+    options: { data: { locale: input.locale ?? "en" } },
+  });
+  if (signUpError) throw new Error(signUpError.message);
+  const user = signUpData.user;
+  if (!user) {
+    throw new Error("Could not create your account — please try again.");
+  }
+
+  const res = await fetch("/api/signup-buyer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: user.id,
+      fullName: input.fullName,
+      phone: input.phone,
+      city: input.city,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Could not finish creating your account.");
+
+  return { hasSession: Boolean(signUpData.session) };
+}
+
+// Which role a signed-in account has, for the login page to route to
+// the right dashboard (buyer/seller/admin all share one login form).
+// Also used by the /account page itself and elsewhere to read the
+// buyer's own name/phone/city for pre-filling forms.
+export async function getMyProfile(): Promise<BuyerProfile | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, role, full_name, phone_number, city")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (error) {
+    console.error("getMyProfile error:", error.message);
+    return null;
+  }
+  return data;
+}
+
+export async function updateBuyerProfile(input: {
+  fullName?: string;
+  phone?: string;
+  city?: string;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) throw new Error("Not signed in.");
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      ...(input.fullName !== undefined ? { full_name: input.fullName || null } : {}),
+      ...(input.phone !== undefined ? { phone_number: input.phone || null } : {}),
+      ...(input.city !== undefined ? { city: input.city || null } : {}),
+    })
+    .eq("id", user.id);
+  if (error) throw new Error(error.message);
+}
+
+// A logged-in buyer's own order history, across every shop — unlike
+// the guest /track-order lookup (phone match, summary fields only),
+// this is a real per-account read backed by the "Buyers view their own
+// orders" RLS policy, so it can safely show full delivery details.
+export async function getMyBuyerOrders(): Promise<BuyerOrder[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug)"
+    )
+    .eq("buyer_id", user.id)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("getMyBuyerOrders error:", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => ({
+    ...row,
+    shop: Array.isArray(row.shop) ? (row.shop[0] ?? null) : row.shop,
+  })) as BuyerOrder[];
+}
+
+export async function getMyAddresses(): Promise<BuyerAddress[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("buyer_addresses")
+    .select("*")
+    .eq("buyer_id", user.id)
+    .order("is_default", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("getMyAddresses error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export async function createAddress(input: {
+  label?: string;
+  fullName: string;
+  phone: string;
+  city: string;
+  neighborhood?: string;
+  address?: string;
+  notes?: string;
+  isDefault?: boolean;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) throw new Error("Not signed in.");
+
+  // Only one address can be the default at a time.
+  if (input.isDefault) {
+    await supabase.from("buyer_addresses").update({ is_default: false }).eq("buyer_id", user.id);
+  }
+
+  const { error } = await supabase.from("buyer_addresses").insert({
+    buyer_id: user.id,
+    label: input.label || null,
+    full_name: input.fullName,
+    phone: input.phone,
+    city: input.city,
+    neighborhood: input.neighborhood || null,
+    address: input.address || null,
+    notes: input.notes || null,
+    is_default: Boolean(input.isDefault),
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteAddress(addressId: string): Promise<void> {
+  const { error } = await supabase.from("buyer_addresses").delete().eq("id", addressId);
+  if (error) throw new Error(error.message);
 }
 
 export async function createProduct(input: {

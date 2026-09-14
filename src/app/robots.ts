@@ -14,9 +14,11 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/admin",
         "/dashboard",
+        "/account",
         "/checkout/",
         "/order/",
         "/login",
+        "/buyer-signup",
         "/forgot-password",
         "/reset-password",
         "/track-order",

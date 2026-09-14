@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { supabase, getMyProfile } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
 
 export default function LoginPage() {
@@ -19,12 +19,23 @@ export default function LoginPage() {
     setError(null);
     setSubmitting(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setSubmitting(false);
     if (error) {
+      setSubmitting(false);
       setError(error.message);
       return;
     }
-    router.push("/dashboard");
+    // One login form for buyers, sellers, and admins — route each to
+    // their own home base based on the profile role rather than
+    // assuming everyone who logs in is a seller.
+    const profile = await getMyProfile();
+    setSubmitting(false);
+    if (profile?.role === "admin") {
+      router.push("/admin");
+    } else if (profile?.role === "seller") {
+      router.push("/dashboard");
+    } else {
+      router.push("/account");
+    }
   }
 
   return (
@@ -75,6 +86,12 @@ export default function LoginPage() {
         >
           {submitting ? t.login.loggingIn : t.login.submit}
         </button>
+        <p className="text-xs text-neutral-500 text-center">
+          {t.login.noAccountYet}{" "}
+          <Link href="/buyer-signup" className="text-amber-600 hover:underline">
+            {t.login.createBuyerAccount}
+          </Link>
+        </p>
         <p className="text-xs text-neutral-500 text-center">
           {t.login.noShopYet}{" "}
           <Link href="/sell" className="text-amber-600 hover:underline">

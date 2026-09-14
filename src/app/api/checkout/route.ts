@@ -70,6 +70,20 @@ export async function POST(req: NextRequest) {
   if (!productId || !provider || !phone) {
     return NextResponse.json({ error: "Missing product, provider, or phone." }, { status: 400 });
   }
+
+  // Logged-in buyers are optional — most checkouts are still guests
+  // identified only by phone. When an Authorization header is present
+  // (a signed-in buyer completing checkout), resolve it to a user id so
+  // the order can be tied to their account and show up in /account's
+  // order history. A missing or invalid token just falls back to guest
+  // checkout exactly as before — it never blocks the purchase.
+  let buyerId: string | null = null;
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearerToken = authHeader.replace(/^Bearer\s+/i, "");
+  if (bearerToken) {
+    const { data: userData } = await admin.auth.getUser(bearerToken);
+    if (userData?.user) buyerId = userData.user.id;
+  }
   if (!deliveryName || !deliveryCity) {
     return NextResponse.json(
       { error: "Please tell us who to deliver this to, and which city." },
@@ -112,6 +126,7 @@ export async function POST(req: NextRequest) {
       total_amount_fcfa: totalAmountFcfa,
       payment_provider: "notchpay",
       payment_reference: orderReference,
+      buyer_id: buyerId,
       buyer_phone: phone,
       delivery_name: deliveryName,
       delivery_city: deliveryCity,

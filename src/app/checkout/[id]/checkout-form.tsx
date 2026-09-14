@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { Product } from "@/lib/supabase";
+import { supabase, getMyAddresses, type Product, type BuyerAddress } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 
@@ -29,6 +29,9 @@ export default function CheckoutForm({
   const [status, setStatus] = useState<Status>("form");
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxQuantity = Math.max(1, product.stock_quantity);
   const total = product.price_fcfa * quantity + deliveryFee;
@@ -39,6 +42,34 @@ export default function CheckoutForm({
     };
   }, []);
 
+  // If the buyer is logged in, offer their saved addresses as a
+  // one-tap pick, and attach their session so the order lands in their
+  // account's order history instead of being guest-only. Purely
+  // additive — guests see none of this and checkout works unchanged.
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) return;
+      setAccessToken(session.access_token);
+      const myAddresses = await getMyAddresses();
+      setAddresses(myAddresses);
+      const preferred = myAddresses.find((a) => a.is_default) ?? myAddresses[0];
+      if (preferred) applyAddress(preferred);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyAddress(a: BuyerAddress) {
+    setSelectedAddressId(a.id);
+    setDeliveryName(a.full_name);
+    setDeliveryCity(a.city);
+    setDeliveryNeighborhood(a.neighborhood ?? "");
+    setDeliveryAddress(a.address ?? "");
+    if (!phone) setPhone(a.phone);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -47,7 +78,10 @@ export default function CheckoutForm({
     try {
       const startRes = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
         body: JSON.stringify({
           productId: product.id,
           quantity,
@@ -196,6 +230,24 @@ export default function CheckoutForm({
 
       <div>
         <p className="text-sm font-semibold mb-2">{t.checkout.deliveryInfoTitle}</p>
+        {addresses.length > 0 && (
+          <div className="mb-3">
+            <select
+              value={selectedAddressId}
+              onChange={(e) => {
+                const a = addresses.find((x) => x.id === e.target.value);
+                if (a) applyAddress(a);
+              }}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            >
+              {addresses.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label || t.checkout.savedAddressFallbackLabel} — {a.city}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="flex flex-col gap-3">
           <input
             required
