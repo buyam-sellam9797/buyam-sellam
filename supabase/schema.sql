@@ -36,6 +36,9 @@ create table if not exists shops (
   is_active boolean not null default true,
   verification_requested_at timestamptz,   -- seller asked for a verification review, from the onboarding wizard
   view_count integer not null default 0,   -- storefront page views, shown on the seller dashboard
+  verification_id_photo_path text,      -- path (not a public URL) inside the private verification-documents bucket
+  verification_note text,               -- seller's own note submitted with a verification request (e.g. ID/business reg number)
+  verification_rejected_reason text,    -- set by admin when a request is turned down, shown back to the seller
   created_at timestamptz not null default now()
 );
 
@@ -208,7 +211,15 @@ create policy "Sellers manage their own products" on products
     shop_id in (select id from shops where owner_id = auth.uid())
   );
 
--- A buyer sees their own orders; a seller sees orders placed on their shop
+-- A buyer sees their own orders; a seller sees orders placed on their shop.
+-- Note: there is currently no buyer signup/login at all (every buyer
+-- checks out as a guest, identified only by buyer_phone) — so
+-- buyer_id is always null and these two buyer_id-based policies never
+-- actually match anything today. They're left in place, inert, as the
+-- sane default for if/when logged-in buyer accounts are added; every
+-- buyer-facing read/write in the app currently goes through trusted
+-- server routes using the service-role key instead (see /api/orders,
+-- /api/checkout).
 create policy "Buyers view their own orders" on orders
   for select using (auth.uid() = buyer_id);
 
@@ -271,3 +282,23 @@ on conflict (id) do nothing;
 
 create policy "Public can view dispute evidence" on storage.objects
   for select using (bucket_id = 'dispute-evidence');
+
+-- Private — unlike the two buckets above, ID photos must never be
+-- publicly readable. No select policy is added here on purpose: only
+-- the service role (used by the admin API routes) can read from it,
+-- which bypasses RLS entirely. Sellers can only upload into their own
+-- shop's folder within the bucket.
+insert into storage.buckets (id, name, public)
+values ('verification-documents', 'verification-documents', false)
+on conflict (id) do nothing;
+
+create policy "Sellers upload their own verification documents" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'verification-documents'
+    and exists (
+      select 1 from shops
+      where shops.id::text = (storage.foldername(name))[1]
+        and shops.owner_id = auth.uid()
+    )
+  );

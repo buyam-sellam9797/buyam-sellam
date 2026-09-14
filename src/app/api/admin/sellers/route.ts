@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
 
   const { data: shops, error } = await admin
     .from("shops")
-    .select("id, shop_name, city, is_verified, is_active, verification_requested_at, view_count, created_at")
+    .select(
+      "id, shop_name, city, is_verified, is_active, verification_requested_at, verification_note, verification_id_photo_path, verification_rejected_reason, view_count, created_at"
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -33,12 +35,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ shops: enriched });
 }
 
-// Admin toggles a shop's verified badge or active (visible) state.
+// Admin toggles a shop's verified badge or active (visible) state, or
+// rejects a pending verification request with a reason shown back to the seller.
 export async function POST(req: NextRequest) {
   const check = await requireAdmin(req);
   if ("error" in check) return adminErrorResponse(check);
 
-  let body: { shopId?: string; isVerified?: boolean; isActive?: boolean };
+  let body: {
+    shopId?: string;
+    isVerified?: boolean;
+    isActive?: boolean;
+    rejectVerification?: boolean;
+    rejectReason?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -48,9 +57,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing shopId." }, { status: 400 });
   }
 
-  const update: Record<string, boolean> = {};
-  if (typeof body.isVerified === "boolean") update.is_verified = body.isVerified;
+  const update: Record<string, boolean | string | null> = {};
+  if (typeof body.isVerified === "boolean") {
+    update.is_verified = body.isVerified;
+    // Approving clears any earlier rejection note.
+    if (body.isVerified) update.verification_rejected_reason = null;
+  }
   if (typeof body.isActive === "boolean") update.is_active = body.isActive;
+  if (body.rejectVerification) {
+    update.verification_requested_at = null;
+    update.verification_rejected_reason = body.rejectReason?.trim() || "Not approved.";
+  }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
   }

@@ -8,7 +8,7 @@ import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import type { Dictionary } from "@/lib/i18n";
 
-type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts";
+type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts" | "admins";
 
 type Overview = {
   totalUsers: number;
@@ -38,6 +38,9 @@ type AdminSeller = {
   is_verified: boolean;
   is_active: boolean;
   verification_requested_at: string | null;
+  verification_note: string | null;
+  verification_id_photo_path: string | null;
+  verification_rejected_reason: string | null;
   view_count: number;
   created_at: string;
   orderCount: number;
@@ -133,6 +136,7 @@ export default function AdminPage() {
     { key: "products", label: t.admin.tabProducts },
     { key: "disputes", label: t.admin.tabDisputes },
     { key: "payouts", label: t.admin.tabPayouts },
+    { key: "admins", label: t.admin.tabAdmins },
   ];
 
   return (
@@ -161,6 +165,7 @@ export default function AdminPage() {
       {tab === "products" && <ProductsTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "disputes" && <DisputesTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "payouts" && <PayoutsTab token={token} t={t} setAuthError={setAuthError} />}
+      {tab === "admins" && <AdminsTab token={token} t={t} setAuthError={setAuthError} />}
     </div>
   );
 }
@@ -289,6 +294,10 @@ function SellersTab({
 }) {
   const [sellers, setSellers] = useState<AdminSeller[] | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [loadingPhotoId, setLoadingPhotoId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const load = useCallback(async () => {
     const res = await authedFetch("/api/admin/sellers", token);
@@ -317,42 +326,131 @@ function SellersTab({
     setTogglingId(null);
   }
 
+  async function viewPhoto(shop: AdminSeller) {
+    setPhotoError(null);
+    setLoadingPhotoId(shop.id);
+    try {
+      const res = await authedFetch("/api/admin/verification-photo", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shopId: shop.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPhotoError(json.error ?? t.admin.notAuthorized);
+        return;
+      }
+      window.open(json.url, "_blank", "noopener,noreferrer");
+    } finally {
+      setLoadingPhotoId(null);
+    }
+  }
+
+  async function submitReject(shop: AdminSeller) {
+    setTogglingId(shop.id);
+    await authedFetch("/api/admin/sellers", token, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shopId: shop.id, rejectVerification: true, rejectReason }),
+    });
+    setRejectingId(null);
+    setRejectReason("");
+    await load();
+    setTogglingId(null);
+  }
+
   if (!sellers) return <p className="text-sm text-neutral-500">{t.admin.loading}</p>;
   if (sellers.length === 0) return <p className="text-sm text-neutral-500">{t.admin.noneFound}</p>;
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+      {photoError && <p className="text-xs text-red-600 px-4 pt-3">{photoError}</p>}
       {sellers.map((s) => (
-        <div key={s.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
-          <div className="flex-1 min-w-[8rem]">
-            <p className="font-medium">{s.shop_name}</p>
-            <p className="text-xs text-neutral-500">{s.city}</p>
-          </div>
-          <p className="w-20 text-xs text-neutral-500">
-            {t.admin.colOrders}: {s.orderCount}
-          </p>
-          <p className="w-24 text-xs text-neutral-500">
-            {s.reviewCount > 0 ? `⭐ ${s.rating.toFixed(1)}` : "—"}
-          </p>
-          <span
-            className={`text-xs font-semibold rounded-full px-2.5 py-1 ${
-              s.is_verified ? "bg-green-50 text-green-700 border border-green-200" : "bg-neutral-100 text-neutral-500"
-            }`}
-          >
-            {s.is_verified ? `🛡️ ${t.admin.verifyBadge}` : t.admin.unverifyBadge}
-          </span>
-          {!s.is_verified && s.verification_requested_at && (
-            <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200">
-              {t.admin.verificationRequested}
+        <div key={s.id} className="flex flex-col gap-2 p-4 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[8rem]">
+              <p className="font-medium">{s.shop_name}</p>
+              <p className="text-xs text-neutral-500">{s.city}</p>
+            </div>
+            <p className="w-20 text-xs text-neutral-500">
+              {t.admin.colOrders}: {s.orderCount}
+            </p>
+            <p className="w-24 text-xs text-neutral-500">
+              {s.reviewCount > 0 ? `⭐ ${s.rating.toFixed(1)}` : "—"}
+            </p>
+            <span
+              className={`text-xs font-semibold rounded-full px-2.5 py-1 ${
+                s.is_verified ? "bg-green-50 text-green-700 border border-green-200" : "bg-neutral-100 text-neutral-500"
+              }`}
+            >
+              {s.is_verified ? `🛡️ ${t.admin.verifyBadge}` : t.admin.unverifyBadge}
             </span>
+            {!s.is_verified && s.verification_requested_at && (
+              <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200">
+                {t.admin.verificationRequested}
+              </span>
+            )}
+            {s.verification_id_photo_path && (
+              <button
+                onClick={() => viewPhoto(s)}
+                disabled={loadingPhotoId === s.id}
+                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+              >
+                {loadingPhotoId === s.id ? t.admin.loading : t.admin.viewIdPhoto}
+              </button>
+            )}
+            {!s.is_verified && s.verification_requested_at && rejectingId !== s.id && (
+              <button
+                onClick={() => setRejectingId(s.id)}
+                className="text-xs rounded-full border border-red-300 text-red-700 px-3 py-1.5 hover:border-red-500 disabled:opacity-60"
+              >
+                {t.admin.rejectAction}
+              </button>
+            )}
+            <button
+              onClick={() => toggleVerified(s)}
+              disabled={togglingId === s.id}
+              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+            >
+              {s.is_verified ? t.admin.unverifyAction : t.admin.verifyAction}
+            </button>
+          </div>
+          {s.verification_note && (
+            <p className="text-xs text-neutral-500">
+              {t.admin.verificationNoteLabel} {s.verification_note}
+            </p>
           )}
-          <button
-            onClick={() => toggleVerified(s)}
-            disabled={togglingId === s.id}
-            className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
-          >
-            {s.is_verified ? t.admin.unverifyAction : t.admin.verifyAction}
-          </button>
+          {!s.is_verified && !s.verification_requested_at && s.verification_rejected_reason && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 inline-block w-fit">
+              {t.admin.verificationRejectedLabel} {s.verification_rejected_reason}
+            </p>
+          )}
+          {rejectingId === s.id && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder={t.admin.rejectReasonPlaceholder}
+                className="text-xs rounded-lg border border-neutral-300 px-3 py-1.5 flex-1 min-w-[12rem]"
+              />
+              <button
+                onClick={() => submitReject(s)}
+                disabled={togglingId === s.id}
+                className="text-xs rounded-full bg-red-600 text-white px-3 py-1.5 disabled:opacity-60"
+              >
+                {t.admin.rejectConfirm}
+              </button>
+              <button
+                onClick={() => {
+                  setRejectingId(null);
+                  setRejectReason("");
+                }}
+                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5"
+              >
+                {t.admin.rejectCancel}
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -611,6 +709,109 @@ function PayoutsTab({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function AdminsTab({
+  token,
+  t,
+  setAuthError,
+}: {
+  token: string;
+  t: Dictionary;
+  setAuthError: (e: string | null) => void;
+}) {
+  const [admins, setAdmins] = useState<{ id: string; email: string }[] | null>(null);
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await authedFetch("/api/admin/promote", token);
+    const json = await res.json();
+    if (!res.ok) {
+      setAuthError(json.error ?? t.admin.notAuthorized);
+      return;
+    }
+    setAdmins(json.admins);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    setSubmitting(true);
+    try {
+      const res = await authedFetch("/api/admin/promote", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? t.admin.notAuthorized);
+        return;
+      }
+      setSuccess(t.admin.adminGranted);
+      setEmail("");
+      await load();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 max-w-md">
+      <form onSubmit={handleSubmit} className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+        <p className="text-sm font-semibold">{t.admin.grantAdminTitle}</p>
+        <p className="text-xs text-neutral-500">{t.admin.grantAdminHint}</p>
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder={t.admin.adminEmailPlaceholder}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        {error && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        )}
+        {success && (
+          <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{success}</p>
+        )}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+        >
+          {submitting ? t.admin.marking : t.admin.grantAdminAction}
+        </button>
+      </form>
+
+      <div>
+        <p className="text-sm font-semibold mb-2">{t.admin.currentAdminsTitle}</p>
+        {!admins ? (
+          <p className="text-sm text-neutral-500">{t.admin.loading}</p>
+        ) : admins.length === 0 ? (
+          <p className="text-sm text-neutral-500">{t.admin.noneFound}</p>
+        ) : (
+          <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+            {admins.map((a) => (
+              <p key={a.id} className="text-sm px-4 py-2.5">
+                {a.email}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

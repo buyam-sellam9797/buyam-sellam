@@ -10,6 +10,8 @@ import {
   getCategories,
   deleteProduct,
   uploadShopLogo,
+  uploadVerificationDocument,
+  requestShopVerification,
   markOrderShipped,
   markOrderAccepted,
   updateShop,
@@ -150,6 +152,8 @@ export default function DashboardPage() {
       </p>
 
       <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />
+
+      <VerificationPanel shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{t.dashboard.yourListings}</h2>
@@ -430,6 +434,101 @@ function ShopSettingsForm({
           <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// Verification is never required to sell — a shop is fully functional
+// without it. This panel is just where a seller who skipped it during
+// onboarding (or whose request was turned down) can request or
+// re-request a review. Hidden once the shop is actually verified.
+function VerificationPanel({
+  shop,
+  t,
+  onSaved,
+}: {
+  shop: Shop;
+  t: Dictionary;
+  onSaved: (patch: Partial<Shop>) => void;
+}) {
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [note, setNote] = useState(shop.verification_note ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (shop.is_verified) {
+    return (
+      <div className="rounded-xl border border-green-200 bg-green-50 p-5 mb-10 text-sm text-green-800">
+        🛡️ {t.dashboard.verificationVerified}
+      </div>
+    );
+  }
+
+  if (shop.verification_requested_at) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 mb-10 text-sm text-amber-900">
+        {t.dashboard.verificationPending}
+      </div>
+    );
+  }
+
+  async function handleRequest() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      let idPhotoPath: string | undefined;
+      if (idFile) {
+        idPhotoPath = await uploadVerificationDocument(idFile, shop.id);
+      }
+      await requestShopVerification(shop.id, { idPhotoPath, note });
+      onSaved({ verification_requested_at: new Date().toISOString(), verification_rejected_reason: null });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not submit your request.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-10 flex flex-col gap-3">
+      <p className="text-sm font-semibold">{t.dashboard.verificationTitle}</p>
+      <p className="text-sm text-neutral-600">{t.sell.step8Body}</p>
+      {shop.verification_rejected_reason && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {t.dashboard.verificationRejected} {shop.verification_rejected_reason}
+        </p>
+      )}
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.sell.step8IdPhotoLabel}</label>
+        <p className="text-xs text-neutral-500 mb-1.5">{t.sell.step8IdPhotoHint}</p>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setIdFile(e.target.files?.[0] ?? null)}
+          className="text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.sell.step8NoteLabel}</label>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t.sell.step8NotePlaceholder}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
+      {error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
+      <button
+        onClick={handleRequest}
+        disabled={submitting}
+        className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+      >
+        {submitting ? t.dashboard.saving : t.sell.step8RequestBtn}
+      </button>
     </div>
   );
 }

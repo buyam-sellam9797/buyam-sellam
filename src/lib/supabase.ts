@@ -36,6 +36,9 @@ export type Shop = {
   is_active: boolean;
   verification_requested_at: string | null;
   view_count: number;
+  verification_id_photo_path: string | null;
+  verification_note: string | null;
+  verification_rejected_reason: string | null;
 };
 
 export type ProductCondition = "new" | "like_new" | "used";
@@ -241,6 +244,17 @@ export async function getActiveProducts(
     rows = rows
       .map((p) => ({ ...p, shopRating: ratings.get(p.shop_id) ?? 0 }))
       .sort((a, b) => (b.shopRating ?? 0) - (a.shopRating ?? 0));
+  } else if (!filters?.sort || filters.sort === "newest") {
+    // One concrete advantage of verification: on the default browse
+    // order, verified shops' listings float to the top. Array.sort is
+    // stable, and rows already arrived newest-first from the DB query,
+    // so within "verified" and "not verified" each group stays
+    // newest-first — this only reorders the two groups relative to
+    // each other. Skipped for price/rating sorts, where the buyer's
+    // explicit sort choice should win over this.
+    rows = [...rows].sort(
+      (a, b) => Number(Boolean(b.shop?.is_verified)) - Number(Boolean(a.shop?.is_verified))
+    );
   }
 
   return rows;
@@ -578,13 +592,25 @@ export async function updateShop(
 }
 
 // Marks the shop as having asked a human at Buyam Sellam to review it
-// for the verified badge — surfaced in the admin Sellers tab. Doesn't
-// verify anything itself (that's still a manual admin decision), it
-// just puts the shop on the list to look at.
-export async function requestShopVerification(shopId: string) {
+// for the verified badge — surfaced in the admin Sellers tab, along
+// with whatever ID photo/note the seller submitted as evidence. This
+// is always optional: a shop sells fine without ever calling this.
+// Doesn't verify anything itself (that's still a manual admin
+// decision) — it just puts the shop, and its evidence, in front of a
+// human. Clears any previous rejection reason, since asking again is
+// a fresh request.
+export async function requestShopVerification(
+  shopId: string,
+  input?: { idPhotoPath?: string; note?: string }
+) {
   const { error } = await supabase
     .from("shops")
-    .update({ verification_requested_at: new Date().toISOString() })
+    .update({
+      verification_requested_at: new Date().toISOString(),
+      verification_rejected_reason: null,
+      ...(input?.idPhotoPath !== undefined ? { verification_id_photo_path: input.idPhotoPath } : {}),
+      ...(input?.note !== undefined ? { verification_note: input.note || null } : {}),
+    })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
 }
@@ -603,6 +629,21 @@ export async function uploadShopLogo(file: File, shopId: string): Promise<string
   if (error) throw new Error(error.message);
   const { data } = supabase.storage.from("product-images").getPublicUrl(path);
   return data.publicUrl;
+}
+
+// ID/business document for a verification request. The bucket is
+// private, so unlike the other two upload helpers this returns the
+// storage PATH, not a public URL — nothing can view it without a
+// signed URL, which only the admin API generates on demand (see
+// /api/admin/verification-photo).
+export async function uploadVerificationDocument(file: File, shopId: string): Promise<string> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `${shopId}/id-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("verification-documents")
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+  if (error) throw new Error(error.message);
+  return path;
 }
 
 export async function uploadProductImage(file: File, shopId: string): Promise<string> {

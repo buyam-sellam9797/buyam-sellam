@@ -10,6 +10,7 @@ import {
   getCategories,
   updateShop,
   uploadShopLogo,
+  uploadVerificationDocument,
   requestShopVerification,
   type Shop,
   type Category,
@@ -701,6 +702,8 @@ function VerificationStep({
   onRequested: () => void;
   onSkip: () => void;
 }) {
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [note, setNote] = useState(shop.verification_note ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -718,7 +721,11 @@ function VerificationStep({
     setSubmitting(true);
     setError(null);
     try {
-      await requestShopVerification(shop.id);
+      let idPhotoPath: string | undefined;
+      if (idFile) {
+        idPhotoPath = await uploadVerificationDocument(idFile, shop.id);
+      }
+      await requestShopVerification(shop.id, { idPhotoPath, note });
       onRequested();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit your request.");
@@ -739,6 +746,25 @@ function VerificationStep({
           </li>
         ))}
       </ul>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.sell.step8IdPhotoLabel}</label>
+        <p className="text-xs text-neutral-500 mb-1.5">{t.sell.step8IdPhotoHint}</p>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setIdFile(e.target.files?.[0] ?? null)}
+          className="text-sm"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.sell.step8NoteLabel}</label>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t.sell.step8NotePlaceholder}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+      </div>
       {error && (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {error}

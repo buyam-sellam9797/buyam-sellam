@@ -67,6 +67,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                         {t.footer.verifiedSellers}
                       </Link>
                     </li>
+                    <li>
+                      <Link href="/track-order" className="hover:text-amber-600">
+                        {t.footer.trackOrder}
+                      </Link>
+                    </li>
                   </ul>
                 </div>
                 <div>
