@@ -8,7 +8,7 @@ import { useLocale } from "@/components/locale-provider";
 
 export default function SellPage() {
   const router = useRouter();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
@@ -32,6 +32,7 @@ export default function SellPage() {
         shopName,
         whatsappNumber: whatsapp,
         city,
+        locale,
       });
       if (result.hasSession) {
         router.push("/dashboard");

@@ -176,10 +176,15 @@ export async function createSellerAccount(input: {
   whatsappNumber: string;
   city: string;
   description?: string;
+  locale?: "en" | "fr";
 }): Promise<{ hasSession: boolean; slug: string }> {
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email: input.email,
     password: input.password,
+    // Stored as user metadata so the confirmation email template can
+    // read it back (as {{ .Data.locale }}) and send French or English
+    // depending on which language the person was signing up in.
+    options: { data: { locale: input.locale ?? "en" } },
   });
   if (signUpError) throw new Error(signUpError.message);
   const user = signUpData.user;
