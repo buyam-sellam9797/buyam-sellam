@@ -22,6 +22,7 @@ import {
   type Order,
   type Category,
   type ShopRatingSummary,
+  type BusinessHours,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
@@ -42,6 +43,17 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
+
+const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+const DEFAULT_BUSINESS_HOURS: BusinessHours = {
+  mon: { closed: false, open: "08:00", close: "18:00" },
+  tue: { closed: false, open: "08:00", close: "18:00" },
+  wed: { closed: false, open: "08:00", close: "18:00" },
+  thu: { closed: false, open: "08:00", close: "18:00" },
+  fri: { closed: false, open: "08:00", close: "18:00" },
+  sat: { closed: false, open: "08:00", close: "18:00" },
+  sun: { closed: true },
+};
 
 // Groups a raw order status (plus the "accepted" flag, which never
 // changes orders.status itself) into the friendlier buckets the
@@ -745,6 +757,24 @@ function ShopSettingsForm({
   const [error, setError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [closedMessage, setClosedMessage] = useState(shop.closed_message ?? "");
+  const [togglingOpen, setTogglingOpen] = useState(false);
+  const [businessHours, setBusinessHours] = useState<BusinessHours>(
+    shop.business_hours ?? DEFAULT_BUSINESS_HOURS
+  );
+
+  async function handleToggleOpen() {
+    setTogglingOpen(true);
+    try {
+      const nextOpen = !shop.is_open;
+      await updateShop(shop.id, { isOpen: nextOpen });
+      onSaved({ ...shop, is_open: nextOpen });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update your shop's status.");
+    } finally {
+      setTogglingOpen(false);
+    }
+  }
 
   // Pinning the shop's location is its own instant action (not tied to
   // the rest of the form's "Save" button) — it saves immediately so a
@@ -793,6 +823,8 @@ function ShopSettingsForm({
         deliveryFeeFcfa,
         deliveryEtaText: deliveryEta,
         logoUrl,
+        closedMessage,
+        businessHours,
       });
       onSaved({
         ...shop,
@@ -800,6 +832,8 @@ function ShopSettingsForm({
         delivery_info: deliveryInfo || null,
         delivery_fee_fcfa: deliveryFeeFcfa,
         delivery_eta_text: deliveryEta || null,
+        closed_message: closedMessage || null,
+        business_hours: businessHours,
         ...(logoUrl !== undefined ? { logo_url: logoUrl } : {}),
       });
       setLogoFile(null);
@@ -812,7 +846,109 @@ function ShopSettingsForm({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">{t.dashboard.shopStatusTitle}</p>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              {shop.is_open ? t.dashboard.shopStatusOpenHint : t.dashboard.shopStatusClosedHint}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleToggleOpen}
+            disabled={togglingOpen}
+            className={`text-sm rounded-full px-4 py-1.5 shrink-0 disabled:opacity-60 ${
+              shop.is_open
+                ? "border border-neutral-300 hover:border-neutral-900"
+                : "bg-neutral-900 text-white"
+            }`}
+          >
+            {togglingOpen
+              ? t.dashboard.saving
+              : shop.is_open
+                ? `🟢 ${t.dashboard.shopStatusOpen}`
+                : `🔴 ${t.dashboard.shopStatusClosed}`}
+          </button>
+        </div>
+        {!shop.is_open && (
+          <div>
+            <label className="text-xs font-medium block mb-1">{t.dashboard.shopClosedMessageLabel}</label>
+            <input
+              value={closedMessage}
+              onChange={(e) => setClosedMessage(e.target.value)}
+              placeholder={t.dashboard.shopClosedMessagePlaceholder}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-neutral-400 mt-1">{t.dashboard.shopClosedMessageHint}</p>
+          </div>
+        )}
+        <a
+          href={`/shop/${shop.slug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-amber-700 underline self-start"
+        >
+          {t.dashboard.previewShop} ↗
+        </a>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+        <p className="text-sm font-semibold">{t.dashboard.businessHoursTitle}</p>
+        <div className="flex flex-col gap-2">
+          {DAY_KEYS.map((day) => {
+            const dayHours = businessHours[day];
+            return (
+              <div key={day} className="flex items-center gap-3 text-sm">
+                <span className="w-10 text-neutral-600">{t.dashboard.dayLabels[day]}</span>
+                <label className="flex items-center gap-1.5 text-xs text-neutral-500 w-24 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={dayHours.closed}
+                    onChange={(e) =>
+                      setBusinessHours((prev) => ({
+                        ...prev,
+                        [day]: { ...prev[day], closed: e.target.checked },
+                      }))
+                    }
+                  />
+                  {t.dashboard.dayClosed}
+                </label>
+                {!dayHours.closed && (
+                  <>
+                    <input
+                      type="time"
+                      value={dayHours.open ?? "08:00"}
+                      onChange={(e) =>
+                        setBusinessHours((prev) => ({
+                          ...prev,
+                          [day]: { ...prev[day], open: e.target.value },
+                        }))
+                      }
+                      className="rounded-lg border border-neutral-300 px-2 py-1 text-xs"
+                    />
+                    <span className="text-neutral-400">–</span>
+                    <input
+                      type="time"
+                      value={dayHours.close ?? "18:00"}
+                      onChange={(e) =>
+                        setBusinessHours((prev) => ({
+                          ...prev,
+                          [day]: { ...prev[day], close: e.target.value },
+                        }))
+                      }
+                      className="rounded-lg border border-neutral-300 px-2 py-1 text-xs"
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-4">
       <p className="text-sm font-semibold">{t.dashboard.shopSettingsTitle}</p>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopLogoLabel}</label>
@@ -920,6 +1056,7 @@ function ShopSettingsForm({
         {saved && !saving && (
           <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
         )}
+      </div>
       </div>
     </div>
   );

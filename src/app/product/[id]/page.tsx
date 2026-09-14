@@ -146,7 +146,13 @@ export default async function ProductPage({
           {t.product.escrowNotice}
         </div>
 
-        <BuyNowButton productId={product.id} stock={product.stock_quantity} />
+        {product.shop?.is_open === false ? (
+          <div className="mt-6 w-full text-center rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold px-6 py-3">
+            🔴 {product.shop.closed_message || t.shop.temporarilyClosed}
+          </div>
+        ) : (
+          <BuyNowButton productId={product.id} stock={product.stock_quantity} />
+        )}
 
         {product.shop?.whatsapp_number && (
           <a

@@ -50,6 +50,13 @@ create table if not exists shops (
     default 'none',
   identity_verification_session_id text,
   identity_verified_at timestamptz,
+  -- Seller-controlled "open for business right now" toggle — separate
+  -- from is_active, which is the admin-controlled "allowed on the
+  -- platform at all" switch. Checkout is blocked while is_open is
+  -- false (see src/app/api/checkout/route.ts).
+  is_open boolean not null default true,
+  closed_message text,
+  business_hours jsonb,
   created_at timestamptz not null default now()
 );
 

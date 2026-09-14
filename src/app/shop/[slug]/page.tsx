@@ -71,6 +71,12 @@ export default async function ShopPage({
         </div>
       </div>
 
+      {!shop.is_open && (
+        <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm mb-6">
+          🔴 {shop.closed_message || t.shop.temporarilyClosed}
+        </div>
+      )}
+
       {shop.description && (
         <p className="text-sm text-neutral-600 mb-8 -mt-4">{shop.description}</p>
       )}

@@ -48,6 +48,20 @@ export type Shop = {
   identity_verification_status: "none" | "pending" | "in_review" | "approved" | "declined" | null;
   identity_verification_session_id: string | null;
   identity_verified_at: string | null;
+  is_open: boolean;
+  closed_message: string | null;
+  business_hours: BusinessHours | null;
+};
+
+export type BusinessHoursDay = { closed: boolean; open?: string; close?: string };
+export type BusinessHours = {
+  mon: BusinessHoursDay;
+  tue: BusinessHoursDay;
+  wed: BusinessHoursDay;
+  thu: BusinessHoursDay;
+  fri: BusinessHoursDay;
+  sat: BusinessHoursDay;
+  sun: BusinessHoursDay;
 };
 
 export type BuyerProfile = {
@@ -103,6 +117,8 @@ export type Product = {
     | "delivery_eta_text"
     | "latitude"
     | "longitude"
+    | "is_open"
+    | "closed_message"
   > | null;
   shopRating?: number | null;
   distanceKm?: number | null;
@@ -373,7 +389,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -834,6 +850,9 @@ export async function updateShop(
     whatsappNumber?: string;
     latitude?: number | null;
     longitude?: number | null;
+    isOpen?: boolean;
+    closedMessage?: string;
+    businessHours?: BusinessHours | null;
   }
 ) {
   const { error } = await supabase
@@ -849,6 +868,9 @@ export async function updateShop(
       ...(input.whatsappNumber !== undefined ? { whatsapp_number: input.whatsappNumber } : {}),
       ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
       ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
+      ...(input.isOpen !== undefined ? { is_open: input.isOpen } : {}),
+      ...(input.closedMessage !== undefined ? { closed_message: input.closedMessage || null } : {}),
+      ...(input.businessHours !== undefined ? { business_hours: input.businessHours } : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);

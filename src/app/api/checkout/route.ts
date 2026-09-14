@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   const { data: product, error: productError } = await admin
     .from("products")
     .select(
-      "id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude)"
+      "id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
     )
     .eq("id", productId)
     .eq("is_active", true)
@@ -118,6 +118,23 @@ export async function POST(req: NextRequest) {
   }
 
   const shopRecord = Array.isArray(product.shop) ? product.shop[0] : product.shop;
+
+  // A seller can mark their shop temporarily closed (vacation, out of
+  // stock everywhere, etc.) without deactivating it — blocked here so
+  // an order can't sneak through payment while nobody's there to
+  // fulfill it, even if a buyer had the product page open from before
+  // the shop closed.
+  if (shopRecord?.is_open === false) {
+    return NextResponse.json(
+      {
+        error:
+          shopRecord.closed_message ||
+          "This shop is temporarily closed and isn't accepting orders right now.",
+      },
+      { status: 409 }
+    );
+  }
+
   const flatDeliveryFeeFcfa: number = shopRecord?.delivery_fee_fcfa ?? 0;
 
   // Distance-based delivery pricing: automatic whenever the shop has
