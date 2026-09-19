@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { DashboardShell } from "./dashboard-shell";
 import {
   supabase,
   getMyShop,
@@ -137,12 +138,16 @@ export default function DashboardPage() {
   }, [loadData]);
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">{t.dashboard.loading}</div>;
+    return (
+      <div className="dash-shell flex items-center justify-center min-h-screen text-sm" style={{ color: "var(--dash-muted)" }}>
+        {t.dashboard.loading}
+      </div>
+    );
   }
 
   if (!shop) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center text-neutral-500">
+      <div className="dash-shell flex items-center justify-center min-h-screen text-sm text-center px-4" style={{ color: "var(--dash-muted)" }}>
         {t.dashboard.noShopFound}
       </div>
     );
@@ -166,15 +171,15 @@ export default function DashboardPage() {
 
   const needsActionCount = orders.filter((o) => orderBucket(o) === "action").length;
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: t.dashboard.tabOverview },
-    { key: "orders", label: t.dashboard.tabOrders },
-    { key: "products", label: t.dashboard.tabProducts },
-    { key: "settings", label: t.dashboard.tabSettings },
-    { key: "payments", label: t.dashboard.tabPayments },
-    { key: "trust", label: t.dashboard.tabTrust },
-    { key: "reviews", label: t.dashboard.tabReviews },
-    { key: "analytics", label: t.dashboard.tabAnalytics },
+  const tabs: { key: Tab; label: string; icon: string }[] = [
+    { key: "overview", label: t.dashboard.tabOverview, icon: "📊" },
+    { key: "orders", label: t.dashboard.tabOrders, icon: "🛒" },
+    { key: "products", label: t.dashboard.tabProducts, icon: "📦" },
+    { key: "reviews", label: t.dashboard.tabReviews, icon: "⭐" },
+    { key: "analytics", label: t.dashboard.tabAnalytics, icon: "📈" },
+    { key: "payments", label: t.dashboard.tabPayments, icon: "💳" },
+    { key: "trust", label: t.dashboard.tabTrust, icon: "🛡️" },
+    { key: "settings", label: t.dashboard.tabSettings, icon: "⚙️" },
   ];
 
   // How much of "Complete your shop" is done — a quick, honest signal
@@ -197,34 +202,34 @@ export default function DashboardPage() {
     router.push("/");
   }
 
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="flex items-start justify-between gap-4 mb-1">
-        <h1 className="text-2xl font-bold">{shop.shop_name}</h1>
-        <div className="flex items-center gap-2 shrink-0">
-          <NotificationBell
-            notifications={notifications}
-            t={t}
-            onMarkRead={async (id) => {
-              setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-              await markNotificationRead(id).catch(() => {});
-            }}
-            onMarkAllRead={async () => {
-              setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-              await markAllNotificationsRead(shop.id).catch(() => {});
-            }}
-          />
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900"
-          >
-            {t.dashboard.logout}
-          </button>
-        </div>
-      </div>
-      <p className="text-neutral-500 text-sm mb-4">{t.dashboard.sellerDashboard}</p>
+  const activeTabLabel = tabs.find((tb) => tb.key === tab)?.label ?? shop.shop_name;
 
+  return (
+    <DashboardShell
+      shopName={shop.shop_name}
+      pageTitle={activeTabLabel}
+      tabs={tabs}
+      activeTab={tab}
+      onTabChange={setTab}
+      onLogout={handleLogout}
+      logoutLabel={t.dashboard.logout}
+      viewShopHref={`/shop/${shop.slug}`}
+      viewShopLabel={t.dashboard.previewShop}
+      notificationSlot={
+        <NotificationBell
+          notifications={notifications}
+          t={t}
+          onMarkRead={async (id) => {
+            setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+            await markNotificationRead(id).catch(() => {});
+          }}
+          onMarkAllRead={async () => {
+            setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+            await markAllNotificationsRead(shop.id).catch(() => {});
+          }}
+        />
+      }
+    >
       {needsActionCount > 0 && (
         <button
           type="button"
@@ -232,48 +237,46 @@ export default function DashboardPage() {
             setTab("orders");
             setOrderFilter("action");
           }}
-          className="w-full text-left rounded-xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm font-medium mb-6 hover:bg-amber-100"
+          className="dash-card w-full text-left px-4 py-3 text-sm font-medium mb-6 hover:brightness-[0.98]"
+          style={{ borderColor: "var(--dash-gold)", background: "#fbf3df", color: "var(--dash-gold-ink)" }}
         >
           ⚠️ {needsActionCount}{" "}
           {plural(needsActionCount, locale, t.dashboard.needsActionOne, t.dashboard.needsActionOther)}
         </button>
       )}
 
-      <div className="flex gap-1 mb-8 border-b border-neutral-200 overflow-x-auto">
-        {tabs.map((tb) => (
-          <button
-            key={tb.key}
-            type="button"
-            onClick={() => setTab(tb.key)}
-            className={`flex items-center gap-1.5 text-sm font-medium px-4 py-2.5 border-b-2 whitespace-nowrap ${
-              tab === tb.key
-                ? "border-neutral-900 text-neutral-900"
-                : "border-transparent text-neutral-500 hover:text-neutral-900"
-            }`}
-          >
-            {tb.label}
-            {tb.key === "orders" && needsActionCount > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold w-4 h-4">
-                {needsActionCount}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {tab === "overview" && (
         <div>
+          <div className="dash-hero p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--dash-muted)" }}>
+                {t.dashboard.sellerDashboard}
+              </p>
+              <h2 className="text-2xl font-bold mt-1">{shop.shop_name} 👋</h2>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => setTab("products")} className="dash-btn">
+                + {t.dashboard.checklistProduct}
+              </button>
+              <a
+                href={`/shop/${shop.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="dash-btn-outline"
+              >
+                {t.dashboard.previewShop}
+              </a>
+            </div>
+          </div>
+
           {checklistPercent < 100 && (
-            <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-6">
+            <div className="dash-card p-5 mb-6">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold">{t.dashboard.checklistTitle}</p>
-                <p className="text-sm text-neutral-500">{checklistPercent}%</p>
+                <p className="text-sm" style={{ color: "var(--dash-muted)" }}>{checklistPercent}%</p>
               </div>
-              <div className="h-1.5 rounded-full bg-neutral-100 overflow-hidden mb-4">
-                <div
-                  className="h-full bg-amber-500 rounded-full"
-                  style={{ width: `${checklistPercent}%` }}
-                />
+              <div className="dash-progress-track mb-4">
+                <div className="dash-progress-fill" style={{ width: `${checklistPercent}%` }} />
               </div>
               <div className="flex flex-col gap-2">
                 {checklist.map((c) => (
@@ -282,9 +285,8 @@ export default function DashboardPage() {
                     type="button"
                     onClick={() => setTab(c.goTab)}
                     disabled={c.done}
-                    className={`flex items-center gap-2 text-sm text-left ${
-                      c.done ? "text-neutral-400" : "text-neutral-900 hover:text-amber-700"
-                    }`}
+                    className="flex items-center gap-2 text-sm text-left"
+                    style={{ color: c.done ? "var(--dash-muted)" : "var(--dash-ink)" }}
                   >
                     <span>{c.done ? "☑" : "☐"}</span>
                     <span className={c.done ? "line-through" : ""}>{c.label}</span>
@@ -295,22 +297,24 @@ export default function DashboardPage() {
           )}
 
           <div className="grid sm:grid-cols-3 gap-4 mb-4">
-            <Stat label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
-            <Stat label={t.dashboard.orders} value={String(orders.length)} />
-            <Stat label={t.dashboard.listings} value={String(products.length)} />
+            <Stat icon="💰" iconBg="#e7f2ee" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
+            <Stat icon="🛒" iconBg="#eef1ed" label={t.dashboard.orders} value={String(orders.length)} />
+            <Stat icon="📦" iconBg="#fdf3e3" label={t.dashboard.listings} value={String(products.length)} />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
-            <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat icon="🔒" iconBg="#eef1ed" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat icon="✅" iconBg="#e7f2ee" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
             <Stat
+              icon="⭐"
+              iconBg="#fdf3e3"
               label={t.dashboard.rating}
               value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
             />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
-            <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} />
+            <Stat icon="👁️" iconBg="#eef1ed" label={t.dashboard.shopViews} value={String(shop.view_count)} />
           </div>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs mt-2" style={{ color: "var(--dash-muted)" }}>
             {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
           </p>
         </div>
@@ -335,8 +339,8 @@ export default function DashboardPage() {
       {tab === "payments" && (
         <div className="flex flex-col gap-6">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Stat label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat icon="🔒" iconBg="#eef1ed" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat icon="✅" iconBg="#e7f2ee" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
           </div>
           <PayoutDestinationForm shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
           <PayoutHistory orders={orders} t={t} />
@@ -346,7 +350,7 @@ export default function DashboardPage() {
       {tab === "trust" && (
         <div className="flex flex-col gap-4">
           {!shop.is_verified && (
-            <p className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+            <p className="text-xs rounded-lg px-3 py-2" style={{ color: "var(--dash-muted)", background: "var(--dash-bg-2)", border: "1px solid var(--dash-border)" }}>
               {t.dashboard.verificationOptionalNote}
             </p>
           )}
@@ -362,7 +366,7 @@ export default function DashboardPage() {
       {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
 
       {tab === "analytics" && <AnalyticsPanel shop={shop} orders={orders} t={t} />}
-    </div>
+    </DashboardShell>
   );
 }
 
@@ -445,11 +449,7 @@ function OrdersPanel({
             key={f.key}
             type="button"
             onClick={() => onFilterChange(f.key)}
-            className={`text-xs rounded-full px-3 py-1.5 border ${
-              filter === f.key
-                ? "bg-neutral-900 text-white border-neutral-900"
-                : "border-neutral-300 hover:border-neutral-900"
-            }`}
+            className={`dash-pill ${filter === f.key ? "is-active" : ""}`}
           >
             {f.label} ({counts[f.key] ?? 0})
           </button>
@@ -457,11 +457,14 @@ function OrdersPanel({
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
-          {orders.length === 0 ? t.dashboard.noOrdersYet : t.dashboard.noOrdersForFilter}
-        </p>
+        <div className="dash-card p-10 text-center">
+          <p className="text-3xl mb-2">🛒</p>
+          <p className="text-sm" style={{ color: "var(--dash-muted)" }}>
+            {orders.length === 0 ? t.dashboard.noOrdersYet : t.dashboard.noOrdersForFilter}
+          </p>
+        </div>
       ) : (
-        <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+        <div className="dash-card divide-y divide-[var(--dash-border)]">
           {filtered.map((o) => {
             const bucket = orderBucket(o);
             const isExpanded = expandedId === o.id;
@@ -478,7 +481,7 @@ function OrdersPanel({
                     onClick={() => setExpandedId(isExpanded ? null : o.id)}
                   >
                     <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
                       {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
                       {o.status === "paid_held" && o.accepted_at
                         ? t.dashboard.preparingStatus
@@ -486,13 +489,16 @@ function OrdersPanel({
                       {o.status === "completed" && o.payout_sent ? ` · ${t.dashboard.paidOut.toLowerCase()}` : ""}
                     </p>
                     {o.status === "completed" && (
-                      <p className="text-xs text-neutral-400 mt-0.5">
+                      <p className="text-xs mt-0.5" style={{ color: "var(--dash-muted)" }}>
                         {t.dashboard.youReceive} {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
                       </p>
                     )}
                   </div>
                   {bucket === "action" && (
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 rounded-full px-2 py-1 shrink-0">
+                    <span
+                      className="dash-badge uppercase tracking-wide shrink-0"
+                      style={{ background: "rgba(212, 169, 79, 0.18)", color: "var(--dash-gold-ink)" }}
+                    >
                       {t.dashboard.filterAction}
                     </span>
                   )}
@@ -501,7 +507,7 @@ function OrdersPanel({
                       type="button"
                       onClick={() => handleAccept(o.id)}
                       disabled={acceptingId === o.id}
-                      className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 shrink-0"
+                      className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
                     >
                       {acceptingId === o.id ? t.dashboard.accepting : t.dashboard.acceptOrder}
                     </button>
@@ -511,7 +517,7 @@ function OrdersPanel({
                       type="button"
                       onClick={() => handleShip(o.id)}
                       disabled={shippingId === o.id}
-                      className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 shrink-0"
+                      className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
                     >
                       {t.dashboard.markShipped}
                     </button>
@@ -520,17 +526,18 @@ function OrdersPanel({
                     type="button"
                     onClick={() => setExpandedId(isExpanded ? null : o.id)}
                     aria-label="toggle details"
-                    className="text-neutral-400 text-xs shrink-0 px-1"
+                    className="text-xs shrink-0 px-1"
+                    style={{ color: "var(--dash-muted)" }}
                   >
                     {isExpanded ? "▲" : "▼"}
                   </button>
                 </div>
 
                 {isExpanded && (
-                  <div className="mt-3 pt-3 border-t border-neutral-100">
-                    <p className="text-xs font-semibold text-neutral-500 mb-1">{t.dashboard.itemsPurchased}</p>
+                  <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--dash-border)" }}>
+                    <p className="text-xs font-semibold mb-1" style={{ color: "var(--dash-muted)" }}>{t.dashboard.itemsPurchased}</p>
                     {o.items && o.items.length > 0 ? (
-                      <ul className="text-sm text-neutral-700 space-y-0.5 mb-3">
+                      <ul className="text-sm space-y-0.5 mb-3">
                         {o.items.map((item, i) => (
                           <li key={i}>
                             {item.quantity}× {item.product?.title ?? ""}
@@ -538,19 +545,19 @@ function OrdersPanel({
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-xs text-neutral-400 mb-3">{t.dashboard.noItemsRecorded}</p>
+                      <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>{t.dashboard.noItemsRecorded}</p>
                     )}
                     {deliveryLines.length > 0 && (
                       <>
-                        <p className="text-xs font-semibold text-neutral-500 mb-1">{t.order.deliveryTo}</p>
-                        <div className="text-sm text-neutral-700 mb-1">
+                        <p className="text-xs font-semibold mb-1" style={{ color: "var(--dash-muted)" }}>{t.order.deliveryTo}</p>
+                        <div className="text-sm mb-1">
                           {deliveryLines.map((line, i) => (
                             <p key={i}>{line}</p>
                           ))}
                         </div>
                       </>
                     )}
-                    {o.delivery_notes && <p className="text-xs text-neutral-500 italic">{o.delivery_notes}</p>}
+                    {o.delivery_notes && <p className="text-xs italic" style={{ color: "var(--dash-muted)" }}>{o.delivery_notes}</p>}
                   </div>
                 )}
               </div>
@@ -616,12 +623,12 @@ function ProductsPanel({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t.dashboard.searchProductsPlaceholder}
-          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          className="dash-input flex-1"
         />
         <button
           type="button"
           onClick={() => setFormState((s) => (s.mode === "add" ? { mode: "closed" } : { mode: "add" }))}
-          className="text-sm rounded-full bg-neutral-900 text-white px-4 py-1.5 shrink-0"
+          className="dash-btn shrink-0"
         >
           {formState.mode === "add" ? t.dashboard.cancel : t.dashboard.addProduct}
         </button>
@@ -640,11 +647,11 @@ function ProductsPanel({
         />
       )}
 
-      <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+      <div className="dash-card divide-y divide-[var(--dash-border)]">
         {filtered.map((p) => (
           <div key={p.id} className={p.is_active ? "" : "opacity-60"}>
             <div className="flex items-center gap-3 p-4">
-              <div className="relative w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center text-xl overflow-hidden shrink-0">
+              <div className="relative w-12 h-12 rounded-lg flex items-center justify-center text-xl overflow-hidden shrink-0" style={{ background: "var(--dash-bg-2)" }}>
                 {p.image_urls?.[0] ? (
                   <Image src={p.image_urls[0]} alt={p.title} fill sizes="48px" className="object-cover" />
                 ) : (
@@ -655,18 +662,18 @@ function ProductsPanel({
                 <p className="text-sm font-medium truncate">
                   {p.title}
                   {!p.is_active && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 bg-neutral-100 rounded-full px-2 py-0.5 align-middle">
+                    <span className="dash-badge ml-2 align-middle" style={{ background: "var(--dash-bg-2)", color: "var(--dash-muted)" }}>
                       {t.dashboard.pausedBadge}
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
                   {p.category?.name}
                   {p.category?.name ? " · " : ""}
                   {p.stock_quantity <= 0 ? (
-                    <span className="text-red-600 font-medium">{t.dashboard.outOfStockBadge}</span>
+                    <span className="font-medium" style={{ color: "var(--dash-danger)" }}>{t.dashboard.outOfStockBadge}</span>
                   ) : p.stock_quantity <= 3 ? (
-                    <span className="text-amber-600 font-medium">
+                    <span className="font-medium" style={{ color: "var(--dash-gold-ink)" }}>
                       {t.dashboard.lowStockBadge} ({p.stock_quantity})
                     </span>
                   ) : (
@@ -685,21 +692,21 @@ function ProductsPanel({
                       : { mode: "edit", product: p }
                   )
                 }
-                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 shrink-0"
+                className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
               >
                 {t.dashboard.edit}
               </button>
               <button
                 onClick={() => handleToggleActive(p)}
                 disabled={togglingId === p.id}
-                className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 shrink-0 disabled:opacity-60"
+                className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
               >
                 {p.is_active ? t.dashboard.pauseListing : t.dashboard.activateListing}
               </button>
               <button
                 onClick={() => handleDelete(p.id)}
                 disabled={deletingId === p.id}
-                className="text-xs rounded-full border border-red-200 text-red-700 px-3 py-1.5 hover:border-red-400 shrink-0 disabled:opacity-60"
+                className="dash-btn-outline dash-btn-danger !py-1.5 !px-3 text-xs shrink-0"
               >
                 {t.dashboard.delete}
               </button>
@@ -722,7 +729,7 @@ function ProductsPanel({
           </div>
         ))}
         {filtered.length === 0 && (
-          <p className="text-sm text-neutral-500 p-8 text-center">
+          <p className="text-sm p-8 text-center" style={{ color: "var(--dash-muted)" }}>
             {products.length === 0 ? t.dashboard.noListingsYet : t.dashboard.noProductsMatchSearch}
           </p>
         )}
@@ -770,16 +777,16 @@ function PayoutDestinationForm({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+    <div className="dash-card p-5 flex flex-col gap-3">
       <p className="text-sm font-semibold">{t.dashboard.payoutDestinationTitle}</p>
-      <p className="text-xs text-neutral-500">{t.dashboard.payoutDestinationHint}</p>
+      <p className="text-xs" style={{ color: "var(--dash-muted)" }}>{t.dashboard.payoutDestinationHint}</p>
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <label className="text-xs font-medium block mb-1">{t.dashboard.payoutProviderLabel}</label>
           <select
             value={provider}
             onChange={(e) => setProvider(e.target.value as "mtn" | "orange" | "")}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
+            className="dash-input"
           >
             <option value="">{t.dashboard.payoutProviderPlaceholder}</option>
             <option value="mtn">MTN Mobile Money</option>
@@ -792,24 +799,24 @@ function PayoutDestinationForm({
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+237 6XX XXX XXX"
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="dash-input"
           />
         </div>
       </div>
       {error && (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+        <p className="text-sm rounded-lg px-3 py-2" style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}>{error}</p>
       )}
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+          className="dash-btn self-start"
         >
           {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
         </button>
         {saved && !saving && (
-          <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
+          <span className="text-sm" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
     </div>
@@ -833,20 +840,20 @@ function PayoutHistory({ orders, t }: { orders: Order[]; t: Dictionary }) {
     <div>
       <p className="text-sm font-semibold mb-3">{t.dashboard.payoutHistoryTitle}</p>
       {paidOrders.length === 0 ? (
-        <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-6 text-center">
+        <p className="text-sm rounded-xl border border-dashed p-6 text-center" style={{ color: "var(--dash-muted)", borderColor: "var(--dash-border-strong)" }}>
           {t.dashboard.noPayoutsYet}
         </p>
       ) : (
-        <div className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100">
+        <div className="dash-card divide-y divide-[var(--dash-border)]">
           {paidOrders.map((o) => (
             <div key={o.id} className="flex items-center justify-between p-4 text-sm">
               <div>
                 <p className="font-medium">{formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
                   {o.payout_sent_at ? new Date(o.payout_sent_at).toLocaleDateString() : ""}
                 </p>
               </div>
-              <p className="text-xs text-neutral-400">{o.buyer_phone ?? t.dashboard.unknownBuyer}</p>
+              <p className="text-xs" style={{ color: "var(--dash-muted)" }}>{o.buyer_phone ?? t.dashboard.unknownBuyer}</p>
             </div>
           ))}
         </div>
@@ -894,11 +901,15 @@ function NotificationBell({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={t.dashboard.notificationsTitle}
-        className="relative text-sm rounded-full border border-neutral-300 w-9 h-9 flex items-center justify-center hover:border-neutral-900"
+        className="relative text-sm rounded-full w-9 h-9 flex items-center justify-center border"
+        style={{ borderColor: "var(--dash-border-strong)" }}
       >
         🔔
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-semibold flex items-center justify-center">
+          <span
+            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center"
+            style={{ background: "var(--dash-danger)" }}
+          >
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
@@ -913,14 +924,15 @@ function NotificationBell({
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white border border-neutral-200 rounded-xl shadow-lg z-20 overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-100">
+          <div className="dash-card absolute right-0 mt-2 w-80 max-w-[90vw] shadow-lg z-20 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--dash-border)" }}>
               <p className="text-sm font-semibold">{t.dashboard.notificationsTitle}</p>
               {unreadCount > 0 && (
                 <button
                   type="button"
                   onClick={() => onMarkAllRead()}
-                  className="text-xs text-amber-600 hover:underline"
+                  className="text-xs hover:underline"
+                  style={{ color: "var(--dash-primary)" }}
                 >
                   {t.dashboard.notificationsMarkAllRead}
                 </button>
@@ -928,7 +940,7 @@ function NotificationBell({
             </div>
             <div className="max-h-96 overflow-y-auto">
               {notifications.length === 0 ? (
-                <p className="text-sm text-neutral-500 text-center py-8 px-4">
+                <p className="text-sm text-center py-8 px-4" style={{ color: "var(--dash-muted)" }}>
                   {t.dashboard.notificationsEmpty}
                 </p>
               ) : (
@@ -937,9 +949,11 @@ function NotificationBell({
                     key={n.id}
                     type="button"
                     onClick={() => !n.is_read && onMarkRead(n.id)}
-                    className={`w-full text-left px-4 py-3 border-b border-neutral-50 last:border-0 hover:bg-neutral-50 ${
-                      n.is_read ? "" : "bg-amber-50/60"
-                    }`}
+                    className="w-full text-left px-4 py-3 border-b last:border-0"
+                    style={{
+                      borderColor: "var(--dash-border)",
+                      background: n.is_read ? "transparent" : "var(--dash-primary-wash)",
+                    }}
                   >
                     <div className="flex items-start gap-2">
                       <span className="text-base leading-none mt-0.5">
@@ -947,10 +961,10 @@ function NotificationBell({
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">{n.title}</p>
-                        {n.body && <p className="text-xs text-neutral-500 mt-0.5">{n.body}</p>}
-                        <p className="text-[11px] text-neutral-400 mt-1">{relativeTime(n.created_at, t)}</p>
+                        {n.body && <p className="text-xs mt-0.5" style={{ color: "var(--dash-muted)" }}>{n.body}</p>}
+                        <p className="text-[11px] mt-1" style={{ color: "var(--dash-muted)" }}>{relativeTime(n.created_at, t)}</p>
                       </div>
-                      {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />}
+                      {!n.is_read && <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: "var(--dash-gold)" }} />}
                     </div>
                   </button>
                 ))
@@ -978,7 +992,7 @@ function ReviewsPanel({
 }) {
   if (reviews.length === 0) {
     return (
-      <p className="text-sm text-neutral-500 rounded-xl border border-dashed border-neutral-300 p-8 text-center">
+      <p className="text-sm rounded-xl border border-dashed p-8 text-center" style={{ color: "var(--dash-muted)", borderColor: "var(--dash-border-strong)" }}>
         {t.dashboard.reviewsEmpty}
       </p>
     );
@@ -1021,28 +1035,28 @@ function ReviewCard({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="dash-card p-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm">{"⭐".repeat(review.rating)}</p>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
           {t.dashboard.reviewFromLabel} {review.buyer_phone ?? t.dashboard.reviewAnonymousBuyer} ·{" "}
           {new Date(review.created_at).toLocaleDateString()}
         </p>
       </div>
       {review.product_rating != null && review.seller_rating != null && review.delivery_rating != null && (
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="text-xs mt-1" style={{ color: "var(--dash-muted)" }}>
           {t.shop.reviewProductLabel} {review.product_rating}/5 · {t.shop.reviewSellerLabel}{" "}
           {review.seller_rating}/5 · {t.shop.reviewDeliveryLabel} {review.delivery_rating}/5
         </p>
       )}
-      <p className="text-sm text-neutral-700 mt-2">
-        {review.comment || <span className="text-neutral-400 italic">{t.dashboard.reviewNoComment}</span>}
+      <p className="text-sm mt-2">
+        {review.comment || <span className="italic" style={{ color: "var(--dash-muted)" }}>{t.dashboard.reviewNoComment}</span>}
       </p>
 
       {review.seller_reply && !editing ? (
-        <div className="mt-3 rounded-lg bg-neutral-50 border border-neutral-200 px-3 py-2">
+        <div className="mt-3 rounded-lg px-3 py-2" style={{ background: "var(--dash-bg-2)", border: "1px solid var(--dash-border)" }}>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-neutral-700">{t.dashboard.reviewYourReply}</p>
+            <p className="text-xs font-semibold">{t.dashboard.reviewYourReply}</p>
             <button
               type="button"
               onClick={() => {
@@ -1050,12 +1064,13 @@ function ReviewCard({
                 setSaved(false);
                 setEditing(true);
               }}
-              className="text-xs text-neutral-500 hover:text-neutral-900 underline"
+              className="text-xs underline"
+              style={{ color: "var(--dash-muted)" }}
             >
               {t.dashboard.reviewEditReply}
             </button>
           </div>
-          <p className="text-sm text-neutral-600 mt-1">{review.seller_reply}</p>
+          <p className="text-sm mt-1" style={{ color: "var(--dash-muted)" }}>{review.seller_reply}</p>
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-2">
@@ -1064,19 +1079,19 @@ function ReviewCard({
             onChange={(e) => setDraft(e.target.value)}
             placeholder={t.dashboard.reviewReplyPlaceholder}
             rows={2}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="dash-input"
           />
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={handleSave}
               disabled={saving || !draft.trim()}
-              className="text-xs rounded-full bg-neutral-900 text-white px-4 py-1.5 disabled:opacity-60 self-start"
+              className="dash-btn !py-1.5 !px-4 text-xs self-start"
             >
               {saving ? t.dashboard.saving : t.dashboard.reviewReplyButton}
             </button>
             {saved && !saving && (
-              <span className="text-xs text-green-700">{t.dashboard.reviewReplySaved}</span>
+              <span className="text-xs" style={{ color: "var(--dash-primary)" }}>{t.dashboard.reviewReplySaved}</span>
             )}
           </div>
         </div>
@@ -1137,45 +1152,47 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
   return (
     <div className="flex flex-col gap-6">
       <div className="grid sm:grid-cols-3 gap-4">
-        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} />
+        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon="👁️" iconBg="rgba(21, 94, 82, 0.1)" />
         <Stat
           label={t.dashboard.analyticsConversionLabel}
           value={conversionRate == null ? t.dashboard.noRatingYet : `${conversionRate.toFixed(1)}%`}
+          icon="📈"
+          iconBg="rgba(212, 169, 79, 0.16)"
         />
-        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} />
+        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} icon="💰" iconBg="rgba(21, 94, 82, 0.1)" />
       </div>
-      <p className="text-xs text-neutral-400 -mt-4">{t.dashboard.analyticsConversionHint}</p>
+      <p className="text-xs -mt-4" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsConversionHint}</p>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+      <div className="dash-card p-5">
         <p className="text-sm font-semibold mb-4">{t.dashboard.analyticsSalesTitle}</p>
         {totalLast14 === 0 ? (
-          <p className="text-sm text-neutral-500 text-center py-8">{t.dashboard.analyticsNoSales}</p>
+          <p className="text-sm text-center py-8" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsNoSales}</p>
         ) : (
           <div className="flex items-end gap-1.5 h-32">
             {days.map((d) => (
               <div key={d.key} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
                 <div
                   title={`${d.label} · ${formatFcfa(d.amount)}`}
-                  className="w-full max-w-[24px] rounded-t bg-neutral-900"
-                  style={{ height: `${Math.max(2, (d.amount / maxAmount) * 100)}%` }}
+                  className="w-full max-w-[24px] rounded-t"
+                  style={{ height: `${Math.max(2, (d.amount / maxAmount) * 100)}%`, background: "var(--dash-primary)" }}
                 />
-                <span className="text-[10px] text-neutral-400">{d.label[0]}</span>
+                <span className="text-[10px]" style={{ color: "var(--dash-muted)" }}>{d.label[0]}</span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+      <div className="dash-card p-5">
         <p className="text-sm font-semibold mb-3">{t.dashboard.analyticsTopProductsTitle}</p>
         {topProducts.length === 0 ? (
-          <p className="text-sm text-neutral-500 text-center py-4">{t.dashboard.analyticsNoProductSales}</p>
+          <p className="text-sm text-center py-4" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsNoProductSales}</p>
         ) : (
           <div className="flex flex-col gap-2">
             {topProducts.map((p) => (
               <div key={p.title} className="flex items-center justify-between text-sm">
                 <span className="truncate pr-3">{p.title}</span>
-                <span className="text-neutral-500 shrink-0">
+                <span className="shrink-0" style={{ color: "var(--dash-muted)" }}>
                   {p.quantity} {t.dashboard.analyticsSoldLabel}
                 </span>
               </div>
@@ -1298,11 +1315,11 @@ function ShopSettingsForm({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+      <div className="dash-card p-5 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">{t.dashboard.shopStatusTitle}</p>
-            <p className="text-xs text-neutral-500 mt-0.5">
+            <p className="text-xs mt-0.5" style={{ color: "var(--dash-muted)" }}>
               {shop.is_open ? t.dashboard.shopStatusOpenHint : t.dashboard.shopStatusClosedHint}
             </p>
           </div>
@@ -1310,11 +1327,7 @@ function ShopSettingsForm({
             type="button"
             onClick={handleToggleOpen}
             disabled={togglingOpen}
-            className={`text-sm rounded-full px-4 py-1.5 shrink-0 disabled:opacity-60 ${
-              shop.is_open
-                ? "border border-neutral-300 hover:border-neutral-900"
-                : "bg-neutral-900 text-white"
-            }`}
+            className={`!py-1.5 !px-4 text-sm shrink-0 ${shop.is_open ? "dash-btn-outline" : "dash-btn"}`}
           >
             {togglingOpen
               ? t.dashboard.saving
@@ -1330,30 +1343,31 @@ function ShopSettingsForm({
               value={closedMessage}
               onChange={(e) => setClosedMessage(e.target.value)}
               placeholder={t.dashboard.shopClosedMessagePlaceholder}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              className="dash-input"
             />
-            <p className="text-xs text-neutral-400 mt-1">{t.dashboard.shopClosedMessageHint}</p>
+            <p className="text-xs mt-1" style={{ color: "var(--dash-muted)" }}>{t.dashboard.shopClosedMessageHint}</p>
           </div>
         )}
         <a
           href={`/shop/${shop.slug}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-amber-700 underline self-start"
+          className="text-xs underline self-start"
+          style={{ color: "var(--dash-gold-ink)" }}
         >
           {t.dashboard.previewShop} ↗
         </a>
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+      <div className="dash-card p-5 flex flex-col gap-3">
         <p className="text-sm font-semibold">{t.dashboard.businessHoursTitle}</p>
         <div className="flex flex-col gap-2">
           {DAY_KEYS.map((day) => {
             const dayHours = businessHours[day];
             return (
               <div key={day} className="flex items-center gap-3 text-sm">
-                <span className="w-10 text-neutral-600">{t.dashboard.dayLabels[day]}</span>
-                <label className="flex items-center gap-1.5 text-xs text-neutral-500 w-24 shrink-0">
+                <span className="w-10" style={{ color: "var(--dash-ink)" }}>{t.dashboard.dayLabels[day]}</span>
+                <label className="flex items-center gap-1.5 text-xs w-24 shrink-0" style={{ color: "var(--dash-muted)" }}>
                   <input
                     type="checkbox"
                     checked={dayHours.closed}
@@ -1377,9 +1391,9 @@ function ShopSettingsForm({
                           [day]: { ...prev[day], open: e.target.value },
                         }))
                       }
-                      className="rounded-lg border border-neutral-300 px-2 py-1 text-xs"
+                      className="dash-input !w-auto px-2 py-1 text-xs"
                     />
-                    <span className="text-neutral-400">–</span>
+                    <span style={{ color: "var(--dash-muted)" }}>–</span>
                     <input
                       type="time"
                       value={dayHours.close ?? "18:00"}
@@ -1389,7 +1403,7 @@ function ShopSettingsForm({
                           [day]: { ...prev[day], close: e.target.value },
                         }))
                       }
-                      className="rounded-lg border border-neutral-300 px-2 py-1 text-xs"
+                      className="dash-input !w-auto px-2 py-1 text-xs"
                     />
                   </>
                 )}
@@ -1399,12 +1413,15 @@ function ShopSettingsForm({
         </div>
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-4">
+      <div className="dash-card p-5 flex flex-col gap-4">
       <p className="text-sm font-semibold">{t.dashboard.shopSettingsTitle}</p>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopLogoLabel}</label>
         <div className="flex items-center gap-3">
-          <div className="relative w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-lg font-bold text-amber-700 overflow-hidden shrink-0">
+          <div
+            className="relative w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold overflow-hidden shrink-0"
+            style={{ background: "rgba(212, 169, 79, 0.18)", color: "var(--dash-gold-ink)" }}
+          >
             {logoFile ? (
               // A local file the seller just picked, previewed straight from
               // their device before it's even uploaded — next/image can only
@@ -1437,7 +1454,7 @@ function ShopSettingsForm({
           onChange={(e) => setDescription(e.target.value)}
           placeholder={t.dashboard.shopDescriptionPlaceholder}
           rows={2}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          className="dash-input"
         />
       </div>
       <div>
@@ -1447,7 +1464,7 @@ function ShopSettingsForm({
           onChange={(e) => setDeliveryInfo(e.target.value)}
           placeholder={t.dashboard.shopDeliveryInfoPlaceholder}
           rows={2}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          className="dash-input"
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -1459,7 +1476,7 @@ function ShopSettingsForm({
             value={deliveryFee}
             onChange={(e) => setDeliveryFee(e.target.value)}
             placeholder={t.dashboard.shopDeliveryFeePlaceholder}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="dash-input"
           />
         </div>
         <div>
@@ -1468,19 +1485,19 @@ function ShopSettingsForm({
             value={deliveryEta}
             onChange={(e) => setDeliveryEta(e.target.value)}
             placeholder={t.dashboard.shopDeliveryEtaPlaceholder}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            className="dash-input"
           />
         </div>
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopLocationLabel}</label>
-        <p className="text-xs text-neutral-500 mb-1.5">{t.dashboard.shopLocationHint}</p>
+        <p className="text-xs mb-1.5" style={{ color: "var(--dash-muted)" }}>{t.dashboard.shopLocationHint}</p>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={pinMyLocation}
             disabled={locating}
-            className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+            className="dash-btn-outline !py-1.5 !px-4 text-sm"
           >
             {locating
               ? t.dashboard.locating
@@ -1489,13 +1506,13 @@ function ShopSettingsForm({
                 : t.dashboard.shopLocationSet}
           </button>
           {shop.latitude != null && (
-            <span className="text-xs text-green-700">{t.dashboard.shopLocationConfirmed}</span>
+            <span className="text-xs" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopLocationConfirmed}</span>
           )}
         </div>
-        {locationError && <p className="text-xs text-red-600 mt-1.5">{locationError}</p>}
+        {locationError && <p className="text-xs mt-1.5" style={{ color: "var(--dash-danger)" }}>{locationError}</p>}
       </div>
       {error && (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p className="text-sm rounded-lg px-3 py-2" style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}>
           {error}
         </p>
       )}
@@ -1503,12 +1520,12 @@ function ShopSettingsForm({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+          className="dash-btn self-start"
         >
           {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
         </button>
         {saved && !saving && (
-          <span className="text-sm text-green-700">{t.dashboard.shopSettingsSaved}</span>
+          <span className="text-sm" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
       </div>
@@ -1554,7 +1571,10 @@ function VerificationPanel({
 
   if (shop.is_verified) {
     return (
-      <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-800">
+      <div
+        className="rounded-xl p-5 text-sm"
+        style={{ border: "1px solid var(--dash-primary)", background: "var(--dash-primary-wash)", color: "var(--dash-primary-dark)" }}
+      >
         🛡️ {t.dashboard.verificationVerified}
       </div>
     );
@@ -1562,7 +1582,10 @@ function VerificationPanel({
 
   if (shop.verification_requested_at) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+      <div
+        className="rounded-xl p-5 text-sm"
+        style={{ border: "1px solid var(--dash-gold)", background: "rgba(212, 169, 79, 0.14)", color: "var(--dash-gold-ink)" }}
+      >
         {t.dashboard.verificationPending}
       </div>
     );
@@ -1591,37 +1614,52 @@ function VerificationPanel({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+      <div className="dash-card p-5 flex flex-col gap-3">
         <p className="text-sm font-semibold">{t.dashboard.verifyAutoTitle}</p>
-        <p className="text-sm text-neutral-600">{t.dashboard.verifyAutoHint}</p>
+        <p className="text-sm" style={{ color: "var(--dash-muted)" }}>{t.dashboard.verifyAutoHint}</p>
 
         {identityStatus === "pending" && (
           <div className="flex flex-col gap-2">
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p
+              className="text-sm rounded-lg px-3 py-2"
+              style={{ color: "var(--dash-gold-ink)", background: "rgba(212, 169, 79, 0.14)", border: "1px solid var(--dash-gold)" }}
+            >
               {t.dashboard.identityStatusPending}
             </p>
             <button
               type="button"
               onClick={handleStart}
               disabled={starting}
-              className="text-xs text-neutral-500 underline self-start disabled:opacity-60"
+              className="text-xs underline self-start disabled:opacity-60"
+              style={{ color: "var(--dash-muted)" }}
             >
               {starting ? t.dashboard.verifyAutoStarting : t.dashboard.identityStartOver}
             </button>
           </div>
         )}
         {identityStatus === "in_review" && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p
+            className="text-sm rounded-lg px-3 py-2"
+            style={{ color: "var(--dash-gold-ink)", background: "rgba(212, 169, 79, 0.14)", border: "1px solid var(--dash-gold)" }}
+          >
             {t.dashboard.identityStatusInReview}
           </p>
         )}
         {identityStatus === "declined" && (
-          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <p
+            className="text-sm rounded-lg px-3 py-2"
+            style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}
+          >
             {t.dashboard.identityStatusDeclined}
           </p>
         )}
         {autoError && (
-          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{autoError}</p>
+          <p
+            className="text-sm rounded-lg px-3 py-2"
+            style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}
+          >
+            {autoError}
+          </p>
         )}
 
         {(identityStatus === "none" || identityStatus === "declined") && (
@@ -1629,7 +1667,7 @@ function VerificationPanel({
             type="button"
             onClick={handleStart}
             disabled={starting}
-            className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+            className="dash-btn self-start"
           >
             {starting
               ? t.dashboard.verifyAutoStarting
@@ -1644,7 +1682,8 @@ function VerificationPanel({
         <button
           type="button"
           onClick={() => setShowManual(true)}
-          className="text-xs text-neutral-500 underline self-start"
+          className="text-xs underline self-start"
+          style={{ color: "var(--dash-muted)" }}
         >
           {t.dashboard.orManualReview}
         </button>
@@ -1653,7 +1692,8 @@ function VerificationPanel({
           <button
             type="button"
             onClick={() => setShowManual(false)}
-            className="text-xs text-neutral-500 underline self-start"
+            className="text-xs underline self-start"
+            style={{ color: "var(--dash-muted)" }}
           >
             {t.dashboard.hideManualReview}
           </button>
@@ -1700,17 +1740,20 @@ function ManualVerificationForm({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3">
+    <div className="dash-card p-5 flex flex-col gap-3">
       <p className="text-sm font-semibold">{t.dashboard.verificationTitle}</p>
-      <p className="text-sm text-neutral-600">{t.sell.step8Body}</p>
+      <p className="text-sm" style={{ color: "var(--dash-muted)" }}>{t.sell.step8Body}</p>
       {shop.verification_rejected_reason && (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p
+          className="text-sm rounded-lg px-3 py-2"
+          style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}
+        >
           {t.dashboard.verificationRejected} {shop.verification_rejected_reason}
         </p>
       )}
       <div>
         <label className="text-sm font-medium block mb-1">{t.sell.step8IdPhotoLabel}</label>
-        <p className="text-xs text-neutral-500 mb-1.5">{t.sell.step8IdPhotoHint}</p>
+        <p className="text-xs mb-1.5" style={{ color: "var(--dash-muted)" }}>{t.sell.step8IdPhotoHint}</p>
         <input
           type="file"
           accept="image/*"
@@ -1724,18 +1767,21 @@ function ManualVerificationForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder={t.sell.step8NotePlaceholder}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          className="dash-input"
         />
       </div>
       {error && (
-        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <p
+          className="text-sm rounded-lg px-3 py-2"
+          style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}
+        >
           {error}
         </p>
       )}
       <button
         onClick={handleRequest}
         disabled={submitting}
-        className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+        className="dash-btn self-start"
       >
         {submitting ? t.dashboard.saving : t.sell.step8RequestBtn}
       </button>
@@ -1743,11 +1789,28 @@ function ManualVerificationForm({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  icon,
+  iconBg,
+}: {
+  label: string;
+  value: string;
+  icon?: string;
+  iconBg?: string;
+}) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4">
-      <p className="text-xs text-neutral-500">{label}</p>
-      <p className="text-xl font-bold mt-1">{value}</p>
+    <div className="dash-card p-4 flex items-start gap-3">
+      {icon && (
+        <span className="dash-kpi-icon" style={{ background: iconBg ?? "var(--dash-primary-wash)" }}>
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-xs" style={{ color: "var(--dash-muted)" }}>{label}</p>
+        <p className="text-xl font-bold mt-1 truncate">{value}</p>
+      </div>
     </div>
   );
 }

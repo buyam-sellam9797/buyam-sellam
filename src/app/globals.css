@@ -28,3 +28,180 @@ textarea {
   background-color: #ffffff;
   color: #171717;
 }
+
+/* ============================================================
+   SELLER DASHBOARD DESIGN SYSTEM ("dash-" prefix)
+   Scoped entirely to the /dashboard route by naming convention —
+   nothing here is referenced outside src/app/dashboard, so the rest
+   of the public site (homepage, shop pages, /sell) keeps its own
+   existing look untouched.
+   ============================================================ */
+.dash-shell {
+  --dash-primary: #155e52;
+  --dash-primary-dark: #0f4740;
+  --dash-primary-wash: rgba(21, 94, 82, 0.08);
+  --dash-ink: #14231f;
+  --dash-muted: #5f6f69;
+  --dash-bg: #f4efe6;
+  --dash-bg-2: #faf8f3;
+  --dash-card: #ffffff;
+  --dash-border: #d7e1dc;
+  --dash-border-strong: #c1d0c8;
+  --dash-gold: #d4a94f;
+  --dash-gold-ink: #6b4f17;
+  --dash-danger: #b94a48;
+  --dash-danger-wash: #fbeceb;
+  background: var(--dash-bg);
+  color: var(--dash-ink);
+  min-height: 100dvh;
+}
+
+.dash-card {
+  background: var(--dash-card);
+  border: 1px solid var(--dash-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(20, 35, 31, 0.06);
+}
+
+.dash-hero {
+  border-radius: 16px;
+  border: 1px solid var(--dash-border);
+  background:
+    radial-gradient(1100px 500px at 12% -10%, rgba(21, 94, 82, 0.16), rgba(0, 0, 0, 0) 60%),
+    radial-gradient(900px 420px at 92% 8%, rgba(212, 169, 79, 0.18), rgba(0, 0, 0, 0) 60%),
+    linear-gradient(var(--dash-bg) 0%, var(--dash-bg-2) 100%);
+}
+
+.dash-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.65rem 1.1rem;
+  background: var(--dash-primary);
+  color: #fff;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+.dash-btn:hover {
+  background: var(--dash-primary-dark);
+}
+.dash-btn:disabled {
+  opacity: 0.6;
+}
+
+.dash-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.65rem 1.1rem;
+  background: transparent;
+  color: var(--dash-primary);
+  border: 1px solid var(--dash-border-strong);
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.dash-btn-outline:hover {
+  background: var(--dash-primary-wash);
+}
+
+.dash-btn-danger {
+  color: var(--dash-danger);
+  border-color: var(--dash-border-strong);
+}
+.dash-btn-danger:hover {
+  background: var(--dash-danger-wash);
+}
+
+.dash-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+}
+
+.dash-pill {
+  border-radius: 999px;
+  border: 1px solid var(--dash-border-strong);
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dash-muted);
+  background: transparent;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.dash-pill.is-active {
+  background: var(--dash-primary);
+  color: #fff;
+  border-color: var(--dash-primary);
+}
+.dash-pill:hover:not(.is-active) {
+  background: var(--dash-primary-wash);
+}
+
+.dash-nav-link {
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--dash-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.dash-nav-link.is-active {
+  background: var(--dash-primary);
+  color: #fff;
+}
+.dash-nav-link:hover:not(.is-active) {
+  background: var(--dash-primary-wash);
+  color: var(--dash-ink);
+}
+
+.dash-progress-track {
+  background: var(--dash-border);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+.dash-progress-fill {
+  background: var(--dash-primary);
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.dash-kpi-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.dash-input {
+  border: 1px solid var(--dash-border-strong);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.875rem;
+  background: #fff;
+  color: var(--dash-ink);
+  width: 100%;
+}
+.dash-input:focus {
+  outline: 2px solid var(--dash-primary);
+  outline-offset: 1px;
+}
