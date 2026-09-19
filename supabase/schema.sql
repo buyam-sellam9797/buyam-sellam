@@ -141,6 +141,9 @@ create table if not exists orders (
   payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
   payout_sent_at timestamptz,
   accepted_at timestamptz,         -- seller marked "preparing" (before shipping)
+  paid_at timestamptz,             -- exact moment payment was confirmed (pending_payment -> paid_held)
+  shipped_at timestamptz,          -- exact moment the seller marked it shipped
+  completed_at timestamptz,        -- exact moment the buyer confirmed receipt (or auto-confirm/dispute resolution)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

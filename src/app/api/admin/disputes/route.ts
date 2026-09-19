@@ -69,7 +69,11 @@ export async function POST(req: NextRequest) {
   const newOrderStatus = body.action === "refunded" ? "refunded" : "completed";
   await admin
     .from("orders")
-    .update({ status: newOrderStatus, updated_at: new Date().toISOString() })
+    .update({
+      status: newOrderStatus,
+      ...(newOrderStatus === "completed" ? { completed_at: new Date().toISOString() } : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", dispute.order_id);
 
   return NextResponse.json({ ok: true });

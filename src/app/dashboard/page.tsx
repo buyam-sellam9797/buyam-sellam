@@ -78,6 +78,24 @@ function orderBucket(o: Order): OrderFilter | "other" {
   return "other"; // pending_payment — abandoned/incomplete checkouts, shown only under "All"
 }
 
+// Builds the seller-facing "what actually happened, and when" list for
+// one order out of the real per-stage timestamps (paid_at/shipped_at/
+// completed_at added alongside accepted_at/payout_sent_at). Each step
+// is only included when its timestamp is actually known — a dispute
+// filed before shipping correctly never gets a "Shipped" line, and an
+// order placed before these columns existed just shows fewer steps
+// instead of a fabricated one.
+type OrderTimelineStep = { label: string; iso: string | null };
+function buildOrderTimeline(o: Order, t: Dictionary): OrderTimelineStep[] {
+  const steps: OrderTimelineStep[] = [{ label: t.dashboard.timelineReceived, iso: o.created_at }];
+  if (o.paid_at) steps.push({ label: t.dashboard.timelinePaid, iso: o.paid_at });
+  if (o.accepted_at) steps.push({ label: t.dashboard.timelineAccepted, iso: o.accepted_at });
+  if (o.shipped_at) steps.push({ label: t.dashboard.timelineShipped, iso: o.shipped_at });
+  if (o.completed_at) steps.push({ label: t.dashboard.timelineCompleted, iso: o.completed_at });
+  if (o.payout_sent) steps.push({ label: t.dashboard.timelinePayout, iso: o.payout_sent_at });
+  return steps;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { t, locale } = useLocale();
@@ -168,8 +186,29 @@ export default function DashboardPage() {
   const todaySales = orders
     .filter((o) => new Date(o.created_at).toDateString() === today && o.status !== "pending_payment" && o.status !== "cancelled")
     .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
+  // "Today's sales" above answers "did anything sell today" — this
+  // answers "how much has this shop sold, ever" so the two numbers are
+  // never mistaken for one another (a shop with 3 completed orders from
+  // last week correctly shows 0 FCFA today and 7,500 FCFA total).
+  const totalSales = orders
+    .filter((o) => o.status !== "pending_payment" && o.status !== "cancelled")
+    .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
 
   const needsActionCount = orders.filter((o) => orderBucket(o) === "action").length;
+  const preparingCount = orders.filter((o) => orderBucket(o) === "preparing").length;
+  const outOfStockCount = products.filter((p) => p.is_active && p.stock_quantity <= 0).length;
+  const lowStockCount = products.filter((p) => p.is_active && p.stock_quantity > 0 && p.stock_quantity <= 3).length;
+  // getMyOrders already returns newest-first, so the first few are the
+  // most recent orders without needing to re-sort here.
+  const recentOrders = orders.slice(0, 5);
+
+  const verificationStatus: "verified" | "pending" | "action" = shop.is_verified
+    ? "verified"
+    : shop.verification_requested_at ||
+        shop.identity_verification_status === "pending" ||
+        shop.identity_verification_status === "in_review"
+      ? "pending"
+      : "action";
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: "overview", label: t.dashboard.tabOverview, icon: "📊" },
@@ -196,6 +235,85 @@ export default function DashboardPage() {
   ];
   const checklistDoneCount = checklist.filter((c) => c.done).length;
   const checklistPercent = Math.round((checklistDoneCount / checklist.length) * 100);
+  const checklistRemaining = checklist.filter((c) => !c.done);
+
+  // "What needs your attention" — pulled together from whatever's
+  // actually live in the shop's data right now (orders, stock,
+  // verification, basic setup) rather than just restating numbers the
+  // seller already saw in the stat cards. Ordered most urgent first,
+  // and capped so a shop with a lot going on doesn't turn this into a
+  // wall of text.
+  type TodoItem = { key: string; level: "red" | "amber"; label: string; buttonLabel: string; onClick: () => void };
+  const todoItems: TodoItem[] = [];
+  if (needsActionCount > 0) {
+    todoItems.push({
+      key: "orders-action",
+      level: "red",
+      label: `${needsActionCount} ${plural(needsActionCount, locale, t.dashboard.todoOrdersActionOne, t.dashboard.todoOrdersActionOther)}`,
+      buttonLabel: t.dashboard.todoButtonView,
+      onClick: () => {
+        setTab("orders");
+        setOrderFilter("action");
+      },
+    });
+  }
+  if (outOfStockCount > 0) {
+    todoItems.push({
+      key: "out-of-stock",
+      level: "red",
+      label: `${outOfStockCount} ${plural(outOfStockCount, locale, t.dashboard.todoOutOfStockOne, t.dashboard.todoOutOfStockOther)}`,
+      buttonLabel: t.dashboard.todoButtonView,
+      onClick: () => setTab("products"),
+    });
+  }
+  if (preparingCount > 0) {
+    todoItems.push({
+      key: "orders-preparing",
+      level: "amber",
+      label: `${preparingCount} ${plural(preparingCount, locale, t.dashboard.todoOrdersPreparingOne, t.dashboard.todoOrdersPreparingOther)}`,
+      buttonLabel: t.dashboard.todoButtonView,
+      onClick: () => {
+        setTab("orders");
+        setOrderFilter("preparing");
+      },
+    });
+  }
+  if (lowStockCount > 0) {
+    todoItems.push({
+      key: "low-stock",
+      level: "amber",
+      label: `${lowStockCount} ${plural(lowStockCount, locale, t.dashboard.todoLowStockOne, t.dashboard.todoLowStockOther)}`,
+      buttonLabel: t.dashboard.todoButtonView,
+      onClick: () => setTab("products"),
+    });
+  }
+  if (verificationStatus === "action") {
+    todoItems.push({
+      key: "verify",
+      level: "amber",
+      label: t.dashboard.todoVerifyShop,
+      buttonLabel: t.dashboard.todoButtonVerify,
+      onClick: () => setTab("trust"),
+    });
+  }
+  if (!shop.delivery_info) {
+    todoItems.push({
+      key: "delivery",
+      level: "amber",
+      label: t.dashboard.checklistDelivery,
+      buttonLabel: t.dashboard.todoButtonConfigure,
+      onClick: () => setTab("settings"),
+    });
+  }
+  if (!shop.logo_url) {
+    todoItems.push({
+      key: "logo",
+      level: "amber",
+      label: t.dashboard.checklistLogo,
+      buttonLabel: t.dashboard.todoButtonAdd,
+      onClick: () => setTab("settings"),
+    });
+  }
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -230,21 +348,6 @@ export default function DashboardPage() {
         />
       }
     >
-      {needsActionCount > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            setTab("orders");
-            setOrderFilter("action");
-          }}
-          className="dash-card w-full text-left px-4 py-3 text-sm font-medium mb-6 hover:brightness-[0.98]"
-          style={{ borderColor: "var(--dash-gold)", background: "#fbf3df", color: "var(--dash-gold-ink)" }}
-        >
-          ⚠️ {needsActionCount}{" "}
-          {plural(needsActionCount, locale, t.dashboard.needsActionOne, t.dashboard.needsActionOther)}
-        </button>
-      )}
-
       {tab === "overview" && (
         <div>
           <div className="dash-hero p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -253,10 +356,29 @@ export default function DashboardPage() {
                 {t.dashboard.sellerDashboard}
               </p>
               <h2 className="text-2xl font-bold mt-1">{shop.shop_name} 👋</h2>
+              <button
+                type="button"
+                onClick={() => setTab("trust")}
+                className="dash-badge mt-2"
+                style={
+                  verificationStatus === "verified"
+                    ? { background: "var(--dash-success-wash)", color: "var(--dash-success)" }
+                    : verificationStatus === "pending"
+                      ? { background: "rgba(245, 158, 11, 0.14)", color: "var(--dash-gold-ink)" }
+                      : { background: "var(--dash-bg-2)", color: "var(--dash-muted)" }
+                }
+              >
+                {verificationStatus === "verified" ? "🟢 " : verificationStatus === "pending" ? "🟡 " : "🔴 "}
+                {verificationStatus === "verified"
+                  ? t.dashboard.sellerStatusVerified
+                  : verificationStatus === "pending"
+                    ? t.dashboard.sellerStatusPending
+                    : t.dashboard.sellerStatusAction}
+              </button>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button type="button" onClick={() => setTab("products")} className="dash-btn">
-                + {t.dashboard.checklistProduct}
+                {products.length > 0 ? t.dashboard.addProduct : `+ ${t.dashboard.checklistProduct}`}
               </button>
               <a
                 href={`/shop/${shop.slug}`}
@@ -271,10 +393,16 @@ export default function DashboardPage() {
 
           {checklistPercent < 100 && (
             <div className="dash-card p-5 mb-6">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-1">
                 <p className="text-sm font-semibold">{t.dashboard.checklistTitle}</p>
                 <p className="text-sm" style={{ color: "var(--dash-muted)" }}>{checklistPercent}%</p>
               </div>
+              <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>
+                {plural(checklistRemaining.length, locale, t.dashboard.stepsRemainingOne, t.dashboard.stepsRemainingOther).replace(
+                  "{n}",
+                  String(checklistRemaining.length)
+                )}
+              </p>
               <div className="dash-progress-track mb-4">
                 <div className="dash-progress-fill" style={{ width: `${checklistPercent}%` }} />
               </div>
@@ -285,25 +413,65 @@ export default function DashboardPage() {
                     type="button"
                     onClick={() => setTab(c.goTab)}
                     disabled={c.done}
-                    className="flex items-center gap-2 text-sm text-left"
+                    className="flex items-center justify-between gap-2 text-sm text-left"
                     style={{ color: c.done ? "var(--dash-muted)" : "var(--dash-ink)" }}
                   >
-                    <span>{c.done ? "☑" : "☐"}</span>
-                    <span className={c.done ? "line-through" : ""}>{c.label}</span>
+                    <span className="flex items-center gap-2">
+                      <span>{c.done ? "✓" : "○"}</span>
+                      <span className={c.done ? "line-through" : ""}>{c.label}</span>
+                    </span>
+                    {!c.done && <span className="text-xs font-semibold underline" style={{ color: "var(--dash-gold-ink)" }}>{t.dashboard.todoButtonConfigure}</span>}
                   </button>
+                ))}
+              </div>
+              <p className="text-xs mt-4 pt-3 border-t" style={{ color: "var(--dash-muted)", borderColor: "var(--dash-border)" }}>
+                {t.dashboard.checklistTrustNote}
+              </p>
+            </div>
+          )}
+
+          {todoItems.length > 0 && (
+            <div className="dash-card p-5 mb-6">
+              <p className="text-sm font-semibold mb-3">⚠️ {t.dashboard.todoTitle}</p>
+              <div className="flex flex-col gap-2">
+                {todoItems.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5" style={{ background: "var(--dash-bg-2)" }}>
+                    <span className="text-sm flex items-center gap-2 min-w-0">
+                      <span className="shrink-0">{item.level === "red" ? "🔴" : "🟡"}</span>
+                      <span className="truncate">{item.label}</span>
+                    </span>
+                    <button type="button" onClick={item.onClick} className="dash-btn-outline !py-1 !px-3 text-xs shrink-0">
+                      {item.buttonLabel}
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="grid sm:grid-cols-3 gap-4 mb-4">
+          <div className="grid sm:grid-cols-3 gap-4 mb-1">
             <Stat icon="💰" iconBg="#fef3c7" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
             <Stat icon="🛒" iconBg="#f5f5f5" label={t.dashboard.orders} value={String(orders.length)} />
             <Stat icon="📦" iconBg="#f5f5f5" label={t.dashboard.listings} value={String(products.length)} />
           </div>
+          <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>
+            {t.dashboard.totalSales}: {formatFcfa(totalSales)}
+          </p>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
-            <Stat icon="🔒" iconBg="#f5f5f5" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat icon="✅" iconBg="#f0fdf4" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat
+              icon="🔒"
+              iconBg="#f5f5f5"
+              label={t.dashboard.balanceHeld}
+              value={formatFcfa(balanceHeld)}
+              action={{ label: t.dashboard.viewPaymentsButton, onClick: () => setTab("payments") }}
+            />
+            <Stat
+              icon="✅"
+              iconBg="#f0fdf4"
+              label={t.dashboard.balanceAvailable}
+              value={formatFcfa(owed)}
+              action={{ label: t.dashboard.viewPaymentsButton, onClick: () => setTab("payments") }}
+            />
             <Stat
               icon="⭐"
               iconBg="#fef3c7"
@@ -311,12 +479,52 @@ export default function DashboardPage() {
               value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
             />
           </div>
-          <div className="grid sm:grid-cols-3 gap-4 mb-2">
+          <div className="grid sm:grid-cols-3 gap-4 mb-6">
             <Stat icon="👁️" iconBg="#f5f5f5" label={t.dashboard.shopViews} value={String(shop.view_count)} />
           </div>
-          <p className="text-xs mt-2" style={{ color: "var(--dash-muted)" }}>
+          <p className="text-xs mb-6 -mt-4" style={{ color: "var(--dash-muted)" }}>
             {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
           </p>
+
+          <div className="dash-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold">{t.dashboard.recentOrdersTitle}</p>
+              {orders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTab("orders")}
+                  className="text-xs font-semibold underline"
+                  style={{ color: "var(--dash-gold-ink)" }}
+                >
+                  {t.dashboard.viewAllOrders}
+                </button>
+              )}
+            </div>
+            {recentOrders.length === 0 ? (
+              <p className="text-sm text-center py-6" style={{ color: "var(--dash-muted)" }}>{t.dashboard.noOrdersYet}</p>
+            ) : (
+              <div className="flex flex-col divide-y divide-[var(--dash-border)]">
+                {recentOrders.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setTab("orders")}
+                    className="flex items-center justify-between gap-3 py-2.5 text-left"
+                  >
+                    <span className="text-sm font-mono" style={{ color: "var(--dash-muted)" }}>
+                      #{o.id.slice(0, 8).toUpperCase()}
+                    </span>
+                    <span className="text-sm font-medium flex-1 text-right sm:text-left sm:flex-none">{formatFcfa(o.total_amount_fcfa)}</span>
+                    <span className="text-xs shrink-0" style={{ color: "var(--dash-muted)" }}>
+                      {o.status === "paid_held" && o.accepted_at
+                        ? t.dashboard.preparingStatus
+                        : t.dashboard.statusLabels[o.status] ?? o.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -535,6 +743,10 @@ function OrdersPanel({
 
                 {isExpanded && (
                   <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--dash-border)" }}>
+                    <p className="text-xs font-mono mb-3" style={{ color: "var(--dash-muted)" }}>
+                      {t.dashboard.orderIdLabel} #{o.id.slice(0, 8).toUpperCase()}
+                    </p>
+
                     <p className="text-xs font-semibold mb-1" style={{ color: "var(--dash-muted)" }}>{t.dashboard.itemsPurchased}</p>
                     {o.items && o.items.length > 0 ? (
                       <ul className="text-sm space-y-0.5 mb-3">
@@ -557,7 +769,61 @@ function OrdersPanel({
                         </div>
                       </>
                     )}
-                    {o.delivery_notes && <p className="text-xs italic" style={{ color: "var(--dash-muted)" }}>{o.delivery_notes}</p>}
+                    {o.delivery_notes && <p className="text-xs italic mb-3" style={{ color: "var(--dash-muted)" }}>{o.delivery_notes}</p>}
+
+                    {o.status !== "pending_payment" && (
+                      <div className="rounded-lg p-3 mb-3" style={{ background: "var(--dash-bg-2)" }}>
+                        <p className="text-xs font-semibold mb-2" style={{ color: "var(--dash-muted)" }}>{t.dashboard.paymentBreakdownTitle}</p>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span style={{ color: "var(--dash-muted)" }}>{t.dashboard.productPriceLabel}</span>
+                          <span>{formatFcfa(o.total_amount_fcfa)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span style={{ color: "var(--dash-muted)" }}>{t.dashboard.platformFeeLabel}</span>
+                          <span style={{ color: "var(--dash-danger)" }}>
+                            −{formatFcfa(calculateCommission(o.total_amount_fcfa).commissionFcfa)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm font-semibold pt-1 mt-1 border-t" style={{ borderColor: "var(--dash-border)" }}>
+                          <span>{t.dashboard.youReceive}</span>
+                          <span>{formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs mt-2">
+                          <span style={{ color: "var(--dash-muted)" }}>{t.dashboard.paymentStatusLabel}</span>
+                          <span style={{ color: o.status === "completed" && o.payout_sent ? "var(--dash-success)" : "var(--dash-gold-ink)" }}>
+                            {o.status === "completed" && o.payout_sent
+                              ? t.dashboard.paymentStatusReleased
+                              : t.dashboard.paymentStatusHeld}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {buildOrderTimeline(o, t).length > 1 && (
+                      <div>
+                        <p className="text-xs font-semibold mb-2" style={{ color: "var(--dash-muted)" }}>{t.dashboard.timelineTitle}</p>
+                        <div className="flex flex-col gap-1.5">
+                          {buildOrderTimeline(o, t).map((step, i) => (
+                            <div key={i} className="flex items-center justify-between text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <span style={{ color: "var(--dash-success)" }}>✓</span>
+                                {step.label}
+                              </span>
+                              <span style={{ color: "var(--dash-muted)" }}>
+                                {step.iso
+                                  ? new Date(step.iso).toLocaleString(undefined, {
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : t.dashboard.timelineDateUnknown}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -588,12 +854,26 @@ function ProductsPanel({
 }) {
   const [formState, setFormState] = useState<FormState>({ mode: "closed" });
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "low" | "out">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const filtered = search.trim()
+  const statusFilters: { key: "all" | "active" | "low" | "out"; label: string; count: number }[] = [
+    { key: "all", label: t.dashboard.filterAll, count: products.length },
+    { key: "active", label: t.dashboard.productFilterActive, count: products.filter((p) => p.is_active && p.stock_quantity > 0).length },
+    { key: "low", label: t.dashboard.lowStockBadge, count: products.filter((p) => p.is_active && p.stock_quantity > 0 && p.stock_quantity <= 3).length },
+    { key: "out", label: t.dashboard.outOfStockBadge, count: products.filter((p) => p.stock_quantity <= 0).length },
+  ];
+
+  const bySearch = search.trim()
     ? products.filter((p) => p.title.toLowerCase().includes(search.trim().toLowerCase()))
     : products;
+  const filtered = bySearch.filter((p) => {
+    if (statusFilter === "active") return p.is_active && p.stock_quantity > 0;
+    if (statusFilter === "low") return p.is_active && p.stock_quantity > 0 && p.stock_quantity <= 3;
+    if (statusFilter === "out") return p.stock_quantity <= 0;
+    return true;
+  });
 
   async function handleDelete(productId: string) {
     if (!window.confirm(t.dashboard.removeConfirm)) return;
@@ -632,6 +912,19 @@ function ProductsPanel({
         >
           {formState.mode === "add" ? t.dashboard.cancel : t.dashboard.addProduct}
         </button>
+      </div>
+
+      <div className="flex items-center gap-2 mb-4 overflow-x-auto">
+        {statusFilters.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setStatusFilter(f.key)}
+            className={`dash-pill ${statusFilter === f.key ? "is-active" : ""}`}
+          >
+            {f.label} ({f.count})
+          </button>
+        ))}
       </div>
 
       {formState.mode === "add" && (
@@ -1794,11 +2087,13 @@ function Stat({
   value,
   icon,
   iconBg,
+  action,
 }: {
   label: string;
   value: string;
   icon?: string;
   iconBg?: string;
+  action?: { label: string; onClick: () => void };
 }) {
   return (
     <div className="dash-card p-4 flex items-start gap-3">
@@ -1807,9 +2102,19 @@ function Stat({
           {icon}
         </span>
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-xs" style={{ color: "var(--dash-muted)" }}>{label}</p>
         <p className="text-xl font-bold mt-1 truncate">{value}</p>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="text-xs font-semibold underline mt-1"
+            style={{ color: "var(--dash-gold-ink)" }}
+          >
+            {action.label}
+          </button>
+        )}
       </div>
     </div>
   );

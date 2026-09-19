@@ -59,7 +59,11 @@ export async function POST(req: NextRequest) {
     // after the browser's own poll already confirmed it is a no-op.
     const { data: updatedOrder } = await admin
       .from("orders")
-      .update({ status: "paid_held", updated_at: new Date().toISOString() })
+      .update({
+        status: "paid_held",
+        paid_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq("payment_reference", reference)
       .eq("status", "pending_payment")
       .select("id, shop_id, total_amount_fcfa")

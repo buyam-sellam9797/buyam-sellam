@@ -129,7 +129,11 @@ export async function POST(
 
   const { data: updated, error } = await admin
     .from("orders")
-    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id)
     .eq("status", "shipped")
     .select(

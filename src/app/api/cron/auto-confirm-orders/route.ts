@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
     Date.now() - AUTO_CONFIRM_AFTER_DAYS * 24 * 60 * 60 * 1000
   ).toISOString();
 
+  const nowIso = new Date().toISOString();
   const { data: updated, error } = await admin
     .from("orders")
-    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .update({ status: "completed", completed_at: nowIso, updated_at: nowIso })
     .eq("status", "shipped")
     .lt("updated_at", cutoff)
     .select("id");

@@ -165,6 +165,9 @@ export type Order = {
   payout_sent: boolean;
   payout_sent_at: string | null;
   accepted_at: string | null;
+  paid_at: string | null;
+  shipped_at: string | null;
+  completed_at: string | null;
   created_at: string;
   updated_at: string;
   // Only present when fetched via getMyOrders (the seller dashboard) —
@@ -1043,7 +1046,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, paid_at, shipped_at, completed_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
@@ -1092,9 +1095,10 @@ export async function markOrderAccepted(orderId: string) {
 }
 
 export async function markOrderShipped(orderId: string) {
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from("orders")
-    .update({ status: "shipped", updated_at: new Date().toISOString() })
+    .update({ status: "shipped", shipped_at: now, updated_at: now })
     .eq("id", orderId);
   if (error) throw new Error(error.message);
 }
