@@ -297,22 +297,22 @@ export default function DashboardPage() {
           )}
 
           <div className="grid sm:grid-cols-3 gap-4 mb-4">
-            <Stat icon="💰" iconBg="#e7f2ee" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
-            <Stat icon="🛒" iconBg="#eef1ed" label={t.dashboard.orders} value={String(orders.length)} />
-            <Stat icon="📦" iconBg="#fdf3e3" label={t.dashboard.listings} value={String(products.length)} />
+            <Stat icon="💰" iconBg="#fef3c7" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
+            <Stat icon="🛒" iconBg="#f5f5f5" label={t.dashboard.orders} value={String(orders.length)} />
+            <Stat icon="📦" iconBg="#f5f5f5" label={t.dashboard.listings} value={String(products.length)} />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
-            <Stat icon="🔒" iconBg="#eef1ed" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat icon="✅" iconBg="#e7f2ee" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat icon="🔒" iconBg="#f5f5f5" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat icon="✅" iconBg="#f0fdf4" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
             <Stat
               icon="⭐"
-              iconBg="#fdf3e3"
+              iconBg="#fef3c7"
               label={t.dashboard.rating}
               value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
             />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
-            <Stat icon="👁️" iconBg="#eef1ed" label={t.dashboard.shopViews} value={String(shop.view_count)} />
+            <Stat icon="👁️" iconBg="#f5f5f5" label={t.dashboard.shopViews} value={String(shop.view_count)} />
           </div>
           <p className="text-xs mt-2" style={{ color: "var(--dash-muted)" }}>
             {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
@@ -339,8 +339,8 @@ export default function DashboardPage() {
       {tab === "payments" && (
         <div className="flex flex-col gap-6">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Stat icon="🔒" iconBg="#eef1ed" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat icon="✅" iconBg="#e7f2ee" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat icon="🔒" iconBg="#f5f5f5" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat icon="✅" iconBg="#f0fdf4" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
           </div>
           <PayoutDestinationForm shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
           <PayoutHistory orders={orders} t={t} />
@@ -497,7 +497,7 @@ function OrdersPanel({
                   {bucket === "action" && (
                     <span
                       className="dash-badge uppercase tracking-wide shrink-0"
-                      style={{ background: "rgba(212, 169, 79, 0.18)", color: "var(--dash-gold-ink)" }}
+                      style={{ background: "rgba(245, 158, 11, 0.18)", color: "var(--dash-gold-ink)" }}
                     >
                       {t.dashboard.filterAction}
                     </span>
@@ -816,7 +816,7 @@ function PayoutDestinationForm({
           {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
         </button>
         {saved && !saving && (
-          <span className="text-sm" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopSettingsSaved}</span>
+          <span className="text-sm" style={{ color: "var(--dash-success)" }}>{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
     </div>
@@ -932,7 +932,7 @@ function NotificationBell({
                   type="button"
                   onClick={() => onMarkAllRead()}
                   className="text-xs hover:underline"
-                  style={{ color: "var(--dash-primary)" }}
+                  style={{ color: "var(--dash-gold-ink)" }}
                 >
                   {t.dashboard.notificationsMarkAllRead}
                 </button>
@@ -1091,7 +1091,7 @@ function ReviewCard({
               {saving ? t.dashboard.saving : t.dashboard.reviewReplyButton}
             </button>
             {saved && !saving && (
-              <span className="text-xs" style={{ color: "var(--dash-primary)" }}>{t.dashboard.reviewReplySaved}</span>
+              <span className="text-xs" style={{ color: "var(--dash-success)" }}>{t.dashboard.reviewReplySaved}</span>
             )}
           </div>
         </div>
@@ -1152,14 +1152,14 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
   return (
     <div className="flex flex-col gap-6">
       <div className="grid sm:grid-cols-3 gap-4">
-        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon="👁️" iconBg="rgba(21, 94, 82, 0.1)" />
+        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon="👁️" iconBg="#f5f5f5" />
         <Stat
           label={t.dashboard.analyticsConversionLabel}
           value={conversionRate == null ? t.dashboard.noRatingYet : `${conversionRate.toFixed(1)}%`}
           icon="📈"
-          iconBg="rgba(212, 169, 79, 0.16)"
+          iconBg="#fef3c7"
         />
-        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} icon="💰" iconBg="rgba(21, 94, 82, 0.1)" />
+        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} icon="💰" iconBg="#fef3c7" />
       </div>
       <p className="text-xs -mt-4" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsConversionHint}</p>
 
@@ -1420,7 +1420,7 @@ function ShopSettingsForm({
         <div className="flex items-center gap-3">
           <div
             className="relative w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold overflow-hidden shrink-0"
-            style={{ background: "rgba(212, 169, 79, 0.18)", color: "var(--dash-gold-ink)" }}
+            style={{ background: "rgba(245, 158, 11, 0.18)", color: "var(--dash-gold-ink)" }}
           >
             {logoFile ? (
               // A local file the seller just picked, previewed straight from
@@ -1506,7 +1506,7 @@ function ShopSettingsForm({
                 : t.dashboard.shopLocationSet}
           </button>
           {shop.latitude != null && (
-            <span className="text-xs" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopLocationConfirmed}</span>
+            <span className="text-xs" style={{ color: "var(--dash-success)" }}>{t.dashboard.shopLocationConfirmed}</span>
           )}
         </div>
         {locationError && <p className="text-xs mt-1.5" style={{ color: "var(--dash-danger)" }}>{locationError}</p>}
@@ -1525,7 +1525,7 @@ function ShopSettingsForm({
           {saving ? t.dashboard.saving : t.dashboard.shopSettingsSave}
         </button>
         {saved && !saving && (
-          <span className="text-sm" style={{ color: "var(--dash-primary)" }}>{t.dashboard.shopSettingsSaved}</span>
+          <span className="text-sm" style={{ color: "var(--dash-success)" }}>{t.dashboard.shopSettingsSaved}</span>
         )}
       </div>
       </div>
@@ -1573,7 +1573,7 @@ function VerificationPanel({
     return (
       <div
         className="rounded-xl p-5 text-sm"
-        style={{ border: "1px solid var(--dash-primary)", background: "var(--dash-primary-wash)", color: "var(--dash-primary-dark)" }}
+        style={{ border: "1px solid var(--dash-success)", background: "var(--dash-success-wash)", color: "var(--dash-success)" }}
       >
         🛡️ {t.dashboard.verificationVerified}
       </div>
@@ -1584,7 +1584,7 @@ function VerificationPanel({
     return (
       <div
         className="rounded-xl p-5 text-sm"
-        style={{ border: "1px solid var(--dash-gold)", background: "rgba(212, 169, 79, 0.14)", color: "var(--dash-gold-ink)" }}
+        style={{ border: "1px solid var(--dash-gold)", background: "rgba(245, 158, 11, 0.14)", color: "var(--dash-gold-ink)" }}
       >
         {t.dashboard.verificationPending}
       </div>
@@ -1622,7 +1622,7 @@ function VerificationPanel({
           <div className="flex flex-col gap-2">
             <p
               className="text-sm rounded-lg px-3 py-2"
-              style={{ color: "var(--dash-gold-ink)", background: "rgba(212, 169, 79, 0.14)", border: "1px solid var(--dash-gold)" }}
+              style={{ color: "var(--dash-gold-ink)", background: "rgba(245, 158, 11, 0.14)", border: "1px solid var(--dash-gold)" }}
             >
               {t.dashboard.identityStatusPending}
             </p>
@@ -1640,7 +1640,7 @@ function VerificationPanel({
         {identityStatus === "in_review" && (
           <p
             className="text-sm rounded-lg px-3 py-2"
-            style={{ color: "var(--dash-gold-ink)", background: "rgba(212, 169, 79, 0.14)", border: "1px solid var(--dash-gold)" }}
+            style={{ color: "var(--dash-gold-ink)", background: "rgba(245, 158, 11, 0.14)", border: "1px solid var(--dash-gold)" }}
           >
             {t.dashboard.identityStatusInReview}
           </p>
