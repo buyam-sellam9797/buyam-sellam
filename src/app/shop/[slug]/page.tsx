@@ -119,7 +119,34 @@ export default async function ShopPage({
       )}
 
       {shop.description && (
-        <p className="text-sm text-neutral-600 mb-8 -mt-4">{shop.description}</p>
+        <p className="text-sm text-neutral-600 mb-4 -mt-4">{shop.description}</p>
+      )}
+
+      {(shop.facebook_url || shop.instagram_url || shop.tiktok_url) && (
+        <div className="flex items-center gap-4 mb-8 text-sm">
+          {shop.facebook_url && (
+            <a href={shop.facebook_url} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-neutral-900 underline underline-offset-2">
+              Facebook
+            </a>
+          )}
+          {shop.instagram_url && (
+            <a href={shop.instagram_url} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-neutral-900 underline underline-offset-2">
+              Instagram
+            </a>
+          )}
+          {shop.tiktok_url && (
+            <a href={shop.tiktok_url} target="_blank" rel="noopener noreferrer" className="text-neutral-500 hover:text-neutral-900 underline underline-offset-2">
+              TikTok
+            </a>
+          )}
+        </div>
+      )}
+
+      {shop.return_policy && (
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600 mb-8">
+          <p className="font-semibold text-neutral-800 mb-1">{t.shop.returnPolicyTitle}</p>
+          <p className="whitespace-pre-line">{shop.return_policy}</p>
+        </div>
       )}
 
       <h2 className="text-sm font-semibold text-neutral-500 mb-3">
@@ -144,12 +171,29 @@ export default async function ShopPage({
               ) : (
                 <span className="text-5xl">🛍️</span>
               )}
+              {p.is_featured && (
+                <span className="absolute top-2 left-2 text-[10px] font-semibold bg-amber-500 text-white rounded-full px-2 py-0.5">
+                  ⭐ {t.product.featuredBadge}
+                </span>
+              )}
+              {p.sale_price_fcfa != null && (
+                <span className="absolute top-2 right-2 text-[10px] font-semibold bg-red-600 text-white rounded-full px-2 py-0.5">
+                  {t.product.saleBadge}
+                </span>
+              )}
             </div>
             <div className="p-3">
               <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-              <p className="text-sm font-semibold mt-1">
-                {formatFcfa(p.price_fcfa)}
-              </p>
+              {p.sale_price_fcfa != null ? (
+                <p className="flex items-center gap-1.5 mt-1">
+                  <span className="text-xs text-neutral-400 line-through">{formatFcfa(p.price_fcfa)}</span>
+                  <span className="text-sm font-semibold text-red-600">{formatFcfa(p.sale_price_fcfa)}</span>
+                </p>
+              ) : (
+                <p className="text-sm font-semibold mt-1">
+                  {formatFcfa(p.price_fcfa)}
+                </p>
+              )}
             </div>
           </Link>
         ))}

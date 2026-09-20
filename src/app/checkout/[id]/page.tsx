@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getProductById } from "@/lib/supabase";
+import { getProductById, getDeliveryZones } from "@/lib/supabase";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
 import CheckoutForm from "./checkout-form";
@@ -25,11 +25,17 @@ export default async function CheckoutPage({
     ? Math.min(Math.max(1, requestedQty), Math.max(1, product.stock_quantity))
     : 1;
   const deliveryFee = product.shop?.delivery_fee_fcfa ?? 0;
+  const deliveryZones = await getDeliveryZones(product.shop_id);
 
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-xl font-bold mb-6">{t.checkout.confirmOrder}</h1>
-      <CheckoutForm product={product} initialQuantity={initialQuantity} deliveryFee={deliveryFee} />
+      <CheckoutForm
+        product={product}
+        initialQuantity={initialQuantity}
+        deliveryFee={deliveryFee}
+        deliveryZones={deliveryZones}
+      />
     </div>
   );
 }

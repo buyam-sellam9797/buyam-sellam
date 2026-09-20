@@ -46,6 +46,10 @@ export function ProductForm({
   );
   const [sizes, setSizes] = useState(existingProduct?.sizes?.join(", ") ?? "");
   const [colors, setColors] = useState(existingProduct?.colors?.join(", ") ?? "");
+  const [salePrice, setSalePrice] = useState(
+    existingProduct?.sale_price_fcfa != null ? String(existingProduct.sale_price_fcfa) : ""
+  );
+  const [isFeatured, setIsFeatured] = useState(existingProduct?.is_featured ?? false);
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +65,10 @@ export function ProductForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (salePrice.trim() && Number(salePrice) >= Number(price)) {
+      setError(t.dashboard.salePriceMustBeLower);
+      return;
+    }
     setSubmitting(true);
     try {
       let imageUrls: string[] | undefined;
@@ -68,6 +76,7 @@ export function ProductForm({
         const url = await uploadProductImage(file, shopId);
         imageUrls = [url];
       }
+      const salePriceFcfa = salePrice.trim() ? Number(salePrice) : null;
       const sharedFields = {
         categoryId: categoryId || null,
         title,
@@ -78,6 +87,8 @@ export function ProductForm({
         condition,
         sizes: parseList(sizes),
         colors: parseList(colors),
+        salePriceFcfa,
+        isFeatured,
       };
       if (isEditing && existingProduct) {
         await updateProduct(existingProduct.id, { ...sharedFields, imageUrls });
@@ -148,6 +159,23 @@ export function ProductForm({
           />
         </div>
       </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.salePriceLabel}</label>
+        <input
+          type="number"
+          min={1}
+          value={salePrice}
+          onChange={(e) => setSalePrice(e.target.value)}
+          placeholder={t.dashboard.salePricePlaceholder}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <p className="text-xs text-neutral-500 mt-1">{t.dashboard.salePriceHint}</p>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={isFeatured} onChange={(e) => setIsFeatured(e.target.checked)} />
+        {t.dashboard.isFeaturedLabel}
+      </label>
+      <p className="text-xs text-neutral-500 -mt-3">{t.dashboard.isFeaturedHint}</p>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.category}</label>
         <select

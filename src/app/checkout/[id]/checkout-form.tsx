@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { supabase, getMyAddresses, type Product, type BuyerAddress } from "@/lib/supabase";
+import { supabase, getMyAddresses, type Product, type BuyerAddress, type DeliveryZone } from "@/lib/supabase";
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
@@ -14,10 +14,12 @@ export default function CheckoutForm({
   product,
   initialQuantity = 1,
   deliveryFee = 0,
+  deliveryZones = [],
 }: {
   product: Product;
   initialQuantity?: number;
   deliveryFee?: number;
+  deliveryZones?: DeliveryZone[];
 }) {
   const { t } = useLocale();
   const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
@@ -38,22 +40,36 @@ export default function CheckoutForm({
   const [buyerLng, setBuyerLng] = useState<number | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(deliveryZones[0]?.id ?? "");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxQuantity = Math.max(1, product.stock_quantity);
+
+  // Promotions: a seller-set sale price always wins when present — same
+  // rule the server applies at checkout, so the price shown here is
+  // exactly what gets charged.
+  const unitPrice = product.sale_price_fcfa ?? product.price_fcfa;
 
   // Automatic, distance-based delivery pricing: once we know both the
   // shop's pinned location and the buyer's, the flat delivery fee (used
   // otherwise) is replaced by a price calculated from the real
   // distance between them. Recomputes live as the buyer shares their
-  // location or picks a different saved address.
+  // location or picks a different saved address. Skipped entirely once
+  // the shop has configured named delivery zones (below) — those
+  // replace this instead of stacking with it.
   const distanceKm = useMemo(() => {
     if (buyerLat == null || buyerLng == null) return null;
     if (product.shop?.latitude == null || product.shop?.longitude == null) return null;
     return haversineDistanceKm(product.shop.latitude, product.shop.longitude, buyerLat, buyerLng);
   }, [buyerLat, buyerLng, product.shop?.latitude, product.shop?.longitude]);
+
+  const selectedZone = deliveryZones.find((z) => z.id === selectedZoneId) ?? null;
   const effectiveDeliveryFee =
-    distanceKm != null ? calculateDistanceDeliveryFeeFcfa(distanceKm, deliveryFee) : deliveryFee;
-  const total = product.price_fcfa * quantity + effectiveDeliveryFee;
+    deliveryZones.length > 0
+      ? (selectedZone?.fee_fcfa ?? 0)
+      : distanceKm != null
+        ? calculateDistanceDeliveryFeeFcfa(distanceKm, deliveryFee)
+        : deliveryFee;
+  const total = unitPrice * quantity + effectiveDeliveryFee;
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -137,6 +153,7 @@ export default function CheckoutForm({
           ...(buyerLat != null && buyerLng != null
             ? { deliveryLatitude: buyerLat, deliveryLongitude: buyerLng }
             : {}),
+          ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
         }),
       });
       const startData = await startRes.json();
@@ -236,7 +253,14 @@ export default function CheckoutForm({
         </div>
         <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
           <span className="text-neutral-500">{t.checkout.productLabel}</span>
-          <span>{formatFcfa(product.price_fcfa)}</span>
+          {product.sale_price_fcfa != null ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-neutral-400 line-through text-xs">{formatFcfa(product.price_fcfa)}</span>
+              <span className="font-semibold text-red-600">{formatFcfa(unitPrice)}</span>
+            </span>
+          ) : (
+            <span>{formatFcfa(unitPrice)}</span>
+          )}
         </div>
         <div className="flex items-center justify-between text-sm mt-1.5">
           <span className="text-neutral-500">{t.checkout.quantityLabel}</span>
@@ -264,7 +288,7 @@ export default function CheckoutForm({
           <div className="flex items-center justify-between text-sm mt-1.5">
             <span className="text-neutral-500">
               {t.checkout.deliveryFeeLabel}
-              {distanceKm != null && ` (${distanceKm.toFixed(1)} km)`}
+              {selectedZone ? ` (${selectedZone.name})` : distanceKm != null ? ` (${distanceKm.toFixed(1)} km)` : ""}
             </span>
             <span>{formatFcfa(effectiveDeliveryFee)}</span>
           </div>
@@ -277,6 +301,25 @@ export default function CheckoutForm({
 
       <div>
         <p className="text-sm font-semibold mb-2">{t.checkout.deliveryInfoTitle}</p>
+        {deliveryZones.length > 0 && (
+          <div className="mb-3">
+            <label className="text-xs font-medium block mb-1 text-neutral-600">
+              {t.checkout.deliveryZonePick}
+            </label>
+            <select
+              value={selectedZoneId}
+              onChange={(e) => setSelectedZoneId(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            >
+              {deliveryZones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name} — {formatFcfa(z.fee_fcfa)}
+                  {z.eta_text ? ` (${z.eta_text})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {addresses.length > 0 && (
           <div className="mb-3">
             <select

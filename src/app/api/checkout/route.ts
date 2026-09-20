@@ -32,6 +32,7 @@ type ChargeBody = {
   deliveryNotes?: string;
   deliveryLatitude?: number;
   deliveryLongitude?: number;
+  deliveryZoneId?: string;
 };
 
 // Starts a NotchPay payment for a real product: looks the product up
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
   const { data: product, error: productError } = await admin
     .from("products")
     .select(
-      "id, shop_id, title, price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
+      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
     )
     .eq("id", productId)
     .eq("is_active", true)
@@ -161,7 +162,34 @@ export async function POST(req: NextRequest) {
     deliveryFeeFcfa = calculateDistanceDeliveryFeeFcfa(deliveryDistanceKm, flatDeliveryFeeFcfa);
   }
 
-  const totalAmountFcfa = product.price_fcfa * quantity + deliveryFeeFcfa;
+  // Delivery zones: optional, seller-defined named prices. When the
+  // buyer picked one (only possible when the shop has configured at
+  // least one — see getDeliveryZones), its fee replaces the flat/
+  // distance-based fee above entirely, since a seller who set up zones
+  // is deliberately opting into that pricing instead. Looked up and
+  // trusted server-side, never taken from the client body directly, and
+  // re-validated against this exact shop so a buyer can't pass another
+  // shop's cheaper zone id.
+  let deliveryZoneName: string | null = null;
+  if (body.deliveryZoneId) {
+    const { data: zone } = await admin
+      .from("delivery_zones")
+      .select("id, name, fee_fcfa")
+      .eq("id", body.deliveryZoneId)
+      .eq("shop_id", product.shop_id)
+      .maybeSingle();
+    if (zone) {
+      deliveryFeeFcfa = zone.fee_fcfa;
+      deliveryDistanceKm = null;
+      deliveryZoneName = zone.name;
+    }
+  }
+
+  // Promotions: a seller-set sale price always wins over the regular
+  // price when present — same rule the shop/product pages use to show
+  // the crossed-out price, so what a buyer is quoted is what they pay.
+  const unitPriceFcfa = product.sale_price_fcfa ?? product.price_fcfa;
+  const totalAmountFcfa = unitPriceFcfa * quantity + deliveryFeeFcfa;
 
   const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -184,6 +212,7 @@ export async function POST(req: NextRequest) {
       delivery_latitude: typeof body.deliveryLatitude === "number" ? body.deliveryLatitude : null,
       delivery_longitude: typeof body.deliveryLongitude === "number" ? body.deliveryLongitude : null,
       delivery_distance_km: deliveryDistanceKm,
+      delivery_zone_name: deliveryZoneName,
     })
     .select("id")
     .single();
@@ -196,7 +225,7 @@ export async function POST(req: NextRequest) {
     order_id: order.id,
     product_id: product.id,
     quantity,
-    unit_price_fcfa: product.price_fcfa,
+    unit_price_fcfa: unitPriceFcfa,
   });
 
   try {
@@ -360,14 +389,30 @@ export async function GET(req: NextRequest) {
           for (const item of items ?? []) {
             const { data: prod } = await admin
               .from("products")
-              .select("stock_quantity")
+              .select("stock_quantity, title")
               .eq("id", item.product_id)
               .maybeSingle();
             if (prod) {
+              const newStock = Math.max(0, prod.stock_quantity - item.quantity);
               await admin
                 .from("products")
-                .update({ stock_quantity: Math.max(0, prod.stock_quantity - item.quantity) })
+                .update({ stock_quantity: newStock })
                 .eq("id", item.product_id);
+
+              // Only fire the moment stock crosses into "needs attention"
+              // (<=3, same threshold as the dashboard's low-stock badge) —
+              // never re-fire on every later checkout of an already-low item.
+              if (newStock <= 3 && prod.stock_quantity > 3) {
+                await notifyShop(admin, {
+                  shopId: updatedOrder.shop_id,
+                  type: "low_stock",
+                  title: newStock === 0 ? "Out of stock" : "Low stock",
+                  body:
+                    newStock === 0
+                      ? `"${prod.title}" just sold out.`
+                      : `"${prod.title}" has only ${newStock} left.`,
+                });
+              }
             }
           }
         }

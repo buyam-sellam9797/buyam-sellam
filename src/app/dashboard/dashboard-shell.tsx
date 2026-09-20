@@ -6,6 +6,7 @@ export type DashNavItem<Tab extends string> = {
   key: Tab;
   label: string;
   icon: string;
+  section?: string;
 };
 
 // The app shell for the seller dashboard: a persistent sidebar on
@@ -42,21 +43,46 @@ export function DashboardShell<Tab extends string>({
   const [mobileOpen, setMobileOpen] = useState(false);
   const initial = shopName.charAt(0).toUpperCase() || "S";
 
+  // Groups tabs under their `section` label, in the order sections
+  // first appear — lets page.tsx control section order just by how it
+  // orders the tabs array, with no separate config to keep in sync.
+  const groups: { section: string | null; items: DashNavItem<Tab>[] }[] = [];
+  for (const item of tabs) {
+    const section = item.section ?? null;
+    const last = groups[groups.length - 1];
+    if (last && last.section === section) {
+      last.items.push(item);
+    } else {
+      groups.push({ section, items: [item] });
+    }
+  }
+
   const navList = (
     <nav className="flex flex-col gap-1 px-3">
-      {tabs.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          onClick={() => {
-            onTabChange(item.key);
-            setMobileOpen(false);
-          }}
-          className={`dash-nav-link text-left ${activeTab === item.key ? "is-active" : ""}`}
-        >
-          <span aria-hidden="true">{item.icon}</span>
-          {item.label}
-        </button>
+      {groups.map((group, i) => (
+        <div key={group.section ?? i} className={i > 0 ? "mt-3" : ""}>
+          {group.section && (
+            <p className="px-3 pb-1 text-[10px] font-semibold tracking-wider uppercase" style={{ color: "var(--dash-muted)" }}>
+              {group.section}
+            </p>
+          )}
+          <div className="flex flex-col gap-1">
+            {group.items.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  onTabChange(item.key);
+                  setMobileOpen(false);
+                }}
+                className={`dash-nav-link text-left ${activeTab === item.key ? "is-active" : ""}`}
+              >
+                <span aria-hidden="true">{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
       ))}
     </nav>
   );

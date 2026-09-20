@@ -62,8 +62,33 @@ create table if not exists shops (
   -- admin a fixed place to send money instead of asking each time.
   payout_provider text check (payout_provider in ('mtn', 'orange')),
   payout_phone_number text,
+  -- "Ma boutique" social links + return policy — all optional, shown on
+  -- the shop's public page only when set.
+  facebook_url text,
+  instagram_url text,
+  tiktok_url text,
+  return_policy text,
   created_at timestamptz not null default now()
 );
+
+-- ============================================================
+-- DELIVERY ZONES
+-- Optional, additive per-shop delivery pricing by named zone (e.g.
+-- "Douala centre-ville — 1500 FCFA", "Hors Douala — 3000 FCFA"). A shop
+-- with zero rows here keeps using its flat/distance-based delivery fee
+-- exactly as before — this only changes checkout for a shop that opts in.
+-- ============================================================
+create table if not exists delivery_zones (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references shops(id) on delete cascade,
+  name text not null,
+  fee_fcfa integer not null,
+  eta_text text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists delivery_zones_shop_id_idx on delivery_zones (shop_id);
 
 -- ============================================================
 -- CATEGORIES
@@ -100,6 +125,13 @@ create table if not exists products (
   sizes jsonb not null default '[]'::jsonb,             -- array of size strings, e.g. ["38","39","40"]
   colors jsonb not null default '[]'::jsonb,            -- array of color strings
   is_active boolean not null default true,
+  -- Promotions: null = no promotion, checkout and display use price_fcfa
+  -- unchanged. Set = this product is on sale at this price.
+  sale_price_fcfa integer,
+  -- Boosting: a free "pin to top of my own shop" toggle a seller can set
+  -- on their own products. Sorts featured products first on the shop's
+  -- public page; does not affect search/category ranking site-wide.
+  is_featured boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -138,6 +170,7 @@ create table if not exists orders (
   delivery_latitude double precision,   -- buyer's shared location at checkout, if any (enables distance-based pricing)
   delivery_longitude double precision,
   delivery_distance_km numeric,    -- straight-line distance from shop to buyer, when both locations were known
+  delivery_zone_name text,         -- the named delivery_zones row the buyer picked at checkout, if the shop has any configured
   payout_sent boolean not null default false,   -- has Lio actually sent the seller their money?
   payout_sent_at timestamptz,
   accepted_at timestamptz,         -- seller marked "preparing" (before shipping)
@@ -245,7 +278,7 @@ create table if not exists disputes (
 create table if not exists notifications (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references shops(id) on delete cascade,
-  type text not null check (type in ('new_order', 'dispute_filed')),
+  type text not null check (type in ('new_order', 'dispute_filed', 'low_stock', 'payout_released')),
   title text not null,
   body text,
   order_id uuid references orders(id) on delete set null,
@@ -268,6 +301,7 @@ alter table reviews enable row level security;
 alter table disputes enable row level security;
 alter table buyer_addresses enable row level security;
 alter table notifications enable row level security;
+alter table delivery_zones enable row level security;
 
 -- Anyone can read active shops and products (public storefront browsing)
 create policy "Public can view active shops" on shops
@@ -369,6 +403,16 @@ create policy "Sellers view notifications on their shop" on notifications
 
 create policy "Sellers mark their own notifications read" on notifications
   for update using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  );
+
+create policy "Anyone can view delivery zones" on delivery_zones
+  for select using (true);
+
+create policy "Sellers manage their own delivery zones" on delivery_zones
+  for all using (
+    shop_id in (select id from shops where owner_id = auth.uid())
+  ) with check (
     shop_id in (select id from shops where owner_id = auth.uid())
   );
 

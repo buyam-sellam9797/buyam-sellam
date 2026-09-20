@@ -94,7 +94,7 @@ export default async function ProductPage({
       "@type": "Offer",
       url: shareUrl,
       priceCurrency: "XAF",
-      price: product.price_fcfa,
+      price: product.sale_price_fcfa ?? product.price_fcfa,
       availability:
         product.stock_quantity > 0
           ? "https://schema.org/InStock"
@@ -157,9 +157,16 @@ export default async function ProductPage({
           </p>
         )}
 
-        <p className="text-2xl font-semibold mt-4">
-          {formatFcfa(product.price_fcfa)}
-        </p>
+        {product.sale_price_fcfa != null ? (
+          <p className="flex items-center gap-2 mt-4">
+            <span className="text-base text-neutral-400 line-through">{formatFcfa(product.price_fcfa)}</span>
+            <span className="text-2xl font-semibold text-red-600">{formatFcfa(product.sale_price_fcfa)}</span>
+          </p>
+        ) : (
+          <p className="text-2xl font-semibold mt-4">
+            {formatFcfa(product.price_fcfa)}
+          </p>
+        )}
 
         {product.shop && (
           <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
@@ -238,7 +245,7 @@ export default async function ProductPage({
               product.shop.whatsapp_number,
               t.product.whatsappMessage
                 .replace("{title}", product.title)
-                .replace("{price}", formatFcfa(product.price_fcfa))
+                .replace("{price}", formatFcfa(product.sale_price_fcfa ?? product.price_fcfa))
             )}
             target="_blank"
             rel="noopener noreferrer"
@@ -253,7 +260,7 @@ export default async function ProductPage({
           url={shareUrl}
           message={t.product.shareMessage
             .replace("{title}", product.title)
-            .replace("{price}", formatFcfa(product.price_fcfa))}
+            .replace("{price}", formatFcfa(product.sale_price_fcfa ?? product.price_fcfa))}
         />
       </div>
     </div>

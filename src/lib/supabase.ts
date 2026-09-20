@@ -53,6 +53,12 @@ export type Shop = {
   business_hours: BusinessHours | null;
   payout_provider: "mtn" | "orange" | null;
   payout_phone_number: string | null;
+  // "Ma boutique" social links + return policy — all optional, shown on
+  // the shop's public page only when set.
+  facebook_url: string | null;
+  instagram_url: string | null;
+  tiktok_url: string | null;
+  return_policy: string | null;
 };
 
 export type BusinessHoursDay = { closed: boolean; open?: string; close?: string };
@@ -106,6 +112,10 @@ export type Product = {
   sizes: string[];
   colors: string[];
   is_active: boolean;
+  // Promotions: null = not on sale, price_fcfa applies as normal.
+  sale_price_fcfa: number | null;
+  // Boosting: a free "pin to top of my own shop" toggle.
+  is_featured: boolean;
   shop?: Pick<
     Shop,
     | "id"
@@ -125,6 +135,16 @@ export type Product = {
   shopRating?: number | null;
   distanceKm?: number | null;
   category?: Pick<Category, "name" | "slug"> | null;
+};
+
+export type DeliveryZone = {
+  id: string;
+  shop_id: string;
+  name: string;
+  fee_fcfa: number;
+  eta_text: string | null;
+  sort_order: number;
+  created_at: string;
 };
 
 export type Review = {
@@ -162,6 +182,7 @@ export type Order = {
   delivery_latitude: number | null;
   delivery_longitude: number | null;
   delivery_distance_km: number | null;
+  delivery_zone_name: string | null;
   payout_sent: boolean;
   payout_sent_at: string | null;
   accepted_at: string | null;
@@ -396,7 +417,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -486,7 +507,7 @@ export async function replyToReview(reviewId: string, reply: string): Promise<vo
 export type ShopNotification = {
   id: string;
   shop_id: string;
-  type: "new_order" | "dispute_filed";
+  type: "new_order" | "dispute_filed" | "low_stock" | "payout_released";
   title: string;
   body: string | null;
   order_id: string | null;
@@ -616,13 +637,18 @@ export async function getShopProducts(
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, category:categories(name, slug)"
     )
     .eq("shop_id", shopId);
   if (!opts?.includeInactive) {
     query = query.eq("is_active", true);
   }
-  const { data, error } = await query.order("created_at", { ascending: false });
+  // Featured (boosted) products first — a free, no-payment way for a
+  // seller to pin their own products to the top of their own shop page.
+  // Ties broken by newest first, same as before this existed.
+  const { data, error } = await query
+    .order("is_featured", { ascending: false })
+    .order("created_at", { ascending: false });
   if (error) {
     console.error("getShopProducts error:", error.message);
     return [];
@@ -869,6 +895,8 @@ export async function createProduct(input: {
   condition: ProductCondition;
   sizes: string[];
   colors: string[];
+  salePriceFcfa?: number | null;
+  isFeatured?: boolean;
 }) {
   const { error } = await supabase.from("products").insert({
     shop_id: input.shopId,
@@ -882,6 +910,8 @@ export async function createProduct(input: {
     condition: input.condition,
     sizes: input.sizes,
     colors: input.colors,
+    sale_price_fcfa: input.salePriceFcfa ?? null,
+    is_featured: input.isFeatured ?? false,
   });
   if (error) throw new Error(error.message);
 }
@@ -899,6 +929,8 @@ export async function updateProduct(
     condition: ProductCondition;
     sizes: string[];
     colors: string[];
+    salePriceFcfa?: number | null;
+    isFeatured?: boolean;
   }
 ) {
   const patch: Record<string, unknown> = {
@@ -913,6 +945,8 @@ export async function updateProduct(
     colors: input.colors,
   };
   if (input.imageUrls) patch.image_urls = input.imageUrls;
+  if (input.salePriceFcfa !== undefined) patch.sale_price_fcfa = input.salePriceFcfa;
+  if (input.isFeatured !== undefined) patch.is_featured = input.isFeatured;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
   if (error) throw new Error(error.message);
 }
@@ -940,6 +974,10 @@ export async function updateShop(
     businessHours?: BusinessHours | null;
     payoutProvider?: "mtn" | "orange" | null;
     payoutPhoneNumber?: string;
+    facebookUrl?: string;
+    instagramUrl?: string;
+    tiktokUrl?: string;
+    returnPolicy?: string;
   }
 ) {
   const { error } = await supabase
@@ -962,6 +1000,10 @@ export async function updateShop(
       ...(input.payoutPhoneNumber !== undefined
         ? { payout_phone_number: input.payoutPhoneNumber || null }
         : {}),
+      ...(input.facebookUrl !== undefined ? { facebook_url: input.facebookUrl || null } : {}),
+      ...(input.instagramUrl !== undefined ? { instagram_url: input.instagramUrl || null } : {}),
+      ...(input.tiktokUrl !== undefined ? { tiktok_url: input.tiktokUrl || null } : {}),
+      ...(input.returnPolicy !== undefined ? { return_policy: input.returnPolicy || null } : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
@@ -1046,7 +1088,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, paid_at, shipped_at, completed_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
+      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, delivery_zone_name, payout_sent, payout_sent_at, accepted_at, paid_at, shipped_at, completed_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
@@ -1080,6 +1122,68 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
     void _omit;
     return { ...rest, items } as Order;
   });
+}
+
+// Delivery zones — optional, seller-defined named delivery prices
+// (e.g. "Douala centre-ville — 1500 FCFA"). A shop with none configured
+// keeps using its flat/distance-based fee unchanged everywhere else in
+// this file; these functions are the only thing that touches this table.
+export async function getDeliveryZones(shopId: string): Promise<DeliveryZone[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("delivery_zones")
+    .select("id, shop_id, name, fee_fcfa, eta_text, sort_order, created_at")
+    .eq("shop_id", shopId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("getDeliveryZones error:", error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export async function createDeliveryZone(input: {
+  shopId: string;
+  name: string;
+  feeFcfa: number;
+  etaText?: string;
+  sortOrder?: number;
+}): Promise<DeliveryZone> {
+  const { data, error } = await supabase
+    .from("delivery_zones")
+    .insert({
+      shop_id: input.shopId,
+      name: input.name.trim(),
+      fee_fcfa: input.feeFcfa,
+      eta_text: input.etaText?.trim() || null,
+      sort_order: input.sortOrder ?? 0,
+    })
+    .select("id, shop_id, name, fee_fcfa, eta_text, sort_order, created_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function updateDeliveryZone(
+  zoneId: string,
+  input: { name?: string; feeFcfa?: number; etaText?: string; sortOrder?: number }
+) {
+  const { error } = await supabase
+    .from("delivery_zones")
+    .update({
+      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+      ...(input.feeFcfa !== undefined ? { fee_fcfa: input.feeFcfa } : {}),
+      ...(input.etaText !== undefined ? { eta_text: input.etaText.trim() || null } : {}),
+      ...(input.sortOrder !== undefined ? { sort_order: input.sortOrder } : {}),
+    })
+    .eq("id", zoneId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteDeliveryZone(zoneId: string) {
+  const { error } = await supabase.from("delivery_zones").delete().eq("id", zoneId);
+  if (error) throw new Error(error.message);
 }
 
 // Seller taps "Accept order" on a freshly paid-held order — purely a

@@ -24,6 +24,10 @@ import {
   getMyNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  getDeliveryZones,
+  createDeliveryZone,
+  updateDeliveryZone,
+  deleteDeliveryZone,
   type Shop,
   type Product,
   type Order,
@@ -32,11 +36,14 @@ import {
   type BusinessHours,
   type Review,
   type ShopNotification,
+  type DeliveryZone,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
+import { ShareButton } from "@/components/share-button";
+import { getSiteUrl } from "@/lib/site";
 import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -49,7 +56,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "settings" | "payments" | "trust" | "reviews" | "analytics";
+type Tab = "overview" | "orders" | "products" | "delivery" | "settings" | "payments" | "trust" | "reviews" | "analytics";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -210,15 +217,19 @@ export default function DashboardPage() {
       ? "pending"
       : "action";
 
-  const tabs: { key: Tab; label: string; icon: string }[] = [
-    { key: "overview", label: t.dashboard.tabOverview, icon: "📊" },
-    { key: "orders", label: t.dashboard.tabOrders, icon: "🛒" },
-    { key: "products", label: t.dashboard.tabProducts, icon: "📦" },
-    { key: "reviews", label: t.dashboard.tabReviews, icon: "⭐" },
-    { key: "analytics", label: t.dashboard.tabAnalytics, icon: "📈" },
-    { key: "payments", label: t.dashboard.tabPayments, icon: "💳" },
-    { key: "trust", label: t.dashboard.tabTrust, icon: "🛡️" },
-    { key: "settings", label: t.dashboard.tabSettings, icon: "⚙️" },
+  // Grouped into 4 sections so the sidebar reads as "here's your day
+  // (activity), here's your shop, here's your money, here's how you're
+  // doing" instead of one flat list of 9 items.
+  const tabs: { key: Tab; label: string; icon: string; section: string }[] = [
+    { key: "overview", label: t.dashboard.tabOverview, icon: "📊", section: t.dashboard.navSectionActivity },
+    { key: "orders", label: t.dashboard.tabOrders, icon: "🛒", section: t.dashboard.navSectionActivity },
+    { key: "products", label: t.dashboard.tabProducts, icon: "📦", section: t.dashboard.navSectionActivity },
+    { key: "settings", label: t.dashboard.tabSettings, icon: "⚙️", section: t.dashboard.navSectionShop },
+    { key: "delivery", label: t.dashboard.tabDelivery, icon: "🚚", section: t.dashboard.navSectionShop },
+    { key: "trust", label: t.dashboard.tabTrust, icon: "🛡️", section: t.dashboard.navSectionShop },
+    { key: "payments", label: t.dashboard.tabPayments, icon: "💳", section: t.dashboard.navSectionMoney },
+    { key: "reviews", label: t.dashboard.tabReviews, icon: "⭐", section: t.dashboard.navSectionPerformance },
+    { key: "analytics", label: t.dashboard.tabAnalytics, icon: "📈", section: t.dashboard.navSectionPerformance },
   ];
 
   // How much of "Complete your shop" is done — a quick, honest signal
@@ -389,6 +400,18 @@ export default function DashboardPage() {
                 {t.dashboard.previewShop}
               </a>
             </div>
+          </div>
+
+          <div className="dash-card p-5 mb-6">
+            <p className="text-sm font-semibold mb-1">📣 {t.dashboard.marketingShareTitle}</p>
+            <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>{t.dashboard.marketingShareHint}</p>
+            <ShareButton
+              title={shop.shop_name}
+              url={`${getSiteUrl()}/shop/${shop.slug}`}
+              message={t.dashboard.marketingShareMessage
+                .replace("{shopName}", shop.shop_name)
+                .replace("{city}", shop.city)}
+            />
           </div>
 
           {checklistPercent < 100 && (
@@ -574,6 +597,8 @@ export default function DashboardPage() {
       {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
 
       {tab === "analytics" && <AnalyticsPanel shop={shop} orders={orders} t={t} />}
+
+      {tab === "delivery" && <DeliveryZonesPanel shopId={shop.id} t={t} />}
     </DashboardShell>
   );
 }
@@ -680,6 +705,7 @@ function OrdersPanel({
               o.delivery_name,
               [o.delivery_neighborhood, o.delivery_city].filter(Boolean).join(", "),
               o.delivery_address,
+              o.delivery_zone_name ? `📍 ${o.delivery_zone_name}` : null,
             ].filter(Boolean) as string[];
             return (
               <div key={o.id} className="p-4">
@@ -839,6 +865,35 @@ function OrdersPanel({
 // (so this still works once a shop has 50 items instead of 2) and a
 // Pause/Activate toggle so a seller who's temporarily out of stock
 // doesn't have to delete and recreate the listing.
+// One-tap "grab this product's link to share it" — deliberately just a
+// copy-to-clipboard button (not the full WhatsApp/Facebook menu the
+// buyer-facing ShareButton shows) so it stays a compact icon in a dense
+// list of products instead of popping open a whole panel per row.
+function ProductLinkButton({ productId, t }: { productId: string; t: Dictionary }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(`${getSiteUrl()}/product/${productId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — nothing more we can do silently.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={t.dashboard.copyProductLink}
+      className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
+    >
+      {copied ? "✓" : "🔗"}
+    </button>
+  );
+}
+
 function ProductsPanel({
   shop,
   products,
@@ -852,11 +907,15 @@ function ProductsPanel({
   t: Dictionary;
   onChanged: () => Promise<void>;
 }) {
+  const { locale } = useLocale();
   const [formState, setFormState] = useState<FormState>({ mode: "closed" });
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "low" | "out">("all");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const attentionProducts = products.filter((p) => p.is_active && p.stock_quantity <= 3);
+  const attentionSorted = [...attentionProducts].sort((a, b) => a.stock_quantity - b.stock_quantity);
 
   const statusFilters: { key: "all" | "active" | "low" | "out"; label: string; count: number }[] = [
     { key: "all", label: t.dashboard.filterAll, count: products.length },
@@ -898,6 +957,46 @@ function ProductsPanel({
 
   return (
     <div>
+      {attentionSorted.length > 0 && (
+        <div
+          className="rounded-xl p-4 mb-4"
+          style={{ background: "var(--dash-danger-wash)", border: "1px solid rgba(185,28,28,0.25)" }}
+        >
+          <p className="text-sm font-semibold mb-2" style={{ color: "var(--dash-danger)" }}>
+            ⚠️ {t.dashboard.productAlertsTitle}
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {attentionSorted.slice(0, 3).map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 text-xs">
+                <span style={{ color: "var(--dash-ink)" }}>
+                  {(p.stock_quantity <= 0 ? t.dashboard.productAlertOutOfStock : t.dashboard.productAlertLowStock)
+                    .replace("{title}", p.title)
+                    .replace("{n}", String(p.stock_quantity))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormState({ mode: "edit", product: p })}
+                  className="shrink-0 underline font-medium"
+                  style={{ color: "var(--dash-danger)" }}
+                >
+                  {t.dashboard.productAlertRestockButton}
+                </button>
+              </div>
+            ))}
+          </div>
+          {attentionSorted.length > 3 && (
+            <p className="text-xs mt-2" style={{ color: "var(--dash-danger)" }}>
+              {plural(
+                attentionSorted.length - 3,
+                locale,
+                t.dashboard.productAlertsMoreOne,
+                t.dashboard.productAlertsMoreOther
+              ).replace("{n}", String(attentionSorted.length - 3))}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4 gap-3">
         <input
           value={search}
@@ -953,10 +1052,16 @@ function ProductsPanel({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
+                  {p.is_featured && <span className="mr-1" title={t.dashboard.isFeaturedLabel}>📌</span>}
                   {p.title}
                   {!p.is_active && (
                     <span className="dash-badge ml-2 align-middle" style={{ background: "var(--dash-bg-2)", color: "var(--dash-muted)" }}>
                       {t.dashboard.pausedBadge}
+                    </span>
+                  )}
+                  {p.sale_price_fcfa != null && (
+                    <span className="dash-badge ml-2 align-middle" style={{ background: "var(--dash-danger-wash)", color: "var(--dash-danger)" }}>
+                      {t.dashboard.onSaleBadge}
                     </span>
                   )}
                 </p>
@@ -976,7 +1081,19 @@ function ProductsPanel({
                   )}
                 </p>
               </div>
-              <p className="text-sm font-semibold whitespace-nowrap">{formatFcfa(p.price_fcfa)}</p>
+              <p className="text-sm font-semibold whitespace-nowrap text-right">
+                {p.sale_price_fcfa != null ? (
+                  <>
+                    <span className="block text-xs font-normal line-through" style={{ color: "var(--dash-muted)" }}>
+                      {formatFcfa(p.price_fcfa)}
+                    </span>
+                    <span style={{ color: "var(--dash-danger)" }}>{formatFcfa(p.sale_price_fcfa)}</span>
+                  </>
+                ) : (
+                  formatFcfa(p.price_fcfa)
+                )}
+              </p>
+              <ProductLinkButton productId={p.id} t={t} />
               <button
                 onClick={() =>
                   setFormState((s) =>
@@ -1250,7 +1367,13 @@ function NotificationBell({
                   >
                     <div className="flex items-start gap-2">
                       <span className="text-base leading-none mt-0.5">
-                        {n.type === "dispute_filed" ? "⚠️" : "🛍️"}
+                        {n.type === "dispute_filed"
+                          ? "⚠️"
+                          : n.type === "low_stock"
+                            ? "📉"
+                            : n.type === "payout_released"
+                              ? "💸"
+                              : "🛍️"}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">{n.title}</p>
@@ -1283,6 +1406,7 @@ function ReviewsPanel({
   t: Dictionary;
   onChanged: () => Promise<void>;
 }) {
+  const { locale } = useLocale();
   if (reviews.length === 0) {
     return (
       <p className="text-sm rounded-xl border border-dashed p-8 text-center" style={{ color: "var(--dash-muted)", borderColor: "var(--dash-border-strong)" }}>
@@ -1291,8 +1415,53 @@ function ReviewsPanel({
     );
   }
 
+  const average = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+  const counts = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: reviews.filter((r) => r.rating === star).length,
+  }));
+  const maxCount = Math.max(...counts.map((c) => c.count), 1);
+
   return (
     <div className="flex flex-col gap-3">
+      <div className="dash-card p-4">
+        <p className="text-sm font-semibold mb-3">{t.dashboard.reviewsReputationTitle}</p>
+        <div className="flex items-center gap-4 flex-wrap mb-4">
+          <div>
+            <p className="text-3xl font-bold" style={{ color: "var(--dash-ink)" }}>
+              {average.toFixed(1)}
+              <span className="text-base font-normal" style={{ color: "var(--dash-muted)" }}> / 5</span>
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--dash-muted)" }}>
+              {plural(reviews.length, locale, t.dashboard.reviewsBasedOnOne, t.dashboard.reviewsBasedOnOther).replace(
+                "{n}",
+                String(reviews.length)
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {counts.map(({ star, count }) => (
+            <div key={star} className="flex items-center gap-2 text-xs">
+              <span className="w-14 shrink-0" style={{ color: "var(--dash-muted)" }}>
+                {(star === 1 ? t.dashboard.reviewsStarLabel : t.dashboard.reviewsStarsLabel).replace("{n}", String(star))}
+              </span>
+              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--dash-bg-2)" }}>
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${(count / maxCount) * 100}%`,
+                    background: "var(--dash-gold)",
+                  }}
+                />
+              </div>
+              <span className="w-6 text-right shrink-0" style={{ color: "var(--dash-muted)" }}>
+                {count}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
       {reviews.map((r) => (
         <ReviewCard key={r.id} review={r} t={t} onChanged={onChanged} />
       ))}
@@ -1398,35 +1567,85 @@ function ReviewCard({
 // counter) — no new tracking tables yet, so "views" is a single
 // all-time total rather than a day-by-day series. If a real daily
 // views history is wanted later, that needs its own events table.
+type AnalyticsRange = "today" | "7d" | "30d" | "12m";
+
 function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: Dictionary }) {
+  const [range, setRange] = useState<AnalyticsRange>("7d");
+
   // Same definition of "a real order" used for the Overview tab's
   // today's-sales figure: everything except abandoned/cancelled checkouts.
   const successfulOrders = orders.filter(
     (o) => o.status !== "pending_payment" && o.status !== "cancelled"
   );
 
-  const days = (() => {
+  const buckets = (() => {
+    if (range === "today") {
+      const arr: { key: string; label: string; amount: number }[] = [];
+      for (let h = 0; h < 24; h++) {
+        arr.push({ key: String(h), label: h % 6 === 0 ? `${h}h` : "", amount: 0 });
+      }
+      const today = new Date().toDateString();
+      const byHour = new Map(arr.map((b) => [b.key, b]));
+      successfulOrders.forEach((o) => {
+        const d = new Date(o.created_at);
+        if (d.toDateString() !== today) return;
+        const bucket = byHour.get(String(d.getHours()));
+        if (bucket) bucket.amount += o.total_amount_fcfa;
+      });
+      return arr;
+    }
+    if (range === "12m") {
+      const arr: { key: string; label: string; amount: number }[] = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - i);
+        arr.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString(undefined, { month: "short" }), amount: 0 });
+      }
+      const byMonth = new Map(arr.map((b) => [b.key, b]));
+      successfulOrders.forEach((o) => {
+        const d = new Date(o.created_at);
+        const bucket = byMonth.get(`${d.getFullYear()}-${d.getMonth()}`);
+        if (bucket) bucket.amount += o.total_amount_fcfa;
+      });
+      return arr;
+    }
+    const numDays = range === "30d" ? 30 : 7;
     const arr: { key: string; label: string; amount: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
+    for (let i = numDays - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       arr.push({
         key: d.toDateString(),
-        label: d.toLocaleDateString(undefined, { weekday: "short" }),
+        label: numDays === 30 ? (i % 5 === 0 ? String(d.getDate()) : "") : d.toLocaleDateString(undefined, { weekday: "short" }),
         amount: 0,
       });
     }
+    const byDay = new Map(arr.map((b) => [b.key, b]));
+    successfulOrders.forEach((o) => {
+      const bucket = byDay.get(new Date(o.created_at).toDateString());
+      if (bucket) bucket.amount += o.total_amount_fcfa;
+    });
     return arr;
   })();
-  const byDay = new Map(days.map((d) => [d.key, d]));
-  successfulOrders.forEach((o) => {
-    const bucket = byDay.get(new Date(o.created_at).toDateString());
-    if (bucket) bucket.amount += o.total_amount_fcfa;
-  });
-  const maxAmount = Math.max(1, ...days.map((d) => d.amount));
-  const totalLast14 = days.reduce((sum, d) => sum + d.amount, 0);
+  const maxAmount = Math.max(1, ...buckets.map((d) => d.amount));
+  const totalInRange = buckets.reduce((sum, d) => sum + d.amount, 0);
 
   const conversionRate = shop.view_count > 0 ? (successfulOrders.length / shop.view_count) * 100 : null;
+
+  const avgOrderValue =
+    successfulOrders.length > 0
+      ? successfulOrders.reduce((sum, o) => sum + o.total_amount_fcfa, 0) / successfulOrders.length
+      : null;
+
+  const buyerCounts = new Map<string, number>();
+  successfulOrders.forEach((o) => {
+    if (!o.buyer_phone) return;
+    buyerCounts.set(o.buyer_phone, (buyerCounts.get(o.buyer_phone) ?? 0) + 1);
+  });
+  const distinctBuyers = buyerCounts.size;
+  const repeatBuyers = [...buyerCounts.values()].filter((c) => c > 1).length;
+  const repeatRate = distinctBuyers > 0 ? (repeatBuyers / distinctBuyers) * 100 : null;
 
   const productTotals = new Map<string, { title: string; quantity: number }>();
   successfulOrders.forEach((o) => {
@@ -1442,9 +1661,16 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
   });
   const topProducts = [...productTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
 
+  const rangeLabels: Record<AnalyticsRange, string> = {
+    today: t.dashboard.analyticsRangeToday,
+    "7d": t.dashboard.analyticsRange7d,
+    "30d": t.dashboard.analyticsRange30d,
+    "12m": t.dashboard.analyticsRange12m,
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon="👁️" iconBg="#f5f5f5" />
         <Stat
           label={t.dashboard.analyticsConversionLabel}
@@ -1452,24 +1678,58 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
           icon="📈"
           iconBg="#fef3c7"
         />
-        <Stat label={t.dashboard.analyticsSales14Label} value={formatFcfa(totalLast14)} icon="💰" iconBg="#fef3c7" />
+        <Stat
+          label={t.dashboard.analyticsAvgOrderLabel}
+          value={avgOrderValue == null ? t.dashboard.noRatingYet : formatFcfa(Math.round(avgOrderValue))}
+          icon="🧮"
+          iconBg="#fef3c7"
+        />
+        <Stat
+          label={t.dashboard.analyticsRepeatCustomersLabel}
+          value={repeatRate == null ? t.dashboard.noRatingYet : `${repeatRate.toFixed(0)}%`}
+          icon="🔁"
+          iconBg="#f5f5f5"
+        />
       </div>
-      <p className="text-xs -mt-4" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsConversionHint}</p>
+      <p className="text-xs -mt-4" style={{ color: "var(--dash-muted)" }}>
+        {t.dashboard.analyticsConversionHint} {t.dashboard.analyticsAvgOrderHint} {t.dashboard.analyticsRepeatCustomersHint}
+      </p>
 
       <div className="dash-card p-5">
-        <p className="text-sm font-semibold mb-4">{t.dashboard.analyticsSalesTitle}</p>
-        {totalLast14 === 0 ? (
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <p className="text-sm font-semibold">
+            {t.dashboard.analyticsSalesRangeTitle} — {formatFcfa(totalInRange)}
+          </p>
+          <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "var(--dash-bg-2)" }}>
+            {(Object.keys(rangeLabels) as AnalyticsRange[]).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRange(r)}
+                className="text-xs px-2.5 py-1 rounded-md transition"
+                style={
+                  range === r
+                    ? { background: "var(--dash-card)", color: "var(--dash-ink)", fontWeight: 600, boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }
+                    : { color: "var(--dash-muted)" }
+                }
+              >
+                {rangeLabels[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {totalInRange === 0 ? (
           <p className="text-sm text-center py-8" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsNoSales}</p>
         ) : (
-          <div className="flex items-end gap-1.5 h-32">
-            {days.map((d) => (
-              <div key={d.key} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+          <div className="flex items-end gap-1 h-32">
+            {buckets.map((d, i) => (
+              <div key={d.key + i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
                 <div
                   title={`${d.label} · ${formatFcfa(d.amount)}`}
                   className="w-full max-w-[24px] rounded-t"
                   style={{ height: `${Math.max(2, (d.amount / maxAmount) * 100)}%`, background: "var(--dash-primary)" }}
                 />
-                <span className="text-[10px]" style={{ color: "var(--dash-muted)" }}>{d.label[0]}</span>
+                <span className="text-[10px]" style={{ color: "var(--dash-muted)" }}>{d.label}</span>
               </div>
             ))}
           </div>
@@ -1482,9 +1742,12 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
           <p className="text-sm text-center py-4" style={{ color: "var(--dash-muted)" }}>{t.dashboard.analyticsNoProductSales}</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {topProducts.map((p) => (
+            {topProducts.map((p, i) => (
               <div key={p.title} className="flex items-center justify-between text-sm">
-                <span className="truncate pr-3">{p.title}</span>
+                <span className="truncate pr-3">
+                  {i === 0 && <span className="mr-1.5" title={t.dashboard.analyticsBestSellerBadge}>🏆</span>}
+                  {p.title}
+                </span>
                 <span className="shrink-0" style={{ color: "var(--dash-muted)" }}>
                   {p.quantity} {t.dashboard.analyticsSoldLabel}
                 </span>
@@ -1493,6 +1756,213 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Optional, additive delivery pricing: a seller can name delivery
+// areas ("Douala centre-ville") with their own fee instead of one flat
+// fee for every buyer. A shop with zero rows here changes nothing about
+// checkout — see getDeliveryZones/checkout-form.tsx for the other side
+// of this.
+function DeliveryZonesPanel({ shopId, t }: { shopId: string; t: Dictionary }) {
+  const [zones, setZones] = useState<DeliveryZone[] | null>(null);
+  const [name, setName] = useState("");
+  const [fee, setFee] = useState("");
+  const [eta, setEta] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ name: string; fee: string; eta: string }>({
+    name: "",
+    fee: "",
+    eta: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setZones(await getDeliveryZones(shopId));
+  }, [shopId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !fee.trim()) return;
+    setAdding(true);
+    setError(null);
+    try {
+      await createDeliveryZone({
+        shopId,
+        name: name.trim(),
+        feeFcfa: Number(fee),
+        etaText: eta,
+        sortOrder: zones?.length ?? 0,
+      });
+      setName("");
+      setFee("");
+      setEta("");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add this delivery zone.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function startEdit(z: DeliveryZone) {
+    setEditingId(z.id);
+    setEditDraft({ name: z.name, fee: String(z.fee_fcfa), eta: z.eta_text ?? "" });
+  }
+
+  async function handleSaveEdit(zoneId: string) {
+    setSavingEdit(true);
+    try {
+      await updateDeliveryZone(zoneId, {
+        name: editDraft.name,
+        feeFcfa: Number(editDraft.fee),
+        etaText: editDraft.eta,
+      });
+      setEditingId(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save this delivery zone.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDelete(zoneId: string) {
+    if (!window.confirm(t.dashboard.deliveryZoneRemoveConfirm)) return;
+    setDeletingId(zoneId);
+    try {
+      await deleteDeliveryZone(zoneId);
+      await load();
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="text-sm font-semibold">{t.dashboard.deliveryZonesTitle}</p>
+        <p className="text-xs mt-1" style={{ color: "var(--dash-muted)" }}>{t.dashboard.deliveryZonesIntro}</p>
+      </div>
+
+      <div className="dash-card divide-y divide-[var(--dash-border)]">
+        {zones == null ? (
+          <p className="text-sm p-6 text-center" style={{ color: "var(--dash-muted)" }}>{t.dashboard.loading}</p>
+        ) : zones.length === 0 ? (
+          <p className="text-sm p-6 text-center" style={{ color: "var(--dash-muted)" }}>{t.dashboard.deliveryZonesEmpty}</p>
+        ) : (
+          zones.map((z) => (
+            <div key={z.id} className="p-4">
+              {editingId === z.id ? (
+                <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <input
+                    value={editDraft.name}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                    className="dash-input flex-1"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={editDraft.fee}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, fee: e.target.value }))}
+                    className="dash-input sm:w-32"
+                  />
+                  <input
+                    value={editDraft.eta}
+                    onChange={(e) => setEditDraft((d) => ({ ...d, eta: e.target.value }))}
+                    placeholder={t.dashboard.deliveryZoneEtaPlaceholder}
+                    className="dash-input sm:w-40"
+                  />
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(z.id)}
+                      disabled={savingEdit}
+                      className="dash-btn !py-1.5 !px-3 text-xs"
+                    >
+                      {t.dashboard.deliveryZoneSaveButton}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="dash-btn-outline !py-1.5 !px-3 text-xs"
+                    >
+                      {t.dashboard.cancel}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{z.name}</p>
+                    <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
+                      {formatFcfa(z.fee_fcfa)}
+                      {z.eta_text ? ` · ${z.eta_text}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(z)}
+                      className="dash-btn-outline !py-1.5 !px-3 text-xs"
+                    >
+                      {t.dashboard.edit}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(z.id)}
+                      disabled={deletingId === z.id}
+                      className="dash-btn-outline dash-btn-danger !py-1.5 !px-3 text-xs"
+                    >
+                      {t.dashboard.delete}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <form onSubmit={handleAdd} className="dash-card p-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t.dashboard.deliveryZoneNamePlaceholder}
+          className="dash-input flex-1"
+        />
+        <input
+          type="number"
+          min={0}
+          value={fee}
+          onChange={(e) => setFee(e.target.value)}
+          placeholder={t.dashboard.deliveryZoneFeePlaceholder}
+          className="dash-input sm:w-36"
+        />
+        <input
+          value={eta}
+          onChange={(e) => setEta(e.target.value)}
+          placeholder={t.dashboard.deliveryZoneEtaPlaceholder}
+          className="dash-input sm:w-44"
+        />
+        <button type="submit" disabled={adding || !name.trim() || !fee.trim()} className="dash-btn shrink-0">
+          {adding ? t.dashboard.saving : t.dashboard.deliveryZoneAddButton}
+        </button>
+      </form>
+      {error && (
+        <p className="text-sm rounded-lg px-3 py-2" style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -1523,6 +1993,10 @@ function ShopSettingsForm({
   const [businessHours, setBusinessHours] = useState<BusinessHours>(
     shop.business_hours ?? DEFAULT_BUSINESS_HOURS
   );
+  const [facebookUrl, setFacebookUrl] = useState(shop.facebook_url ?? "");
+  const [instagramUrl, setInstagramUrl] = useState(shop.instagram_url ?? "");
+  const [tiktokUrl, setTiktokUrl] = useState(shop.tiktok_url ?? "");
+  const [returnPolicy, setReturnPolicy] = useState(shop.return_policy ?? "");
 
   async function handleToggleOpen() {
     setTogglingOpen(true);
@@ -1586,6 +2060,10 @@ function ShopSettingsForm({
         logoUrl,
         closedMessage,
         businessHours,
+        facebookUrl,
+        instagramUrl,
+        tiktokUrl,
+        returnPolicy,
       });
       onSaved({
         ...shop,
@@ -1595,6 +2073,10 @@ function ShopSettingsForm({
         delivery_eta_text: deliveryEta || null,
         closed_message: closedMessage || null,
         business_hours: businessHours,
+        facebook_url: facebookUrl || null,
+        instagram_url: instagramUrl || null,
+        tiktok_url: tiktokUrl || null,
+        return_policy: returnPolicy || null,
         ...(logoUrl !== undefined ? { logo_url: logoUrl } : {}),
       });
       setLogoFile(null);
@@ -1803,6 +2285,41 @@ function ShopSettingsForm({
           )}
         </div>
         {locationError && <p className="text-xs mt-1.5" style={{ color: "var(--dash-danger)" }}>{locationError}</p>}
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.shopSocialLinksLabel}</label>
+        <p className="text-xs mb-1.5" style={{ color: "var(--dash-muted)" }}>{t.dashboard.shopSocialLinksHint}</p>
+        <div className="flex flex-col gap-2">
+          <input
+            value={facebookUrl}
+            onChange={(e) => setFacebookUrl(e.target.value)}
+            placeholder={t.dashboard.shopFacebookPlaceholder}
+            className="dash-input"
+          />
+          <input
+            value={instagramUrl}
+            onChange={(e) => setInstagramUrl(e.target.value)}
+            placeholder={t.dashboard.shopInstagramPlaceholder}
+            className="dash-input"
+          />
+          <input
+            value={tiktokUrl}
+            onChange={(e) => setTiktokUrl(e.target.value)}
+            placeholder={t.dashboard.shopTiktokPlaceholder}
+            className="dash-input"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.shopReturnPolicyLabel}</label>
+        <p className="text-xs mb-1.5" style={{ color: "var(--dash-muted)" }}>{t.dashboard.shopReturnPolicyHint}</p>
+        <textarea
+          value={returnPolicy}
+          onChange={(e) => setReturnPolicy(e.target.value)}
+          placeholder={t.dashboard.shopReturnPolicyPlaceholder}
+          rows={3}
+          className="dash-input"
+        />
       </div>
       {error && (
         <p className="text-sm rounded-lg px-3 py-2" style={{ color: "var(--dash-danger)", background: "var(--dash-danger-wash)", border: "1px solid var(--dash-danger)" }}>

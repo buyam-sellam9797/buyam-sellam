@@ -40,7 +40,7 @@ export async function notifyShop(
   admin: SupabaseClient,
   input: {
     shopId: string;
-    type: "new_order" | "dispute_filed";
+    type: "new_order" | "dispute_filed" | "low_stock" | "payout_released";
     title: string;
     body?: string | null;
     orderId?: string | null;

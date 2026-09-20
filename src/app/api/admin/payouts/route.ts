@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
+import { notifyShop } from "@/lib/supabase-admin";
+import { calculateCommission } from "@/lib/commission";
+import { formatFcfa } from "@/lib/format";
 
 // Lists every order that's ready for a real-world payout: the buyer
 // confirmed receipt (status = completed) but Lio hasn't sent the
@@ -49,12 +52,21 @@ export async function POST(req: NextRequest) {
     .update({ payout_sent: true, payout_sent_at: new Date().toISOString() })
     .eq("id", body.orderId)
     .eq("status", "completed")
-    .select("id")
+    .select("id, shop_id, total_amount_fcfa")
     .maybeSingle();
 
   if (error || !updated) {
     return NextResponse.json({ error: "Could not update this order." }, { status: 500 });
   }
+
+  const { sellerPayoutFcfa } = calculateCommission(updated.total_amount_fcfa);
+  await notifyShop(check.admin, {
+    shopId: updated.shop_id,
+    type: "payout_released",
+    title: "Payout sent",
+    body: `${formatFcfa(sellerPayoutFcfa)} has been sent to your mobile money number for this order.`,
+    orderId: updated.id,
+  });
 
   return NextResponse.json({ ok: true });
 }
