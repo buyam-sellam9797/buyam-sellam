@@ -30,6 +30,7 @@ export type Shop = {
   whatsapp_number: string | null;
   city: string;
   logo_url: string | null;
+  cover_url: string | null;
   delivery_info: string | null;
   delivery_fee_fcfa: number | null;
   delivery_eta_text: string | null;
@@ -966,6 +967,7 @@ export async function updateShop(
     deliveryFeeFcfa?: number | null;
     deliveryEtaText?: string;
     logoUrl?: string;
+    coverUrl?: string;
     whatsappNumber?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -990,6 +992,7 @@ export async function updateShop(
         ? { delivery_eta_text: input.deliveryEtaText || null }
         : {}),
       ...(input.logoUrl !== undefined ? { logo_url: input.logoUrl || null } : {}),
+      ...(input.coverUrl !== undefined ? { cover_url: input.coverUrl || null } : {}),
       ...(input.whatsappNumber !== undefined ? { whatsapp_number: input.whatsappNumber } : {}),
       ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
       ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
@@ -1050,6 +1053,19 @@ export async function setProductActive(productId: string, isActive: boolean) {
 export async function uploadShopLogo(file: File, shopId: string): Promise<string> {
   const ext = file.name.split(".").pop() || "jpg";
   const path = `${shopId}/logo-${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, file, { cacheControl: "3600", upsert: true });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// Same bucket and pattern as the logo — just a wider image shown
+// behind it on the shop's public page.
+export async function uploadShopCover(file: File, shopId: string): Promise<string> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `${shopId}/cover-${Date.now()}.${ext}`;
   const { error } = await supabase.storage
     .from("product-images")
     .upload(path, file, { cacheControl: "3600", upsert: true });

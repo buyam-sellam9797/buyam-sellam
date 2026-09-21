@@ -13,6 +13,7 @@ import {
   deleteProduct,
   setProductActive,
   uploadShopLogo,
+  uploadShopCover,
   uploadVerificationDocument,
   requestShopVerification,
   markOrderShipped,
@@ -1983,6 +1984,7 @@ function ShopSettingsForm({
   );
   const [deliveryEta, setDeliveryEta] = useState(shop.delivery_eta_text ?? "");
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2052,12 +2054,17 @@ function ShopSettingsForm({
       if (logoFile) {
         logoUrl = await uploadShopLogo(logoFile, shop.id);
       }
+      let coverUrl: string | undefined;
+      if (coverFile) {
+        coverUrl = await uploadShopCover(coverFile, shop.id);
+      }
       await updateShop(shop.id, {
         description,
         deliveryInfo,
         deliveryFeeFcfa,
         deliveryEtaText: deliveryEta,
         logoUrl,
+        coverUrl,
         closedMessage,
         businessHours,
         facebookUrl,
@@ -2078,8 +2085,10 @@ function ShopSettingsForm({
         tiktok_url: tiktokUrl || null,
         return_policy: returnPolicy || null,
         ...(logoUrl !== undefined ? { logo_url: logoUrl } : {}),
+        ...(coverUrl !== undefined ? { cover_url: coverUrl } : {}),
       });
       setLogoFile(null);
+      setCoverFile(null);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save your shop settings.");
@@ -2221,6 +2230,31 @@ function ShopSettingsForm({
             className="text-sm"
           />
         </div>
+      </div>
+      <div>
+        <label className="text-sm font-medium block mb-1">{t.dashboard.shopCoverLabel}</label>
+        <p className="text-xs text-neutral-500 mb-2">{t.dashboard.shopCoverHint}</p>
+        <div
+          className="relative w-full h-28 sm:h-36 rounded-xl overflow-hidden mb-2"
+          style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(217,119,6,0.35))" }}
+        >
+          {coverFile ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={URL.createObjectURL(coverFile)}
+              alt=""
+              className="w-full h-full object-cover"
+            />
+          ) : shop.cover_url ? (
+            <Image src={shop.cover_url} alt="" fill sizes="100vw" className="object-cover" />
+          ) : null}
+        </div>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+          className="text-sm"
+        />
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopDescriptionLabel}</label>

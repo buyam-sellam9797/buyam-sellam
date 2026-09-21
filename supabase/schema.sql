@@ -68,6 +68,11 @@ create table if not exists shops (
   instagram_url text,
   tiktok_url text,
   return_policy text,
+  -- Wide banner photo shown across the top of the shop's public page,
+  -- behind the circular logo — separate from logo_url, which stays a
+  -- small square/circle mark. Optional: the page falls back to a plain
+  -- brand-colored gradient when a shop hasn't set one.
+  cover_url text,
   created_at timestamptz not null default now()
 );
 
