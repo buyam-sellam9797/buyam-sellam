@@ -7,22 +7,33 @@ import { supabase, getMyAddresses, type Product, type BuyerAddress, type Deliver
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
+import type { SebpayOperator } from "@/lib/sebpay";
 
 type Status = "form" | "waiting" | "held" | "failed";
+type Gateway = "notchpay" | "sebpay";
 
 export default function CheckoutForm({
   product,
   initialQuantity = 1,
   deliveryFee = 0,
   deliveryZones = [],
+  sebpayOperators = [],
 }: {
   product: Product;
   initialQuantity?: number;
   deliveryFee?: number;
   deliveryZones?: DeliveryZone[];
+  sebpayOperators?: SebpayOperator[];
 }) {
   const { t } = useLocale();
+  // NotchPay stays the default in every case — SebPay is an extra
+  // option that only ever appears once the checkout page has already
+  // confirmed (live, from SebPay itself) that this account has it
+  // enabled for Cameroon. See src/lib/sebpay.ts.
+  const [gateway, setGateway] = useState<Gateway>("notchpay");
   const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
+  const [sebpayOperator, setSebpayOperator] = useState<string>(sebpayOperators[0]?.slug ?? "");
+  const [sebpayOtpCode, setSebpayOtpCode] = useState("");
   const [phone, setPhone] = useState("");
   const [quantity, setQuantity] = useState(initialQuantity);
   const [deliveryName, setDeliveryName] = useState("");
@@ -128,33 +139,46 @@ export default function CheckoutForm({
     setBuyerLng(a.longitude);
   }
 
+  const activeSebpayOperator = sebpayOperators.find((o) => o.slug === sebpayOperator) ?? null;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (gateway === "sebpay" && activeSebpayOperator?.otpRequired && !sebpayOtpCode) {
+      setError(t.checkout.errorOtpRequired);
+      return;
+    }
+
     setStatus("waiting");
 
     try {
-      const startRes = await fetch("/api/checkout", {
+      const sharedBody = {
+        productId: product.id,
+        quantity,
+        phone,
+        deliveryName,
+        deliveryCity,
+        deliveryNeighborhood,
+        deliveryAddress,
+        deliveryNotes,
+        ...(buyerLat != null && buyerLng != null
+          ? { deliveryLatitude: buyerLat, deliveryLongitude: buyerLng }
+          : {}),
+        ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
+      };
+
+      const startRes = await fetch(gateway === "sebpay" ? "/api/checkout/sebpay" : "/api/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({
-          productId: product.id,
-          quantity,
-          provider,
-          phone,
-          deliveryName,
-          deliveryCity,
-          deliveryNeighborhood,
-          deliveryAddress,
-          deliveryNotes,
-          ...(buyerLat != null && buyerLng != null
-            ? { deliveryLatitude: buyerLat, deliveryLongitude: buyerLng }
-            : {}),
-          ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
-        }),
+        body: JSON.stringify(
+          gateway === "sebpay"
+            ? { ...sharedBody, operator: sebpayOperator, otpCode: sebpayOtpCode || undefined }
+            : { ...sharedBody, provider }
+        ),
       });
       const startData = await startRes.json();
       if (!startRes.ok) {
@@ -163,10 +187,41 @@ export default function CheckoutForm({
         return;
       }
 
-      const reference: string = startData.reference;
-      const orderReference: string = startData.orderReference;
       setOrderId(startData.orderId ?? null);
       let attempts = 0;
+
+      if (gateway === "sebpay") {
+        const transactionId: string = startData.transactionId;
+        const orderReference: string = startData.orderReference;
+        pollRef.current = setInterval(async () => {
+          attempts += 1;
+          try {
+            const checkRes = await fetch(
+              `/api/checkout/sebpay?transactionId=${encodeURIComponent(transactionId)}&orderReference=${encodeURIComponent(orderReference)}`
+            );
+            const checkData = await checkRes.json();
+            if (checkData.status === "approved") {
+              if (pollRef.current) clearInterval(pollRef.current);
+              setStatus("held");
+            } else if (checkData.status === "rejected") {
+              if (pollRef.current) clearInterval(pollRef.current);
+              setError(t.checkout.errorNotApproved);
+              setStatus("failed");
+            }
+          } catch {
+            // transient network hiccup while polling — keep trying until timeout
+          }
+          if (attempts >= 20) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setError(t.checkout.errorTimeout);
+            setStatus("failed");
+          }
+        }, 3000);
+        return;
+      }
+
+      const reference: string = startData.reference;
+      const orderReference: string = startData.orderReference;
       pollRef.current = setInterval(async () => {
         attempts += 1;
         try {
@@ -398,29 +453,98 @@ export default function CheckoutForm({
         </div>
       </div>
 
-      <div>
-        <label className="text-sm font-medium block mb-2">{t.checkout.payWithLabel}</label>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setProvider("mtn")}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-              provider === "mtn" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
-            }`}
-          >
-            {t.checkout.mtn}
-          </button>
-          <button
-            type="button"
-            onClick={() => setProvider("orange")}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-              provider === "orange" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
-            }`}
-          >
-            {t.checkout.orange}
-          </button>
+      {sebpayOperators.length > 0 && (
+        <div>
+          <label className="text-sm font-medium block mb-2">{t.checkout.paymentMethodLabel}</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setGateway("notchpay")}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                gateway === "notchpay" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+              }`}
+            >
+              {t.checkout.gatewayNotchpay}
+            </button>
+            <button
+              type="button"
+              onClick={() => setGateway("sebpay")}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                gateway === "sebpay" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+              }`}
+            >
+              {t.checkout.gatewaySebpay}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {gateway === "notchpay" ? (
+        <div>
+          <label className="text-sm font-medium block mb-2">{t.checkout.payWithLabel}</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setProvider("mtn")}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                provider === "mtn" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+              }`}
+            >
+              {t.checkout.mtn}
+            </button>
+            <button
+              type="button"
+              onClick={() => setProvider("orange")}
+              className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                provider === "orange" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+              }`}
+            >
+              {t.checkout.orange}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <label className="text-sm font-medium block mb-2">{t.checkout.sebpayOperatorLabel}</label>
+          <div className="grid grid-cols-2 gap-2">
+            {sebpayOperators.map((op) => (
+              <button
+                key={op.slug}
+                type="button"
+                onClick={() => {
+                  setSebpayOperator(op.slug);
+                  setSebpayOtpCode("");
+                }}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                  sebpayOperator === op.slug ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+                }`}
+              >
+                {op.name}
+              </button>
+            ))}
+          </div>
+          {activeSebpayOperator?.otpRequired && (
+            <div className="mt-3">
+              <p className="text-xs text-neutral-500 mb-2">
+                {activeSebpayOperator.ussdCode
+                  ? t.checkout.sebpayOtpInstructions.replace("{ussd}", activeSebpayOperator.ussdCode)
+                  : t.checkout.sebpayOtpInstructionsNoUssd}
+              </p>
+              <label className="text-sm font-medium block mb-2" htmlFor="sebpay-otp">
+                {t.checkout.sebpayOtpLabel}
+              </label>
+              <input
+                id="sebpay-otp"
+                required
+                value={sebpayOtpCode}
+                onChange={(e) => setSebpayOtpCode(e.target.value)}
+                placeholder={t.checkout.sebpayOtpPlaceholder}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div>
         <label className="text-sm font-medium block mb-2" htmlFor="phone">

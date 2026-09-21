@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getProductById, getDeliveryZones } from "@/lib/supabase";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
+import { getOperatorsForCountry, getCurrencyForCountry, isSebpayConfigured, SEBPAY_COUNTRY_CODE } from "@/lib/sebpay";
 import CheckoutForm from "./checkout-form";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,19 @@ export default async function CheckoutPage({
   const deliveryFee = product.shop?.delivery_fee_fcfa ?? 0;
   const deliveryZones = await getDeliveryZones(product.shop_id);
 
+  // SebPay is a second, optional payment gateway alongside NotchPay.
+  // Nothing about which operators/currency it supports for Cameroon is
+  // assumed — it's looked up live from SebPay's own account here, and
+  // the whole option simply doesn't render if this account isn't
+  // configured for SebPay yet, or SebPay has nothing enabled for
+  // Cameroon. See src/lib/sebpay.ts.
+  const [sebpayOperators, sebpayCurrency] = isSebpayConfigured()
+    ? await Promise.all([
+        getOperatorsForCountry(SEBPAY_COUNTRY_CODE),
+        getCurrencyForCountry(SEBPAY_COUNTRY_CODE),
+      ])
+    : [[], null];
+
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-xl font-bold mb-6">{t.checkout.confirmOrder}</h1>
@@ -35,6 +49,7 @@ export default async function CheckoutPage({
         initialQuantity={initialQuantity}
         deliveryFee={deliveryFee}
         deliveryZones={deliveryZones}
+        sebpayOperators={sebpayCurrency ? sebpayOperators : []}
       />
     </div>
   );

@@ -193,6 +193,16 @@ const en = {
     errorTimeout:
       "We didn't see a confirmation in time. Check your phone, or try again.",
     errorUnreachable: "Could not reach the payment service. Please try again.",
+    paymentMethodLabel: "Payment method",
+    gatewayNotchpay: "Mobile Money (NotchPay)",
+    gatewaySebpay: "Mobile Money (SebPay)",
+    sebpayOperatorLabel: "Choose your network",
+    sebpayOtpLabel: "Code from your phone",
+    sebpayOtpPlaceholder: "Enter the code you received",
+    sebpayOtpInstructions:
+      "Dial {ussd} on your phone, then enter the code it gives you below.",
+    sebpayOtpInstructionsNoUssd: "Enter the code you received on your phone below.",
+    errorOtpRequired: "Please enter the code from your phone.",
   },
   sell: {
     title: "Open your shop",
@@ -1048,6 +1058,16 @@ const fr: typeof en = {
     errorTimeout:
       "Nous n'avons pas reçu de confirmation à temps. Vérifiez votre téléphone ou réessayez.",
     errorUnreachable: "Impossible de joindre le service de paiement. Veuillez réessayer.",
+    paymentMethodLabel: "Moyen de paiement",
+    gatewayNotchpay: "Mobile Money (NotchPay)",
+    gatewaySebpay: "Mobile Money (SebPay)",
+    sebpayOperatorLabel: "Choisissez votre réseau",
+    sebpayOtpLabel: "Code reçu sur votre téléphone",
+    sebpayOtpPlaceholder: "Entrez le code reçu",
+    sebpayOtpInstructions:
+      "Composez le {ussd} sur votre téléphone, puis entrez le code obtenu ci-dessous.",
+    sebpayOtpInstructionsNoUssd: "Entrez ci-dessous le code reçu sur votre téléphone.",
+    errorOtpRequired: "Veuillez entrer le code reçu sur votre téléphone.",
   },
   sell: {
     title: "Ouvrez votre boutique",
