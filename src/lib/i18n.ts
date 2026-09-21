@@ -14,6 +14,9 @@ const en = {
     openShop: "Open a shop",
     account: "Account",
     city: "Cameroon",
+    login: "Log in",
+    dashboard: "Dashboard",
+    admin: "Admin",
   },
   footer: {
     rights: "Buyam Sellam. Cameroon.",
@@ -879,6 +882,9 @@ const fr: typeof en = {
     openShop: "Ouvrir une boutique",
     account: "Compte",
     city: "Cameroun",
+    login: "Se connecter",
+    dashboard: "Tableau de bord",
+    admin: "Admin",
   },
   footer: {
     rights: "Buyam Sellam. Cameroun.",

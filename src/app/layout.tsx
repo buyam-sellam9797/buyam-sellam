@@ -5,6 +5,7 @@ import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
 import { LocaleProvider } from "@/components/locale-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { HeaderAuthNav } from "@/components/header-auth-nav";
 
 export const metadata: Metadata = {
   title: "Buyam Sellam — Shop Cameroon. Buy with Confidence.",
@@ -37,15 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/shops" className="hidden sm:inline hover:text-amber-600">
                   {t.footer.verifiedSellers}
                 </Link>
-                <Link href="/account" className="hidden sm:inline hover:text-amber-600">
-                  {t.nav.account}
-                </Link>
-                <Link
-                  href="/sell"
-                  className="rounded-full bg-neutral-900 text-white px-4 py-1.5 hover:bg-neutral-700"
-                >
-                  {t.nav.openShop}
-                </Link>
+                <HeaderAuthNav />
                 <LanguageSwitcher />
               </nav>
             </div>
