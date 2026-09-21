@@ -1,9 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { DashboardShell } from "./dashboard-shell";
+import {
+  IconGrid,
+  IconCart,
+  IconBox,
+  IconGear,
+  IconTruck,
+  IconShield,
+  IconCard,
+  IconStar,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconLink,
+  IconMegaphone,
+  IconAlertTriangle,
+  IconLock,
+  IconCheckCircle,
+  IconEye,
+  IconBag,
+  IconPin,
+  IconBell,
+  IconBanknote,
+  IconCalculator,
+  IconRepeat,
+  IconAward,
+  StatusDot,
+} from "@/components/dash-icons";
 import {
   supabase,
   getMyShop,
@@ -221,16 +247,17 @@ export default function DashboardPage() {
   // Grouped into 4 sections so the sidebar reads as "here's your day
   // (activity), here's your shop, here's your money, here's how you're
   // doing" instead of one flat list of 9 items.
-  const tabs: { key: Tab; label: string; icon: string; section: string }[] = [
-    { key: "overview", label: t.dashboard.tabOverview, icon: "📊", section: t.dashboard.navSectionActivity },
-    { key: "orders", label: t.dashboard.tabOrders, icon: "🛒", section: t.dashboard.navSectionActivity },
-    { key: "products", label: t.dashboard.tabProducts, icon: "📦", section: t.dashboard.navSectionActivity },
-    { key: "settings", label: t.dashboard.tabSettings, icon: "⚙️", section: t.dashboard.navSectionShop },
-    { key: "delivery", label: t.dashboard.tabDelivery, icon: "🚚", section: t.dashboard.navSectionShop },
-    { key: "trust", label: t.dashboard.tabTrust, icon: "🛡️", section: t.dashboard.navSectionShop },
-    { key: "payments", label: t.dashboard.tabPayments, icon: "💳", section: t.dashboard.navSectionMoney },
-    { key: "reviews", label: t.dashboard.tabReviews, icon: "⭐", section: t.dashboard.navSectionPerformance },
-    { key: "analytics", label: t.dashboard.tabAnalytics, icon: "📈", section: t.dashboard.navSectionPerformance },
+  const iconClass = "w-4 h-4";
+  const tabs: { key: Tab; label: string; icon: ReactNode; section: string }[] = [
+    { key: "overview", label: t.dashboard.tabOverview, icon: <IconGrid className={iconClass} />, section: t.dashboard.navSectionActivity },
+    { key: "orders", label: t.dashboard.tabOrders, icon: <IconCart className={iconClass} />, section: t.dashboard.navSectionActivity },
+    { key: "products", label: t.dashboard.tabProducts, icon: <IconBox className={iconClass} />, section: t.dashboard.navSectionActivity },
+    { key: "settings", label: t.dashboard.tabSettings, icon: <IconGear className={iconClass} />, section: t.dashboard.navSectionShop },
+    { key: "delivery", label: t.dashboard.tabDelivery, icon: <IconTruck className={iconClass} />, section: t.dashboard.navSectionShop },
+    { key: "trust", label: t.dashboard.tabTrust, icon: <IconShield className={iconClass} />, section: t.dashboard.navSectionShop },
+    { key: "payments", label: t.dashboard.tabPayments, icon: <IconCard className={iconClass} />, section: t.dashboard.navSectionMoney },
+    { key: "reviews", label: t.dashboard.tabReviews, icon: <IconStar className={iconClass} />, section: t.dashboard.navSectionPerformance },
+    { key: "analytics", label: t.dashboard.tabAnalytics, icon: <IconTrendingUp className={iconClass} />, section: t.dashboard.navSectionPerformance },
   ];
 
   // How much of "Complete your shop" is done — a quick, honest signal
@@ -367,11 +394,11 @@ export default function DashboardPage() {
               <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--dash-muted)" }}>
                 {t.dashboard.sellerDashboard}
               </p>
-              <h2 className="text-2xl font-bold mt-1">{shop.shop_name} 👋</h2>
+              <h2 className="text-2xl font-bold mt-1">{shop.shop_name}</h2>
               <button
                 type="button"
                 onClick={() => setTab("trust")}
-                className="dash-badge mt-2"
+                className="dash-badge mt-2 inline-flex items-center gap-1.5"
                 style={
                   verificationStatus === "verified"
                     ? { background: "var(--dash-success-wash)", color: "var(--dash-success)" }
@@ -380,7 +407,7 @@ export default function DashboardPage() {
                       : { background: "var(--dash-bg-2)", color: "var(--dash-muted)" }
                 }
               >
-                {verificationStatus === "verified" ? "🟢 " : verificationStatus === "pending" ? "🟡 " : "🔴 "}
+                <StatusDot tone={verificationStatus === "verified" ? "success" : verificationStatus === "pending" ? "warning" : "danger"} />
                 {verificationStatus === "verified"
                   ? t.dashboard.sellerStatusVerified
                   : verificationStatus === "pending"
@@ -404,7 +431,10 @@ export default function DashboardPage() {
           </div>
 
           <div className="dash-card p-5 mb-6">
-            <p className="text-sm font-semibold mb-1">📣 {t.dashboard.marketingShareTitle}</p>
+            <p className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+              <IconMegaphone className="w-4 h-4" style={{ color: "var(--dash-gold-ink)" }} />
+              {t.dashboard.marketingShareTitle}
+            </p>
             <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>{t.dashboard.marketingShareHint}</p>
             <ShareButton
               title={shop.shop_name}
@@ -456,12 +486,15 @@ export default function DashboardPage() {
 
           {todoItems.length > 0 && (
             <div className="dash-card p-5 mb-6">
-              <p className="text-sm font-semibold mb-3">⚠️ {t.dashboard.todoTitle}</p>
+              <p className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                <IconAlertTriangle className="w-4 h-4" style={{ color: "var(--dash-gold-ink)" }} />
+                {t.dashboard.todoTitle}
+              </p>
               <div className="flex flex-col gap-2">
                 {todoItems.map((item) => (
                   <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5" style={{ background: "var(--dash-bg-2)" }}>
                     <span className="text-sm flex items-center gap-2 min-w-0">
-                      <span className="shrink-0">{item.level === "red" ? "🔴" : "🟡"}</span>
+                      <StatusDot tone={item.level === "red" ? "danger" : "warning"} />
                       <span className="truncate">{item.label}</span>
                     </span>
                     <button type="button" onClick={item.onClick} className="dash-btn-outline !py-1 !px-3 text-xs shrink-0">
@@ -474,37 +507,40 @@ export default function DashboardPage() {
           )}
 
           <div className="grid sm:grid-cols-3 gap-4 mb-1">
-            <Stat icon="💰" iconBg="#fef3c7" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
-            <Stat icon="🛒" iconBg="#f5f5f5" label={t.dashboard.orders} value={String(orders.length)} />
-            <Stat icon="📦" iconBg="#f5f5f5" label={t.dashboard.listings} value={String(products.length)} />
+            <Stat icon={<IconBanknote className="w-5 h-5" />} iconBg="#fef3c7" iconColor="var(--dash-gold-ink)" label={t.dashboard.todaySales} value={formatFcfa(todaySales)} />
+            <Stat icon={<IconCart className="w-5 h-5" />} iconBg="#f5f5f5" label={t.dashboard.orders} value={String(orders.length)} />
+            <Stat icon={<IconBox className="w-5 h-5" />} iconBg="#f5f5f5" label={t.dashboard.listings} value={String(products.length)} />
           </div>
           <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>
             {t.dashboard.totalSales}: {formatFcfa(totalSales)}
           </p>
           <div className="grid sm:grid-cols-3 gap-4 mb-2">
             <Stat
-              icon="🔒"
+              icon={<IconLock className="w-5 h-5" />}
               iconBg="#f5f5f5"
+              iconColor="var(--dash-muted)"
               label={t.dashboard.balanceHeld}
               value={formatFcfa(balanceHeld)}
               action={{ label: t.dashboard.viewPaymentsButton, onClick: () => setTab("payments") }}
             />
             <Stat
-              icon="✅"
+              icon={<IconCheckCircle className="w-5 h-5" />}
               iconBg="#f0fdf4"
+              iconColor="var(--dash-success)"
               label={t.dashboard.balanceAvailable}
               value={formatFcfa(owed)}
               action={{ label: t.dashboard.viewPaymentsButton, onClick: () => setTab("payments") }}
             />
             <Stat
-              icon="⭐"
+              icon={<IconStar className="w-5 h-5" filled />}
               iconBg="#fef3c7"
+              iconColor="var(--dash-gold-ink)"
               label={t.dashboard.rating}
-              value={rating && rating.count > 0 ? `⭐ ${rating.average.toFixed(1)}` : t.dashboard.noRatingYet}
+              value={rating && rating.count > 0 ? rating.average.toFixed(1) : t.dashboard.noRatingYet}
             />
           </div>
           <div className="grid sm:grid-cols-3 gap-4 mb-6">
-            <Stat icon="👁️" iconBg="#f5f5f5" label={t.dashboard.shopViews} value={String(shop.view_count)} />
+            <Stat icon={<IconEye className="w-5 h-5" />} iconBg="#f5f5f5" iconColor="var(--dash-muted)" label={t.dashboard.shopViews} value={String(shop.view_count)} />
           </div>
           <p className="text-xs mb-6 -mt-4" style={{ color: "var(--dash-muted)" }}>
             {t.dashboard.commissionNote} {t.dashboard.paidOut}: {formatFcfa(paidOut)}
@@ -571,8 +607,8 @@ export default function DashboardPage() {
       {tab === "payments" && (
         <div className="flex flex-col gap-6">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Stat icon="🔒" iconBg="#f5f5f5" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
-            <Stat icon="✅" iconBg="#f0fdf4" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
+            <Stat icon={<IconLock className="w-5 h-5" />} iconBg="#f5f5f5" iconColor="var(--dash-muted)" label={t.dashboard.balanceHeld} value={formatFcfa(balanceHeld)} />
+            <Stat icon={<IconCheckCircle className="w-5 h-5" />} iconBg="#f0fdf4" iconColor="var(--dash-success)" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
           </div>
           <PayoutDestinationForm shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
           <PayoutHistory orders={orders} t={t} />
@@ -692,7 +728,7 @@ function OrdersPanel({
 
       {filtered.length === 0 ? (
         <div className="dash-card p-10 text-center">
-          <p className="text-3xl mb-2">🛒</p>
+          <IconCart className="w-8 h-8 mx-auto mb-2" style={{ color: "var(--dash-border-strong)" }} />
           <p className="text-sm" style={{ color: "var(--dash-muted)" }}>
             {orders.length === 0 ? t.dashboard.noOrdersYet : t.dashboard.noOrdersForFilter}
           </p>
@@ -706,7 +742,7 @@ function OrdersPanel({
               o.delivery_name,
               [o.delivery_neighborhood, o.delivery_city].filter(Boolean).join(", "),
               o.delivery_address,
-              o.delivery_zone_name ? `📍 ${o.delivery_zone_name}` : null,
+              o.delivery_zone_name,
             ].filter(Boolean) as string[];
             return (
               <div key={o.id} className="p-4">
@@ -890,7 +926,7 @@ function ProductLinkButton({ productId, t }: { productId: string; t: Dictionary 
       title={t.dashboard.copyProductLink}
       className="dash-btn-outline !py-1.5 !px-3 text-xs shrink-0"
     >
-      {copied ? "✓" : "🔗"}
+      {copied ? "✓" : <IconLink className="w-3.5 h-3.5" />}
     </button>
   );
 }
@@ -963,8 +999,9 @@ function ProductsPanel({
           className="rounded-xl p-4 mb-4"
           style={{ background: "var(--dash-danger-wash)", border: "1px solid rgba(185,28,28,0.25)" }}
         >
-          <p className="text-sm font-semibold mb-2" style={{ color: "var(--dash-danger)" }}>
-            ⚠️ {t.dashboard.productAlertsTitle}
+          <p className="text-sm font-semibold mb-2 flex items-center gap-1.5" style={{ color: "var(--dash-danger)" }}>
+            <IconAlertTriangle className="w-4 h-4" />
+            {t.dashboard.productAlertsTitle}
           </p>
           <div className="flex flex-col gap-1.5">
             {attentionSorted.slice(0, 3).map((p) => (
@@ -1048,12 +1085,18 @@ function ProductsPanel({
                 {p.image_urls?.[0] ? (
                   <Image src={p.image_urls[0]} alt={p.title} fill sizes="48px" className="object-cover" />
                 ) : (
-                  "🛍️"
+                  <IconBag className="w-5 h-5" style={{ color: "var(--dash-border-strong)" }} />
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">
-                  {p.is_featured && <span className="mr-1" title={t.dashboard.isFeaturedLabel}>📌</span>}
+                  {p.is_featured && (
+                    <IconPin
+                      className="inline-block w-3 h-3 mr-1 -mt-0.5"
+                      style={{ color: "var(--dash-gold-ink)" }}
+                      title={t.dashboard.isFeaturedLabel}
+                    />
+                  )}
                   {p.title}
                   {!p.is_active && (
                     <span className="dash-badge ml-2 align-middle" style={{ background: "var(--dash-bg-2)", color: "var(--dash-muted)" }}>
@@ -1315,7 +1358,7 @@ function NotificationBell({
         className="relative text-sm rounded-full w-9 h-9 flex items-center justify-center border"
         style={{ borderColor: "var(--dash-border-strong)" }}
       >
-        🔔
+        <IconBell className="w-[18px] h-[18px]" style={{ color: "var(--dash-ink)" }} />
         {unreadCount > 0 && (
           <span
             className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center"
@@ -1367,14 +1410,16 @@ function NotificationBell({
                     }}
                   >
                     <div className="flex items-start gap-2">
-                      <span className="text-base leading-none mt-0.5">
-                        {n.type === "dispute_filed"
-                          ? "⚠️"
-                          : n.type === "low_stock"
-                            ? "📉"
-                            : n.type === "payout_released"
-                              ? "💸"
-                              : "🛍️"}
+                      <span className="mt-0.5 shrink-0" style={{ color: n.type === "dispute_filed" ? "var(--dash-danger)" : "var(--dash-muted)" }}>
+                        {n.type === "dispute_filed" ? (
+                          <IconAlertTriangle className="w-4 h-4" />
+                        ) : n.type === "low_stock" ? (
+                          <IconTrendingDown className="w-4 h-4" />
+                        ) : n.type === "payout_released" ? (
+                          <IconBanknote className="w-4 h-4" />
+                        ) : (
+                          <IconBag className="w-4 h-4" />
+                        )}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">{n.title}</p>
@@ -1500,7 +1545,11 @@ function ReviewCard({
   return (
     <div className="dash-card p-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-sm">{"⭐".repeat(review.rating)}</p>
+        <p className="flex items-center gap-0.5" style={{ color: "var(--dash-gold-ink)" }}>
+          {Array.from({ length: review.rating }).map((_, i) => (
+            <IconStar key={i} filled className="w-3.5 h-3.5" />
+          ))}
+        </p>
         <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
           {t.dashboard.reviewFromLabel} {review.buyer_phone ?? t.dashboard.reviewAnonymousBuyer} ·{" "}
           {new Date(review.created_at).toLocaleDateString()}
@@ -1672,24 +1721,27 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
   return (
     <div className="flex flex-col gap-6">
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon="👁️" iconBg="#f5f5f5" />
+        <Stat label={t.dashboard.shopViews} value={String(shop.view_count)} icon={<IconEye className="w-5 h-5" />} iconBg="#f5f5f5" iconColor="var(--dash-muted)" />
         <Stat
           label={t.dashboard.analyticsConversionLabel}
           value={conversionRate == null ? t.dashboard.noRatingYet : `${conversionRate.toFixed(1)}%`}
-          icon="📈"
+          icon={<IconTrendingUp className="w-5 h-5" />}
           iconBg="#fef3c7"
+          iconColor="var(--dash-gold-ink)"
         />
         <Stat
           label={t.dashboard.analyticsAvgOrderLabel}
           value={avgOrderValue == null ? t.dashboard.noRatingYet : formatFcfa(Math.round(avgOrderValue))}
-          icon="🧮"
+          icon={<IconCalculator className="w-5 h-5" />}
           iconBg="#fef3c7"
+          iconColor="var(--dash-gold-ink)"
         />
         <Stat
           label={t.dashboard.analyticsRepeatCustomersLabel}
           value={repeatRate == null ? t.dashboard.noRatingYet : `${repeatRate.toFixed(0)}%`}
-          icon="🔁"
+          icon={<IconRepeat className="w-5 h-5" />}
           iconBg="#f5f5f5"
+          iconColor="var(--dash-muted)"
         />
       </div>
       <p className="text-xs -mt-4" style={{ color: "var(--dash-muted)" }}>
@@ -1746,7 +1798,13 @@ function AnalyticsPanel({ shop, orders, t }: { shop: Shop; orders: Order[]; t: D
             {topProducts.map((p, i) => (
               <div key={p.title} className="flex items-center justify-between text-sm">
                 <span className="truncate pr-3">
-                  {i === 0 && <span className="mr-1.5" title={t.dashboard.analyticsBestSellerBadge}>🏆</span>}
+                  {i === 0 && (
+                    <IconAward
+                      className="inline-block w-3.5 h-3.5 mr-1.5 -mt-0.5"
+                      style={{ color: "var(--dash-gold-ink)" }}
+                      title={t.dashboard.analyticsBestSellerBadge}
+                    />
+                  )}
                   {p.title}
                 </span>
                 <span className="shrink-0" style={{ color: "var(--dash-muted)" }}>
@@ -2111,13 +2169,16 @@ function ShopSettingsForm({
             type="button"
             onClick={handleToggleOpen}
             disabled={togglingOpen}
-            className={`!py-1.5 !px-4 text-sm shrink-0 ${shop.is_open ? "dash-btn-outline" : "dash-btn"}`}
+            className={`!py-1.5 !px-4 text-sm shrink-0 inline-flex items-center gap-1.5 ${shop.is_open ? "dash-btn-outline" : "dash-btn"}`}
           >
-            {togglingOpen
-              ? t.dashboard.saving
-              : shop.is_open
-                ? `🟢 ${t.dashboard.shopStatusOpen}`
-                : `🔴 ${t.dashboard.shopStatusClosed}`}
+            {togglingOpen ? (
+              t.dashboard.saving
+            ) : (
+              <>
+                <StatusDot tone={shop.is_open ? "success" : "danger"} />
+                {shop.is_open ? t.dashboard.shopStatusOpen : t.dashboard.shopStatusClosed}
+              </>
+            )}
           </button>
         </div>
         {!shop.is_open && (
@@ -2416,10 +2477,11 @@ function VerificationPanel({
   if (shop.is_verified) {
     return (
       <div
-        className="rounded-xl p-5 text-sm"
+        className="rounded-xl p-5 text-sm flex items-center gap-2"
         style={{ border: "1px solid var(--dash-success)", background: "var(--dash-success-wash)", color: "var(--dash-success)" }}
       >
-        🛡️ {t.dashboard.verificationVerified}
+        <IconShield className="w-4 h-4 shrink-0" />
+        {t.dashboard.verificationVerified}
       </div>
     );
   }
@@ -2638,18 +2700,23 @@ function Stat({
   value,
   icon,
   iconBg,
+  iconColor,
   action,
 }: {
   label: string;
   value: string;
-  icon?: string;
+  icon?: ReactNode;
   iconBg?: string;
+  iconColor?: string;
   action?: { label: string; onClick: () => void };
 }) {
   return (
     <div className="dash-card p-4 flex items-start gap-3">
       {icon && (
-        <span className="dash-kpi-icon" style={{ background: iconBg ?? "var(--dash-primary-wash)" }}>
+        <span
+          className="dash-kpi-icon"
+          style={{ background: iconBg ?? "var(--dash-primary-wash)", color: iconColor ?? "var(--dash-ink)" }}
+        >
           {icon}
         </span>
       )}

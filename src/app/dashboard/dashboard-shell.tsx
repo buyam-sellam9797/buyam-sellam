@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { IconLink, IconLogout } from "@/components/dash-icons";
 
 export type DashNavItem<Tab extends string> = {
   key: Tab;
   label: string;
-  icon: string;
+  icon: ReactNode;
   section?: string;
 };
 
@@ -77,7 +78,7 @@ export function DashboardShell<Tab extends string>({
                 }}
                 className={`dash-nav-link text-left ${activeTab === item.key ? "is-active" : ""}`}
               >
-                <span aria-hidden="true">{item.icon}</span>
+                <span className="w-4 h-4 shrink-0 flex items-center justify-center" aria-hidden="true">{item.icon}</span>
                 {item.label}
               </button>
             ))}
@@ -105,12 +106,12 @@ export function DashboardShell<Tab extends string>({
           <div className="mt-auto px-3 pb-5 pt-3 flex flex-col gap-1">
             {viewShopHref && (
               <a href={viewShopHref} target="_blank" rel="noopener noreferrer" className="dash-nav-link">
-                <span aria-hidden="true">🔗</span>
+                <IconLink className="w-4 h-4 shrink-0" />
                 {viewShopLabel}
               </a>
             )}
             <button type="button" onClick={onLogout} className="dash-nav-link text-left" style={{ color: "var(--dash-danger)" }}>
-              <span aria-hidden="true">🚪</span>
+              <IconLogout className="w-4 h-4 shrink-0" />
               {logoutLabel}
             </button>
           </div>
@@ -144,12 +145,12 @@ export function DashboardShell<Tab extends string>({
               <div className="mt-auto px-3 pb-5 pt-3 flex flex-col gap-1">
                 {viewShopHref && (
                   <a href={viewShopHref} target="_blank" rel="noopener noreferrer" className="dash-nav-link">
-                    <span aria-hidden="true">🔗</span>
+                    <IconLink className="w-4 h-4 shrink-0" />
                     {viewShopLabel}
                   </a>
                 )}
                 <button type="button" onClick={onLogout} className="dash-nav-link text-left" style={{ color: "var(--dash-danger)" }}>
-                  <span aria-hidden="true">🚪</span>
+                  <IconLogout className="w-4 h-4 shrink-0" />
                   {logoutLabel}
                 </button>
               </div>

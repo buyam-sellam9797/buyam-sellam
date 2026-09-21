@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLocale } from "./locale-provider";
+import { IconLink } from "./dash-icons";
 
 // A small explicit share menu (WhatsApp / Facebook / copy link) rather
 // than relying only on navigator.share — that native sheet doesn't
@@ -57,7 +58,8 @@ export function ShareButton({
         onClick={handleToggle}
         className="inline-flex w-full items-center justify-center gap-1.5 text-center rounded-full border border-neutral-300 text-neutral-700 font-semibold px-6 py-3 hover:border-neutral-900"
       >
-        🔗 {t.product.share}
+        <IconLink className="w-4 h-4" />
+        {t.product.share}
       </button>
       {open && (
         <div className="mt-2 flex gap-2">
