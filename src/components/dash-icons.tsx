@@ -259,6 +259,14 @@ export function IconRepeat(props: IconProps) {
   );
 }
 
+export function IconChat(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 5.5h17v11h-9.2L7 20v-3.5H3.5Z" />
+    </Base>
+  );
+}
+
 export function IconAward(props: IconProps) {
   return (
     <Base {...props}>

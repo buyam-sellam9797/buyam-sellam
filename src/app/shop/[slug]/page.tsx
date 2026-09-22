@@ -10,6 +10,7 @@ import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { isOpenNow, summarizeBusinessHours } from "@/lib/business-hours";
+import { IconShield, IconPin, IconChat, IconStar, IconCard, IconTruck, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -129,20 +130,23 @@ export default async function ShopPage({
               <h1 className="text-xl font-bold">{shop.shop_name}</h1>
               {shop.is_verified && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
-                  🛡️ {t.shop.verified}
+                  <IconShield className="w-3.5 h-3.5" /> {t.shop.verified}
                 </span>
               )}
             </div>
-            <p className="text-sm text-neutral-500 mt-1">📍 {shop.city}</p>
-            <p className="text-sm text-neutral-500 mt-0.5">
-              {rating.count > 0
-                ? `⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
-                    rating.count,
-                    locale,
-                    t.product.reviewOne,
-                    t.product.reviewOther
-                  )}`
-                : t.product.newSeller}
+            <p className="text-sm text-neutral-500 mt-1 flex items-center gap-1">
+              <IconPin className="w-3.5 h-3.5" /> {shop.city}
+            </p>
+            <p className="text-sm text-neutral-500 mt-0.5 flex items-center gap-1">
+              {rating.count > 0 ? (
+                <>
+                  <IconStar filled className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  {rating.average.toFixed(1)} · {rating.count}{" "}
+                  {plural(rating.count, locale, t.product.reviewOne, t.product.reviewOther)}
+                </>
+              ) : (
+                t.product.newSeller
+              )}
               {rating.completedOrders > 0 &&
                 ` · ${rating.completedOrders} ${plural(
                   rating.completedOrders,
@@ -160,25 +164,29 @@ export default async function ShopPage({
               )}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-full border border-green-600 text-green-700 font-semibold px-5 py-2.5 text-sm hover:bg-green-50 shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-full border border-green-600 text-green-700 font-semibold px-5 py-2.5 text-sm hover:bg-green-50 shrink-0"
             >
-              💬 {t.shop.chatOnWhatsapp}
+              <IconChat className="w-4 h-4" /> {t.shop.chatOnWhatsapp}
             </a>
           )}
         </div>
 
-        <p className="text-sm mb-4">
+        <p className="text-sm mb-4 flex items-center gap-1.5">
           {openNow ? (
-            <span className="text-green-700 font-medium">🟢 {t.shop.openNow}</span>
+            <span className="text-green-700 font-medium inline-flex items-center gap-1.5">
+              <StatusDot tone="success" /> {t.shop.openNow}
+            </span>
           ) : (
-            <span className="text-red-600 font-medium">🔴 {t.shop.closedNow}</span>
+            <span className="text-red-600 font-medium inline-flex items-center gap-1.5">
+              <StatusDot tone="danger" /> {t.shop.closedNow}
+            </span>
           )}
           {hoursSummary && <span className="text-neutral-500"> · {hoursSummary}</span>}
         </p>
 
         {!shop.is_open && (
-          <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm mb-6">
-            🔴 {shop.closed_message || t.shop.temporarilyClosed}
+          <div className="rounded-xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm mb-6 flex items-center gap-1.5">
+            <StatusDot tone="danger" /> {shop.closed_message || t.shop.temporarilyClosed}
           </div>
         )}
 
@@ -211,13 +219,13 @@ export default async function ShopPage({
             often the very first page of the site a buyer ever sees. */}
         <div className="flex flex-wrap gap-2 mb-8">
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 rounded-full px-3 py-1.5">
-            📱 {t.shop.trustPayment}
+            <IconCard className="w-3.5 h-3.5" /> {t.shop.trustPayment}
           </span>
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 rounded-full px-3 py-1.5">
-            🚚 {t.shop.trustDelivery}
+            <IconTruck className="w-3.5 h-3.5" /> {t.shop.trustDelivery}
           </span>
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 rounded-full px-3 py-1.5">
-            🔒 {t.shop.trustEscrow}
+            <IconLock className="w-3.5 h-3.5" /> {t.shop.trustEscrow}
           </span>
         </div>
 
@@ -282,11 +290,11 @@ export default async function ShopPage({
                       className="object-cover"
                     />
                   ) : (
-                    <span className="text-5xl">🛍️</span>
+                    <IconBag className="w-10 h-10 text-neutral-300" />
                   )}
                   {p.is_featured && (
-                    <span className="absolute top-2 left-2 text-[10px] font-semibold bg-amber-500 text-white rounded-full px-2 py-0.5">
-                      ⭐ {t.product.featuredBadge}
+                    <span className="absolute top-2 left-2 inline-flex items-center gap-1 text-[10px] font-semibold bg-amber-500 text-white rounded-full px-2 py-0.5">
+                      <IconStar filled className="w-2.5 h-2.5" /> {t.product.featuredBadge}
                     </span>
                   )}
                   {discountPct != null && discountPct > 0 && (
@@ -325,7 +333,11 @@ export default async function ShopPage({
           <div className="grid sm:grid-cols-2 gap-3 mb-10">
             {reviews.map((r) => (
               <div key={r.id} className="rounded-xl border border-neutral-200 bg-white p-4">
-                <p className="text-sm">{"⭐".repeat(r.rating)}</p>
+                <p className="flex items-center gap-0.5 text-amber-500">
+                  {Array.from({ length: r.rating }).map((_, i) => (
+                    <IconStar key={i} filled className="w-3.5 h-3.5" />
+                  ))}
+                </p>
                 {r.product_rating != null && r.seller_rating != null && r.delivery_rating != null && (
                   <p className="text-xs text-neutral-500 mt-1">
                     {t.shop.reviewProductLabel} {r.product_rating}/5 · {t.shop.reviewSellerLabel}{" "}
