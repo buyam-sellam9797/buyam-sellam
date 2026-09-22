@@ -8,6 +8,7 @@ import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/del
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 import type { SebpayOperator } from "@/lib/sebpay";
+import { IconBag } from "@/components/dash-icons";
 
 type Status = "form" | "waiting" | "held" | "failed";
 type Gateway = "notchpay" | "sebpay";
@@ -298,7 +299,7 @@ export default function CheckoutForm({
             {product.image_urls?.[0] ? (
               <Image src={product.image_urls[0]} alt={product.title} fill sizes="56px" className="object-cover" />
             ) : (
-              <span className="text-2xl">🛍️</span>
+              <IconBag className="w-6 h-6 text-neutral-300" />
             )}
           </div>
           <div className="flex-1">

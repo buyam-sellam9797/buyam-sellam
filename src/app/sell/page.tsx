@@ -17,6 +17,7 @@ import {
 } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
+import { IconCheckCircle } from "@/components/dash-icons";
 
 const TOTAL_STEPS = 9;
 
@@ -793,7 +794,13 @@ function VerificationStep({
       <ul className="rounded-xl border border-neutral-200 bg-white divide-y divide-neutral-100 text-sm">
         {checklist.map((item) => (
           <li key={item.label} className="flex items-center gap-2 px-4 py-2.5">
-            <span>{item.done ? "✅" : "⬜"}</span>
+            <span className="shrink-0">
+              {item.done ? (
+                <IconCheckCircle className="w-4 h-4 text-green-600" />
+              ) : (
+                <span className="block w-4 h-4 rounded-full border-2 border-neutral-300" />
+              )}
+            </span>
             {item.label}
           </li>
         ))}

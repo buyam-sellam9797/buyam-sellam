@@ -8,6 +8,7 @@ import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import type { Dictionary } from "@/lib/i18n";
+import { IconStar, IconShield, IconBanknote } from "@/components/dash-icons";
 
 type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts" | "admins";
 
@@ -395,15 +396,23 @@ function SellersTab({
             <p className="w-20 text-xs text-neutral-500">
               {t.admin.colOrders}: {s.orderCount}
             </p>
-            <p className="w-24 text-xs text-neutral-500">
-              {s.reviewCount > 0 ? `⭐ ${s.rating.toFixed(1)}` : "—"}
+            <p className="w-24 text-xs text-neutral-500 flex items-center gap-1">
+              {s.reviewCount > 0 ? (
+                <>
+                  <IconStar filled className="w-3 h-3 text-amber-500 shrink-0" />
+                  {s.rating.toFixed(1)}
+                </>
+              ) : (
+                "—"
+              )}
             </p>
             <span
-              className={`text-xs font-semibold rounded-full px-2.5 py-1 ${
+              className={`text-xs font-semibold rounded-full px-2.5 py-1 inline-flex items-center gap-1 ${
                 s.is_verified ? "bg-green-50 text-green-700 border border-green-200" : "bg-neutral-100 text-neutral-500"
               }`}
             >
-              {s.is_verified ? `🛡️ ${t.admin.verifyBadge}` : t.admin.unverifyBadge}
+              {s.is_verified && <IconShield className="w-3 h-3" />}
+              {s.is_verified ? t.admin.verifyBadge : t.admin.unverifyBadge}
             </span>
             {!s.is_verified && s.verification_requested_at && (
               <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200">
@@ -710,8 +719,8 @@ function PayoutsTab({
             </p>
             <p className="text-xs font-medium mt-0.5">
               {o.shop?.payout_phone_number ? (
-                <span className="text-neutral-700">
-                  💰{" "}
+                <span className="text-neutral-700 inline-flex items-center gap-1">
+                  <IconBanknote className="w-3.5 h-3.5" />{" "}
                   {o.shop.payout_provider === "mtn"
                     ? "MTN"
                     : o.shop.payout_provider === "orange"

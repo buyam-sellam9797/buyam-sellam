@@ -10,6 +10,7 @@ import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site";
 import { ShareButton } from "@/components/share-button";
 import { BuyNowButton } from "@/components/buy-now-button";
+import { IconBag, IconShield, IconStar, IconPin, IconTruck, IconCard, StatusDot } from "@/components/dash-icons";
 
 const conditionKey = {
   new: "conditionNew",
@@ -122,7 +123,7 @@ export default async function ProductPage({
             className="object-cover"
           />
         ) : (
-          <span className="text-8xl">🛍️</span>
+          <IconBag className="w-16 h-16 text-neutral-300" />
         )}
       </div>
       <div>
@@ -177,19 +178,20 @@ export default async function ProductPage({
               {product.shop.shop_name}
               {product.shop.is_verified && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-                  🛡️ {t.product.verified}
+                  <IconShield className="w-3 h-3" /> {t.product.verified}
                 </span>
               )}
             </Link>
-            <p className="text-neutral-500 mt-1">
-              {rating.count > 0
-                ? `⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
-                    rating.count,
-                    locale,
-                    t.product.reviewOne,
-                    t.product.reviewOther
-                  )}`
-                : t.product.newSeller}
+            <p className="text-neutral-500 mt-1 flex items-center gap-1">
+              {rating.count > 0 ? (
+                <>
+                  <IconStar filled className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  {rating.average.toFixed(1)} · {rating.count}{" "}
+                  {plural(rating.count, locale, t.product.reviewOne, t.product.reviewOther)}
+                </>
+              ) : (
+                t.product.newSeller
+              )}
               {rating.completedOrders > 0 &&
                 ` · ${rating.completedOrders} ${plural(
                   rating.completedOrders,
@@ -198,9 +200,11 @@ export default async function ProductPage({
                   t.product.orderOther
                 )}`}
             </p>
-            <p className="text-neutral-500 mt-1">📍 {product.shop.city}</p>
-            <p className="text-neutral-500 mt-1">
-              🚚 {product.shop.delivery_info || t.product.deliveryAvailable}
+            <p className="text-neutral-500 mt-1 flex items-center gap-1">
+              <IconPin className="w-3.5 h-3.5 shrink-0" /> {product.shop.city}
+            </p>
+            <p className="text-neutral-500 mt-1 flex items-center gap-1">
+              <IconTruck className="w-3.5 h-3.5 shrink-0" /> {product.shop.delivery_info || t.product.deliveryAvailable}
             </p>
             {(product.shop.delivery_fee_fcfa != null || product.shop.delivery_eta_text) && (
               <p className="text-neutral-500 mt-1">
@@ -218,22 +222,24 @@ export default async function ProductPage({
           <p className="text-xs font-semibold text-neutral-500 mb-1.5">{t.product.paymentLabel}</p>
           <div className="flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-medium">
-              📱 MTN MoMo
+              <IconCard className="w-3.5 h-3.5" /> MTN MoMo
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-medium">
-              📱 Orange Money
+              <IconCard className="w-3.5 h-3.5" /> Orange Money
             </span>
           </div>
         </div>
 
         <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
-          <p className="font-semibold mb-1">🛡️ {t.product.buyerProtectionTitle}</p>
+          <p className="font-semibold mb-1 flex items-center gap-1.5">
+            <IconShield className="w-4 h-4" /> {t.product.buyerProtectionTitle}
+          </p>
           {t.product.escrowNotice}
         </div>
 
         {product.shop?.is_open === false ? (
-          <div className="mt-6 w-full text-center rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold px-6 py-3">
-            🔴 {product.shop.closed_message || t.shop.temporarilyClosed}
+          <div className="mt-6 w-full text-center rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold px-6 py-3 inline-flex items-center justify-center gap-1.5">
+            <StatusDot tone="danger" /> {product.shop.closed_message || t.shop.temporarilyClosed}
           </div>
         ) : (
           <BuyNowButton productId={product.id} stock={product.stock_quantity} />

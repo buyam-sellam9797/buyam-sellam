@@ -6,6 +6,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatFcfa } from "@/lib/format";
 import { plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { IconStar } from "@/components/dash-icons";
 
 const AUTO_RELEASE_DAYS = 5;
 
@@ -433,8 +434,8 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           </div>
 
           {reviewed ? (
-            <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
-              ⭐ {t.order.reviewThanks}
+            <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700 flex items-center gap-1.5">
+              <IconStar filled className="w-4 h-4 text-amber-500 shrink-0" /> {t.order.reviewThanks}
             </div>
           ) : (
             <div className="rounded-xl border border-neutral-200 bg-white p-5">
@@ -504,9 +505,9 @@ function StarPicker({
             type="button"
             onClick={() => onChange(n)}
             aria-label={`${n} star${n > 1 ? "s" : ""}`}
-            className="text-2xl leading-none"
+            className="leading-none text-amber-500"
           >
-            {n <= value ? "⭐" : "☆"}
+            <IconStar filled={n <= value} className="w-6 h-6" />
           </button>
         ))}
       </div>

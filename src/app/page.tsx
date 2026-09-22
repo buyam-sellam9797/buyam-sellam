@@ -4,6 +4,7 @@ import { getCategories, getActiveProducts, getHomeStats } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
+import { IconStar, IconCard, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
 
 // This page lists live products/categories from Supabase — never cache
 // it statically, or new sellers/listings wouldn't show up until the
@@ -44,10 +45,11 @@ export default async function Home() {
       label: plural(stats.completedOrderCount, locale, t.home.statsOrdersOne, t.home.statsOrdersOther),
     },
     stats.reviewCount >= MIN_REVIEWS_TO_SHOW && {
-      value: `⭐ ${stats.averageRating.toFixed(1)}/5`,
+      value: `${stats.averageRating.toFixed(1)}/5`,
       label: t.home.statsRating,
+      icon: true,
     },
-  ].filter(Boolean) as { value: string; label: string }[];
+  ].filter(Boolean) as { value: string; label: string; icon?: boolean }[];
 
   return (
     <div>
@@ -80,7 +82,10 @@ export default async function Home() {
             <div className="mt-2 pt-6 border-t border-white/10 grid grid-cols-2 sm:flex sm:flex-wrap gap-x-8 gap-y-4">
               {statItems.map((item, i) => (
                 <div key={i}>
-                  <p className="text-xl font-bold">{item.value}</p>
+                  <p className="text-xl font-bold flex items-center gap-1">
+                    {item.icon && <IconStar filled className="w-4 h-4 text-amber-400" />}
+                    {item.value}
+                  </p>
                   <p className="text-xs text-neutral-400">{item.label}</p>
                 </div>
               ))}
@@ -96,14 +101,14 @@ export default async function Home() {
           </p>
           <div className="flex items-center gap-3 text-sm font-semibold text-neutral-800">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-200 px-3 py-1">
-              📱 MTN MoMo
+              <IconCard className="w-3.5 h-3.5" /> MTN MoMo
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white border border-amber-200 px-3 py-1">
-              📱 Orange Money
+              <IconCard className="w-3.5 h-3.5" /> Orange Money
             </span>
           </div>
-          <p className="text-xs text-amber-800 sm:ml-auto">
-            🔒 {t.home.payYourWayNote}
+          <p className="text-xs text-amber-800 sm:ml-auto inline-flex items-center gap-1">
+            <IconLock className="w-3.5 h-3.5" /> {t.home.payYourWayNote}
           </p>
         </div>
       </section>
@@ -156,14 +161,14 @@ export default async function Home() {
                       className="object-cover"
                     />
                   ) : (
-                    <span className="text-5xl">🛍️</span>
+                    <IconBag className="w-10 h-10 text-neutral-300" />
                   )}
                 </div>
                 <div className="p-3">
                   <p className="text-sm font-medium line-clamp-1">{p.title}</p>
                   <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
                     {p.shop?.shop_name}
-                    {p.shop?.is_verified && <span title="Verified">🟢</span>}
+                    {p.shop?.is_verified && <StatusDot tone="success" className="inline-block w-1.5 h-1.5 rounded-full shrink-0" />}
                   </p>
                   <p className="text-sm font-semibold mt-1">
                     {formatFcfa(p.price_fcfa)}

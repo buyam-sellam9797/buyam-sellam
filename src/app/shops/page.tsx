@@ -3,6 +3,7 @@ import Image from "next/image";
 import { getVerifiedShops, getShopRatingSummary } from "@/lib/supabase";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
+import { IconPin, IconStar } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -36,15 +37,16 @@ export default async function VerifiedShopsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{shop.shop_name}</p>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    📍 {shop.city}
-                    {rating.count > 0 &&
-                      ` · ⭐ ${rating.average.toFixed(1)} · ${rating.count} ${plural(
-                        rating.count,
-                        locale,
-                        t.product.reviewOne,
-                        t.product.reviewOther
-                      )}`}
+                  <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1 flex-wrap">
+                    <IconPin className="w-3 h-3 shrink-0" /> {shop.city}
+                    {rating.count > 0 && (
+                      <>
+                        {" · "}
+                        <IconStar filled className="w-3 h-3 text-amber-500 shrink-0" />{" "}
+                        {rating.average.toFixed(1)} · {rating.count}{" "}
+                        {plural(rating.count, locale, t.product.reviewOne, t.product.reviewOther)}
+                      </>
+                    )}
                     {rating.completedOrders > 0 &&
                       ` · ${rating.completedOrders} ${plural(
                         rating.completedOrders,

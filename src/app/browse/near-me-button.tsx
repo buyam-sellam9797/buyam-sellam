@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { IconPin } from "@/components/dash-icons";
 
 // A small client "island" inside the otherwise server-rendered browse
 // page. Browser geolocation can't be requested from a plain GET form,
@@ -46,13 +47,17 @@ export default function NearMeButton({ t }: { t: { nearMe: string; locating: str
         type="button"
         onClick={handleClick}
         disabled={locating}
-        className={`text-sm rounded-full px-4 py-1.5 border disabled:opacity-60 ${
+        className={`text-sm rounded-full px-4 py-1.5 border disabled:opacity-60 inline-flex items-center gap-1 ${
           isActive
             ? "bg-neutral-900 text-white border-neutral-900"
             : "border-neutral-300 hover:border-neutral-900"
         }`}
       >
-        {locating ? t.locating : `📍 ${t.nearMe}`}
+        {locating ? t.locating : (
+          <>
+            <IconPin className="w-3.5 h-3.5" /> {t.nearMe}
+          </>
+        )}
       </button>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
