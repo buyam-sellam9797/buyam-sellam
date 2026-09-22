@@ -118,6 +118,14 @@ export function IconStar({ filled, ...props }: IconProps & { filled?: boolean })
   );
 }
 
+export function IconHeart({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <Base {...props} fill={filled ? "currentColor" : "none"}>
+      <path d="M12 20.2s-7.5-4.6-9.8-9.1C.7 7.7 2.3 4.5 5.5 3.7c2-.5 4 .3 5.2 2 .3.4.9.4 1.2 0 1.2-1.7 3.2-2.5 5.2-2 3.2.8 4.8 4 3.3 7.4-2.3 4.5-9.4 9.1-9.4 9.1Z" />
+    </Base>
+  );
+}
+
 export function IconTrendingUp(props: IconProps) {
   return (
     <Base {...props}>
@@ -272,6 +280,15 @@ export function IconAward(props: IconProps) {
     <Base {...props}>
       <circle cx="12" cy="8.5" r="5" />
       <path d="m8.7 12.8-1.4 7.7 4.7-2.6 4.7 2.6-1.4-7.7" />
+    </Base>
+  );
+}
+
+export function IconTag(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M12.6 3.5h6.4a1.5 1.5 0 0 1 1.5 1.5v6.4a1.5 1.5 0 0 1-.44 1.06l-8.4 8.4a1.5 1.5 0 0 1-2.12 0l-6.4-6.4a1.5 1.5 0 0 1 0-2.12l8.4-8.4a1.5 1.5 0 0 1 1.06-.44Z" />
+      <circle cx="16.75" cy="7.25" r="1.25" fill="currentColor" stroke="none" />
     </Base>
   );
 }

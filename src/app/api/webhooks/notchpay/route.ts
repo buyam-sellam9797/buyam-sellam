@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 import { verifyNotchPayWebhook, extractNotchPayReference, extractNotchPayEventType } from "@/lib/notchpay";
+import { completeLayawayInstallment, completeGroupBuyJoin } from "@/lib/order-fulfillment";
 import { formatFcfa } from "@/lib/format";
 
 // Before this route existed, an order only flipped from
@@ -57,6 +58,12 @@ export async function POST(req: NextRequest) {
     // "paid_held" transition, guarded the same way: only a still-
     // pending order can be moved, so a late/duplicate webhook delivery
     // after the browser's own poll already confirmed it is a no-op.
+    // The `.is("group_buy_id", null)` guard is the only change from
+    // this route's original, already-tested query: a group-buy join
+    // charge (see /api/group-buy/[id]/join) must NOT be escrowed the
+    // instant it clears the way every other order is — it's contingent
+    // on the whole campaign succeeding — so it's left for the
+    // completeGroupBuyJoin branch below to handle instead.
     const { data: updatedOrder } = await admin
       .from("orders")
       .update({
@@ -66,6 +73,7 @@ export async function POST(req: NextRequest) {
       })
       .eq("payment_reference", reference)
       .eq("status", "pending_payment")
+      .is("group_buy_id", null)
       .select("id, shop_id, total_amount_fcfa")
       .maybeSingle();
 
@@ -84,6 +92,28 @@ export async function POST(req: NextRequest) {
         body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
         orderId: updatedOrder.id,
       });
+    } else {
+      // No ordinary order was charged in full under this exact
+      // reference — the other two shapes a NotchPay reference can take
+      // are a group-buy join charge (/api/group-buy/[id]/join) or one
+      // of layaway's per-installment charges (/api/layaway/...), whose
+      // reference is derived from but not equal to any order's own
+      // payment_reference. Each helper is a no-op if the reference
+      // doesn't match what it's looking for.
+      const groupBuyResult = await completeGroupBuyJoin(admin, {
+        paymentReference: reference,
+        provider: "notchpay",
+        eventType,
+        rawPayload: payload,
+      });
+      if (!groupBuyResult) {
+        await completeLayawayInstallment(admin, {
+          paymentReference: reference,
+          provider: "notchpay",
+          eventType,
+          rawPayload: payload,
+        });
+      }
     }
   } else if (
     eventType === "payment.failed" ||

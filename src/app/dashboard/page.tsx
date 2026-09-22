@@ -72,6 +72,8 @@ import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
 import { ShareButton } from "@/components/share-button";
 import { MessagesPanel } from "./messages-panel";
+import { RestockPanel } from "./restock-panel";
+import { GroupBuyPanel } from "./group-buy-panel";
 import { getSiteUrl } from "@/lib/site";
 import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
@@ -448,6 +450,36 @@ export default function DashboardPage() {
             />
           </div>
 
+          <div className="dash-card p-5 mb-6">
+            <p className="text-sm font-semibold mb-1 flex items-center gap-1.5">
+              <IconChat className="w-4 h-4" style={{ color: "var(--dash-gold-ink)" }} />
+              {t.dashboard.catalogShareTitle}
+            </p>
+            <p className="text-xs mb-3" style={{ color: "var(--dash-muted)" }}>{t.dashboard.catalogShareHint}</p>
+            {(() => {
+              const activeProducts = products.filter((p) => p.is_active).slice(0, 8);
+              if (activeProducts.length === 0) {
+                return <p className="text-xs" style={{ color: "var(--dash-muted)" }}>{t.dashboard.catalogShareEmpty}</p>;
+              }
+              const catalogMessage = [
+                t.dashboard.catalogShareIntro.replace("{shopName}", shop.shop_name),
+                "",
+                ...activeProducts.map(
+                  (p) => `• ${p.title} — ${formatFcfa(p.sale_price_fcfa ?? p.price_fcfa)}`
+                ),
+                "",
+                t.dashboard.catalogShareMore,
+              ].join("\n");
+              return (
+                <ShareButton
+                  title={t.dashboard.catalogShareButton}
+                  url={`${getSiteUrl()}/shop/${shop.slug}`}
+                  message={catalogMessage}
+                />
+              );
+            })()}
+          </div>
+
           {checklistPercent < 100 && (
             <div className="dash-card p-5 mb-6">
               <div className="flex items-center justify-between mb-1">
@@ -602,7 +634,11 @@ export default function DashboardPage() {
       )}
 
       {tab === "products" && (
-        <ProductsPanel shop={shop} products={products} categories={categories} t={t} onChanged={loadData} />
+        <>
+          <RestockPanel shopId={shop.id} t={t} />
+          <GroupBuyPanel shopId={shop.id} products={products} t={t} />
+          <ProductsPanel shop={shop} products={products} categories={categories} t={t} onChanged={loadData} />
+        </>
       )}
 
       {tab === "settings" && <ShopSettingsForm shop={shop} t={t} onSaved={(updated) => setShop(updated)} />}
@@ -748,6 +784,13 @@ function OrdersPanel({
               [o.delivery_neighborhood, o.delivery_city].filter(Boolean).join(", "),
               o.delivery_address,
               o.delivery_zone_name,
+              // The number to actually call about delivery — separate
+              // from buyer_phone (the mobile money charge number) since
+              // this order might be a gift for someone else. Falls back
+              // to buyer_phone for older orders that never collected it.
+              o.delivery_phone || o.buyer_phone
+                ? `${t.dashboard.deliveryContactLabel}: ${o.delivery_phone ?? o.buyer_phone}`
+                : null,
             ].filter(Boolean) as string[];
             return (
               <div key={o.id} className="p-4">
@@ -756,7 +799,26 @@ function OrdersPanel({
                     className="flex-1 min-w-0 cursor-pointer"
                     onClick={() => setExpandedId(isExpanded ? null : o.id)}
                   >
-                    <p className="text-sm font-medium">{formatFcfa(o.total_amount_fcfa)}</p>
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      {formatFcfa(o.total_amount_fcfa)}
+                      {o.is_gift && (
+                        <span
+                          className="dash-badge shrink-0"
+                          style={{ background: "rgba(245, 158, 11, 0.18)", color: "var(--dash-gold-ink)" }}
+                        >
+                          {t.dashboard.giftOrderBadge}
+                        </span>
+                      )}
+                      {o.payment_plan === "layaway" && (
+                        <span
+                          className="dash-badge shrink-0"
+                          style={{ background: "rgba(99, 102, 241, 0.16)", color: "#4338ca" }}
+                          title={o.status === "pending_payment" ? t.dashboard.layawayInProgressHint : undefined}
+                        >
+                          {t.dashboard.layawayOrderBadge}
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
                       {o.buyer_phone ?? t.dashboard.unknownBuyer} ·{" "}
                       {o.status === "paid_held" && o.accepted_at
@@ -838,6 +900,11 @@ function OrdersPanel({
                       </>
                     )}
                     {o.delivery_notes && <p className="text-xs italic mb-3" style={{ color: "var(--dash-muted)" }}>{o.delivery_notes}</p>}
+                    {o.is_gift && o.gift_note && (
+                      <p className="text-xs italic mb-3" style={{ color: "var(--dash-muted)" }}>
+                        {t.order.giftNoteLabel}: {o.gift_note}
+                      </p>
+                    )}
 
                     {o.status !== "pending_payment" && (
                       <div className="rounded-lg p-3 mb-3" style={{ background: "var(--dash-bg-2)" }}>

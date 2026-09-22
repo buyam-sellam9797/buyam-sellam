@@ -121,7 +121,7 @@ export default async function Home() {
           {categories.map((c) => (
             <Link
               key={c.id}
-              href={`/browse?category=${encodeURIComponent(c.slug)}`}
+              href={`/category/${c.slug}`}
               className="rounded-xl border border-neutral-200 bg-white px-4 py-6 text-center text-sm font-medium hover:border-amber-500 hover:text-amber-600 transition"
             >
               {c.name}

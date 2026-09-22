@@ -12,6 +12,7 @@ import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import NearMeButton from "./near-me-button";
 import { IconShield, IconBag, IconStar, IconPin, StatusDot } from "@/components/dash-icons";
+import { FavoriteButton } from "@/components/favorite-button";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,9 @@ export default async function BrowsePage({
             className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
           >
             <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+              <div className="absolute top-2 right-2 z-10">
+                <FavoriteButton productId={p.id} size="sm" />
+              </div>
               {p.image_urls?.[0] ? (
                 <Image
                   src={p.image_urls[0]}

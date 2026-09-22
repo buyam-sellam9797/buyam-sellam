@@ -171,9 +171,23 @@ export type Order = {
   shop_id: string;
   status: string;
   total_amount_fcfa: number;
+  // "layaway" orders are paid in two installments (see
+  // layaway_installments) instead of the usual single upfront charge —
+  // the order otherwise moves through the exact same pending_payment →
+  // paid_held → … states once fully paid. Defaults to "full" for every
+  // order placed the normal way.
+  payment_plan: "full" | "layaway";
   payment_provider: string | null;
   payment_reference: string | null;
   buyer_phone: string | null;
+  // The number a seller/courier should actually call about the
+  // delivery — separate from buyer_phone (the mobile money charge
+  // number), since the person paying isn't always the person
+  // receiving the item. Nullable: older orders never collected this,
+  // so every place this is shown falls back to buyer_phone.
+  delivery_phone: string | null;
+  is_gift: boolean;
+  gift_note: string | null;
   delivery_name: string | null;
   delivery_city: string | null;
   delivery_neighborhood: string | null;
@@ -213,6 +227,133 @@ export type OrderLineItem = {
 export type BuyerOrder = Order & {
   shop: Pick<Shop, "shop_name" | "slug"> | null;
 };
+
+// --- Wishlist / favorites (requires a buyer login, same trade-off as
+// chat: a favorite needs to survive across visits and devices, which
+// an anonymous guest session can't do) ---
+
+export type FavoriteProduct = Pick<
+  Product,
+  "id" | "title" | "price_fcfa" | "sale_price_fcfa" | "image_urls" | "stock_quantity" | "is_active"
+> & {
+  shop: Pick<Shop, "shop_name" | "slug"> | null;
+};
+
+// The buyer's own favorited product ids, as a Set for cheap "is this
+// one favorited?" lookups while rendering a grid of product cards —
+// one query for the whole page instead of one per card.
+export async function getMyFavoriteProductIds(): Promise<Set<string>> {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) return new Set();
+  const { data, error } = await supabase.from("favorites").select("product_id").eq("buyer_id", userData.user.id);
+  if (error || !data) return new Set();
+  return new Set(data.map((r) => r.product_id));
+}
+
+// Full favorited products (with shop info) for the account page's "My
+// Favorites" list — a plain product-id set isn't enough there, the
+// page needs to actually render each item.
+export async function getMyFavorites(): Promise<FavoriteProduct[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) return [];
+  const { data, error } = await supabase
+    .from("favorites")
+    .select(
+      "created_at, product:products(id, title, price_fcfa, sale_price_fcfa, image_urls, stock_quantity, is_active, shop:shops(shop_name, slug))"
+    )
+    .eq("buyer_id", userData.user.id)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return (data as unknown as Array<{ product: FavoriteProduct | FavoriteProduct[] | null }>)
+    .map((row) => (Array.isArray(row.product) ? (row.product[0] ?? null) : row.product))
+    .filter((p): p is FavoriteProduct => p != null);
+}
+
+// Toggles a favorite on/off for the current buyer. Throws if not
+// logged in — callers (FavoriteButton) are expected to have already
+// gated on a session before calling this, same pattern as ChatWidget.
+export async function toggleFavorite(productId: string, currentlyFavorited: boolean): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) throw new Error("Not signed in.");
+  if (currentlyFavorited) {
+    const { error } = await supabase
+      .from("favorites")
+      .delete()
+      .eq("buyer_id", user.id)
+      .eq("product_id", productId);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase
+      .from("favorites")
+      .insert({ buyer_id: user.id, product_id: productId })
+      .select()
+      .single();
+    // A duplicate (already favorited from another tab) isn't a real
+    // failure from the button's point of view — the end state is the
+    // same either way, so it's swallowed rather than surfaced as an error.
+    if (error && error.code !== "23505") throw new Error(error.message);
+  }
+}
+
+// --- Back-in-stock waitlist (works for guests too — most Buyam Sellam
+// checkouts are guest checkouts, and "notify me" should work without
+// requiring an account first) ---
+
+export type RestockRequest = {
+  id: string;
+  product_id: string;
+  shop_id: string;
+  buyer_id: string | null;
+  contact_phone: string | null;
+  notified_at: string | null;
+  created_at: string;
+  product?: Pick<Product, "id" | "title" | "image_urls" | "stock_quantity"> | null;
+};
+
+export async function requestRestockNotification(input: {
+  productId: string;
+  shopId: string;
+  contactPhone?: string;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  const { error } = await supabase.from("restock_requests").insert({
+    product_id: input.productId,
+    shop_id: input.shopId,
+    buyer_id: user?.id ?? null,
+    contact_phone: user ? null : (input.contactPhone || null),
+  });
+  if (error) throw new Error(error.message);
+}
+
+// A seller's own waitlist across all their products, for the dashboard
+// — grouped by product there, but fetched flat here since the grouping
+// is a display concern.
+export async function getRestockRequestsForShop(shopId: string): Promise<RestockRequest[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("restock_requests")
+    .select("id, product_id, shop_id, buyer_id, contact_phone, notified_at, created_at, product:products(id, title, image_urls, stock_quantity)")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("getRestockRequestsForShop error:", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => ({
+    ...row,
+    product: Array.isArray(row.product) ? (row.product[0] ?? null) : row.product,
+  })) as RestockRequest[];
+}
+
+export async function markRestockNotified(requestId: string): Promise<void> {
+  const { error } = await supabase
+    .from("restock_requests")
+    .update({ notified_at: new Date().toISOString() })
+    .eq("id", requestId);
+  if (error) throw new Error(error.message);
+}
 
 export type DisputeReason =
   | "not_arrived"
@@ -811,7 +952,7 @@ export async function getMyBuyerOrders(): Promise<BuyerOrder[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug)"
+      "id, shop_id, status, total_amount_fcfa, payment_plan, payment_provider, payment_reference, buyer_phone, delivery_phone, is_gift, gift_note, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug)"
     )
     .eq("buyer_id", user.id)
     .order("created_at", { ascending: false });
@@ -823,6 +964,54 @@ export async function getMyBuyerOrders(): Promise<BuyerOrder[]> {
     ...row,
     shop: Array.isArray(row.shop) ? (row.shop[0] ?? null) : row.shop,
   })) as BuyerOrder[];
+}
+
+// --- Layaway (pay-in-installments) — see /api/layaway/route.ts for the
+// deposit charge and /api/layaway/[orderId]/installment for the final
+// one. An order stays payment_plan "full" unless the buyer chose this
+// at checkout; "layaway" orders only reach paid_held once both
+// installments clear, exactly like a normal order reaches paid_held
+// once its one charge clears. ---
+
+export type LayawayInstallment = {
+  id: string;
+  installment_number: number;
+  amount_fcfa: number;
+  status: "pending" | "paid";
+  due_at: string | null;
+  paid_at: string | null;
+};
+
+export type LayawayOrder = BuyerOrder & { installments: LayawayInstallment[] };
+
+// The buyer's own in-progress and completed layaway plans, for the
+// account page's "My layaway plans" section — each with its two
+// installments so the page can show "deposit paid, final installment
+// due" without a second round trip.
+export async function getMyLayawayOrders(): Promise<LayawayOrder[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData?.user;
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("orders")
+    .select(
+      "id, shop_id, status, total_amount_fcfa, payment_plan, payment_provider, payment_reference, buyer_phone, delivery_phone, is_gift, gift_note, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, payout_sent, payout_sent_at, accepted_at, created_at, updated_at, shop:shops(shop_name, slug), layaway_installments(id, installment_number, amount_fcfa, status, due_at, paid_at)"
+    )
+    .eq("buyer_id", user.id)
+    .eq("payment_plan", "layaway")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("getMyLayawayOrders error:", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => {
+    const raw = row as unknown as { shop: unknown; layaway_installments: LayawayInstallment[] };
+    return {
+      ...row,
+      shop: Array.isArray(raw.shop) ? ((raw.shop as unknown[])[0] ?? null) : raw.shop,
+      installments: (raw.layaway_installments ?? []).sort((a, b) => a.installment_number - b.installment_number),
+    };
+  }) as unknown as LayawayOrder[];
 }
 
 export async function getMyAddresses(): Promise<BuyerAddress[]> {
@@ -1104,7 +1293,7 @@ export async function getMyOrders(shopId: string): Promise<Order[]> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, shop_id, status, total_amount_fcfa, payment_provider, payment_reference, buyer_phone, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, delivery_zone_name, payout_sent, payout_sent_at, accepted_at, paid_at, shipped_at, completed_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
+      "id, shop_id, status, total_amount_fcfa, payment_plan, payment_provider, payment_reference, buyer_phone, delivery_phone, is_gift, gift_note, delivery_name, delivery_city, delivery_neighborhood, delivery_address, delivery_notes, delivery_fee_fcfa, delivery_latitude, delivery_longitude, delivery_distance_km, delivery_zone_name, payout_sent, payout_sent_at, accepted_at, paid_at, shipped_at, completed_at, created_at, updated_at, order_items(quantity, unit_price_fcfa, product:products(id, title, image_urls))"
     )
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
@@ -1200,6 +1389,122 @@ export async function updateDeliveryZone(
 export async function deleteDeliveryZone(zoneId: string) {
   const { error } = await supabase.from("delivery_zones").delete().eq("id", zoneId);
   if (error) throw new Error(error.message);
+}
+
+// --- Njangi-style group buy campaigns (see /api/group-buy/... and
+// order-fulfillment.ts's completeGroupBuyJoin/tryFinalizeGroupBuy/
+// expireGroupBuy for the payment/escrow side of this) ---
+
+export type GroupBuy = {
+  id: string;
+  shop_id: string;
+  product_id: string;
+  target_quantity: number;
+  group_price_fcfa: number;
+  deadline: string;
+  status: "open" | "succeeded" | "failed" | "cancelled";
+  created_at: string;
+  finalized_at: string | null;
+  // Only present when fetched alongside participants (see
+  // getActiveGroupBuyForProduct / getMyShopGroupBuys) — the sum of
+  // every joined participant's quantity so far.
+  joined_quantity?: number;
+};
+
+// A seller creates a campaign the same way they create a delivery
+// zone — a direct insert relying on the "Sellers manage group buys on
+// their own shop" RLS policy to enforce ownership, rather than a
+// server route, since there's no payment involved in creating one
+// (that only happens when a buyer joins).
+export async function createGroupBuy(input: {
+  shopId: string;
+  productId: string;
+  targetQuantity: number;
+  groupPriceFcfa: number;
+  deadline: string;
+}): Promise<GroupBuy> {
+  const { data, error } = await supabase
+    .from("group_buys")
+    .insert({
+      shop_id: input.shopId,
+      product_id: input.productId,
+      target_quantity: input.targetQuantity,
+      group_price_fcfa: input.groupPriceFcfa,
+      deadline: input.deadline,
+    })
+    .select("id, shop_id, product_id, target_quantity, group_price_fcfa, deadline, status, created_at, finalized_at")
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function cancelGroupBuy(groupBuyId: string): Promise<void> {
+  const { error } = await supabase
+    .from("group_buys")
+    .update({ status: "cancelled", finalized_at: new Date().toISOString() })
+    .eq("id", groupBuyId)
+    .eq("status", "open");
+  if (error) throw new Error(error.message);
+}
+
+// The single active (open) campaign for a product, if any, with its
+// current joined quantity — for the product page's join widget. Public
+// (no auth needed): campaigns are marketing content, same visibility
+// as the product listing itself.
+export async function getActiveGroupBuyForProduct(productId: string): Promise<GroupBuy | null> {
+  if (!isSupabaseConfigured) return null;
+  const { data, error } = await supabase
+    .from("group_buys")
+    .select("id, shop_id, product_id, target_quantity, group_price_fcfa, deadline, status, created_at, finalized_at, group_buy_participants(quantity)")
+    .eq("product_id", productId)
+    .eq("status", "open")
+    .gt("deadline", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const raw = data as unknown as { group_buy_participants: { quantity: number }[] };
+  const joined_quantity = (raw.group_buy_participants ?? []).reduce((sum, p) => sum + p.quantity, 0);
+  return { ...data, joined_quantity };
+}
+
+// A single campaign by id, with its current joined quantity — for the
+// dedicated "join this group buy" page. Public for the same reason as
+// getActiveGroupBuyForProduct: campaigns are marketing content.
+export async function getGroupBuyById(groupBuyId: string): Promise<GroupBuy | null> {
+  if (!isSupabaseConfigured) return null;
+  const { data, error } = await supabase
+    .from("group_buys")
+    .select("id, shop_id, product_id, target_quantity, group_price_fcfa, deadline, status, created_at, finalized_at, group_buy_participants(quantity)")
+    .eq("id", groupBuyId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const raw = data as unknown as { group_buy_participants: { quantity: number }[] };
+  const joined_quantity = (raw.group_buy_participants ?? []).reduce((sum, p) => sum + p.quantity, 0);
+  return { ...data, joined_quantity };
+}
+
+// A seller's own campaigns (any status) for the dashboard, with their
+// current joined quantity, newest first.
+export async function getMyShopGroupBuys(shopId: string): Promise<GroupBuy[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await supabase
+    .from("group_buys")
+    .select(
+      "id, shop_id, product_id, target_quantity, group_price_fcfa, deadline, status, created_at, finalized_at, product:products(title), group_buy_participants(quantity)"
+    )
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("getMyShopGroupBuys error:", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => {
+    const raw = row as unknown as { group_buy_participants: { quantity: number }[]; product: { title: string } | { title: string }[] | null };
+    const joined_quantity = (raw.group_buy_participants ?? []).reduce((sum, p) => sum + p.quantity, 0);
+    const product = Array.isArray(raw.product) ? (raw.product[0] ?? null) : raw.product;
+    return { ...row, joined_quantity, productTitle: product?.title ?? "" };
+  }) as unknown as (GroupBuy & { productTitle: string })[];
 }
 
 // Seller taps "Accept order" on a freshly paid-held order — purely a

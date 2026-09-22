@@ -29,6 +29,64 @@ export async function incrementShopViews(shopId: string): Promise<void> {
     .eq("id", shopId);
 }
 
+// How quickly a shop typically replies to a buyer's first message in
+// chat — shown as a trust badge on the shop/product page. Needs the
+// admin client because a public visitor (the exact audience this badge
+// is for) has no RLS read access to another shop's conversations or
+// messages by design (see the chat feature's RLS) — this is the one
+// narrow, read-only, aggregated exception, the same shape as
+// incrementShopViews above. Returns null rather than a badge with a
+// misleadingly small sample: a shop with only one or two conversations
+// on record shouldn't get a "usually replies within X" claim yet.
+const MIN_CONVERSATIONS_FOR_RESPONSE_BADGE = 3;
+
+export async function getSellerResponseStats(
+  shopId: string
+): Promise<{ avgResponseMinutes: number } | null> {
+  const admin = getAdminClient();
+  if (!admin) return null;
+
+  const { data: conversations } = await admin
+    .from("conversations")
+    .select("id")
+    .eq("shop_id", shopId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const conversationIds = (conversations ?? []).map((c) => c.id);
+  if (conversationIds.length < MIN_CONVERSATIONS_FOR_RESPONSE_BADGE) return null;
+
+  const { data: messages } = await admin
+    .from("messages")
+    .select("conversation_id, sender_role, created_at")
+    .in("conversation_id", conversationIds)
+    .order("created_at", { ascending: true });
+  if (!messages) return null;
+
+  const byConversation = new Map<string, { role: string; at: string }[]>();
+  for (const m of messages) {
+    const list = byConversation.get(m.conversation_id) ?? [];
+    list.push({ role: m.sender_role, at: m.created_at });
+    byConversation.set(m.conversation_id, list);
+  }
+
+  const responseMinutes: number[] = [];
+  for (const msgs of byConversation.values()) {
+    const firstBuyerMsg = msgs.find((m) => m.role === "buyer");
+    if (!firstBuyerMsg) continue;
+    const firstSellerReply = msgs.find(
+      (m) => m.role === "seller" && new Date(m.at).getTime() > new Date(firstBuyerMsg.at).getTime()
+    );
+    if (!firstSellerReply) continue;
+    const minutes =
+      (new Date(firstSellerReply.at).getTime() - new Date(firstBuyerMsg.at).getTime()) / 60000;
+    responseMinutes.push(minutes);
+  }
+
+  if (responseMinutes.length < MIN_CONVERSATIONS_FOR_RESPONSE_BADGE) return null;
+  const avg = responseMinutes.reduce((sum, m) => sum + m, 0) / responseMinutes.length;
+  return { avgResponseMinutes: avg };
+}
+
 // Records an in-app alert for a seller — a new paid order, a buyer's
 // dispute — so they find out from the dashboard's own notification
 // bell instead of only by refreshing it themselves. Always called from

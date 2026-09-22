@@ -27,11 +27,15 @@ type OrderInfo = {
   updated_at: string;
   accepted_at?: string | null;
   delivery_name?: string | null;
+  delivery_phone?: string | null;
+  is_gift?: boolean;
+  gift_note?: string | null;
   delivery_city?: string | null;
   delivery_neighborhood?: string | null;
   delivery_address?: string | null;
   delivery_fee_fcfa?: number | null;
   delivery_distance_km?: number | null;
+  group_buy_id?: string | null;
   shop?: { shop_name: string; whatsapp_number?: string | null; city?: string | null } | null;
 };
 
@@ -198,7 +202,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   }
 
   const stepIndex = stepIndexFor(order);
-  const isTerminalIssue = ["disputed", "refunded", "cancelled"].includes(order.status);
+  const isTerminalIssue = ["disputed", "refunded", "cancelled", "group_buy_pending"].includes(order.status);
   const stepLabels = [t.order.stepHeld, t.order.stepPreparing, t.order.stepShipped, t.order.stepCompleted];
 
   let daysLeft: number | null = null;
@@ -212,6 +216,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
     order.delivery_name,
     [order.delivery_neighborhood, order.delivery_city].filter(Boolean).join(", "),
     order.delivery_address,
+    order.delivery_phone,
   ].filter(Boolean);
 
   const chatHref = order.shop?.whatsapp_number
@@ -265,6 +270,20 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
         </div>
       )}
 
+      {order.status === "group_buy_pending" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-4 flex items-start gap-1.5">
+          <IconShield className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t.order.groupBuyPendingBanner}</span>
+        </div>
+      )}
+
+      {order.status === "cancelled" && order.group_buy_id && (
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700 mb-4 flex items-start gap-1.5">
+          <IconAlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{t.order.groupBuyCancelledBanner}</span>
+        </div>
+      )}
+
       <div className="rounded-xl border border-neutral-200 bg-white p-5 mb-4">
         <p className="text-xs text-neutral-500">{order.shop?.shop_name}</p>
         <p className="text-lg font-semibold mt-1">{formatFcfa(order.total_amount_fcfa)}</p>
@@ -290,10 +309,15 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
 
         {deliveryLines.length > 0 && (
           <div className="mt-3 pt-3 border-t border-neutral-100 text-xs text-neutral-600">
-            <p className="font-semibold text-neutral-500 mb-0.5">{t.order.deliveryTo}</p>
+            <p className="font-semibold text-neutral-500 mb-0.5">
+              {order.is_gift ? t.order.giftDeliveryTo : t.order.deliveryTo}
+            </p>
             {deliveryLines.map((line, i) => (
               <p key={i}>{line}</p>
             ))}
+            {order.is_gift && order.gift_note && (
+              <p className="mt-1.5 italic">{t.order.giftNoteLabel}: {order.gift_note}</p>
+            )}
           </div>
         )}
       </div>

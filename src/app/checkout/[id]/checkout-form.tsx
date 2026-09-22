@@ -32,12 +32,22 @@ export default function CheckoutForm({
   // confirmed (live, from SebPay itself) that this account has it
   // enabled for Cameroon. See src/lib/sebpay.ts.
   const [gateway, setGateway] = useState<Gateway>("notchpay");
+  // Layaway (pay a deposit now, the rest later from /account) is
+  // NotchPay-only in v1 — SebPay's per-charge OTP flow doesn't fit a
+  // "come back another day and charge again" pattern without more
+  // design work. Switching to SebPay always drops back to "full" so a
+  // buyer can never end up on the SebPay gateway with layaway selected.
+  const [paymentPlan, setPaymentPlan] = useState<"full" | "layaway">("full");
   const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
   const [sebpayOperator, setSebpayOperator] = useState<string>(sebpayOperators[0]?.slug ?? "");
   const [sebpayOtpCode, setSebpayOtpCode] = useState("");
   const [phone, setPhone] = useState("");
   const [quantity, setQuantity] = useState(initialQuantity);
   const [deliveryName, setDeliveryName] = useState("");
+  const [deliveryPhone, setDeliveryPhone] = useState("");
+  const [deliveryPhoneTouched, setDeliveryPhoneTouched] = useState(false);
+  const [isGift, setIsGift] = useState(false);
+  const [giftNote, setGiftNote] = useState("");
   const [deliveryCity, setDeliveryCity] = useState(product.shop?.city ?? "");
   const [deliveryNeighborhood, setDeliveryNeighborhood] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -82,6 +92,13 @@ export default function CheckoutForm({
         ? calculateDistanceDeliveryFeeFcfa(distanceKm, deliveryFee)
         : deliveryFee;
   const total = unitPrice * quantity + effectiveDeliveryFee;
+
+  // Mirrors the 50/50 split the server computes in /api/layaway/route.ts
+  // — shown here only so the buyer knows what they're about to be
+  // charged before submitting; the server recomputes this itself from
+  // the authoritative price rather than trusting anything sent from here.
+  const layawayDeposit = Math.round(total * 0.5);
+  const layawayFinal = total - layawayDeposit;
 
   function useMyLocation() {
     if (!navigator.geolocation) {
@@ -136,8 +153,41 @@ export default function CheckoutForm({
     setDeliveryNeighborhood(a.neighborhood ?? "");
     setDeliveryAddress(a.address ?? "");
     if (!phone) setPhone(a.phone);
+    // A saved address is the buyer's own — only pre-fill the delivery
+    // contact number from it when this isn't a gift order (where the
+    // recipient's number is deliberately different and shouldn't be
+    // silently overwritten by picking a saved address).
+    if (!isGift) {
+      setDeliveryPhone(a.phone);
+      setDeliveryPhoneTouched(false);
+    }
     setBuyerLat(a.latitude);
     setBuyerLng(a.longitude);
+  }
+
+  // By default, the delivery contact number mirrors the mobile money
+  // phone — most orders are for the person paying — but only until the
+  // buyer explicitly edits it, or marks this as a gift (at which point
+  // it's cleared so they have to enter the actual recipient's number
+  // rather than accidentally leaving their own). Mirrored directly from
+  // the momo phone field's own onChange below (not a useEffect syncing
+  // one state into another) so there's no render where the two are
+  // briefly out of sync.
+  function handlePhoneChange(value: string) {
+    setPhone(value);
+    if (!isGift && !deliveryPhoneTouched) setDeliveryPhone(value);
+  }
+
+  function handleToggleGift(next: boolean) {
+    setIsGift(next);
+    if (next) {
+      setDeliveryPhone("");
+      setDeliveryPhoneTouched(true);
+    } else {
+      setDeliveryPhoneTouched(false);
+      setDeliveryPhone(phone);
+      setGiftNote("");
+    }
   }
 
   const activeSebpayOperator = sebpayOperators.find((o) => o.slug === sebpayOperator) ?? null;
@@ -159,6 +209,9 @@ export default function CheckoutForm({
         quantity,
         phone,
         deliveryName,
+        deliveryPhone: deliveryPhone || phone,
+        isGift,
+        giftNote: isGift ? giftNote : undefined,
         deliveryCity,
         deliveryNeighborhood,
         deliveryAddress,
@@ -169,7 +222,9 @@ export default function CheckoutForm({
         ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
       };
 
-      const startRes = await fetch(gateway === "sebpay" ? "/api/checkout/sebpay" : "/api/checkout", {
+      const startUrl =
+        gateway === "sebpay" ? "/api/checkout/sebpay" : paymentPlan === "layaway" ? "/api/layaway" : "/api/checkout";
+      const startRes = await fetch(startUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -223,12 +278,14 @@ export default function CheckoutForm({
 
       const reference: string = startData.reference;
       const orderReference: string = startData.orderReference;
+      const pollUrl =
+        paymentPlan === "layaway"
+          ? `/api/layaway?reference=${encodeURIComponent(reference)}`
+          : `/api/checkout?reference=${encodeURIComponent(reference)}&orderReference=${encodeURIComponent(orderReference)}`;
       pollRef.current = setInterval(async () => {
         attempts += 1;
         try {
-          const checkRes = await fetch(
-            `/api/checkout?reference=${encodeURIComponent(reference)}&orderReference=${encodeURIComponent(orderReference)}`
-          );
+          const checkRes = await fetch(pollUrl);
           const checkData = await checkRes.json();
           if (checkData.status === "complete") {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -257,17 +314,23 @@ export default function CheckoutForm({
     return (
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-sm text-green-900">
-          <p className="font-semibold mb-1">{t.checkout.heldTitle}</p>
+          <p className="font-semibold mb-1">
+            {paymentPlan === "layaway" ? t.checkout.layawayHeldTitle : t.checkout.heldTitle}
+          </p>
           <p>
-            {formatFcfa(total)} {t.checkout.heldBody}
+            {paymentPlan === "layaway"
+              ? t.checkout.layawayHeldBody
+                  .replace("{deposit}", formatFcfa(layawayDeposit))
+                  .replace("{final}", formatFcfa(layawayFinal))
+              : `${formatFcfa(total)} ${t.checkout.heldBody}`}
           </p>
         </div>
         {orderId && (
           <Link
-            href={`/order/${orderId}`}
+            href={paymentPlan === "layaway" ? "/account" : `/order/${orderId}`}
             className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-center hover:border-neutral-900"
           >
-            {t.checkout.trackOrder}
+            {paymentPlan === "layaway" ? t.checkout.viewLayawayPlan : t.checkout.trackOrder}
           </Link>
         )}
       </div>
@@ -414,15 +477,47 @@ export default function CheckoutForm({
             {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
           </div>
         )}
+        <label className="flex items-center gap-2 text-xs text-neutral-600 mb-3">
+          <input
+            type="checkbox"
+            checked={isGift}
+            onChange={(e) => handleToggleGift(e.target.checked)}
+          />
+          {t.checkout.isGiftLabel}
+        </label>
+        {isGift && (
+          <p className="text-xs text-neutral-500 mb-3">{t.checkout.isGiftNote}</p>
+        )}
         <div className="flex flex-col gap-3">
           <input
             required
             value={deliveryName}
             onChange={(e) => setDeliveryName(e.target.value)}
-            placeholder={t.checkout.deliveryNamePlaceholder}
+            placeholder={isGift ? t.checkout.recipientNamePlaceholder : t.checkout.deliveryNamePlaceholder}
             aria-label={t.checkout.deliveryNameLabel}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
           />
+          <input
+            required
+            type="tel"
+            value={deliveryPhone}
+            onChange={(e) => {
+              setDeliveryPhone(e.target.value);
+              setDeliveryPhoneTouched(true);
+            }}
+            placeholder={isGift ? t.checkout.recipientPhonePlaceholder : t.checkout.deliveryPhonePlaceholder}
+            aria-label={t.checkout.deliveryPhoneLabel}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          {isGift && (
+            <textarea
+              value={giftNote}
+              onChange={(e) => setGiftNote(e.target.value)}
+              placeholder={t.checkout.giftNotePlaceholder}
+              rows={2}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <input
               required
@@ -472,7 +567,10 @@ export default function CheckoutForm({
             </button>
             <button
               type="button"
-              onClick={() => setGateway("sebpay")}
+              onClick={() => {
+                setGateway("sebpay");
+                setPaymentPlan("full");
+              }}
               className={`rounded-lg border px-3 py-2 text-sm font-medium ${
                 gateway === "sebpay" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
               }`}
@@ -550,6 +648,27 @@ export default function CheckoutForm({
         </div>
       )}
 
+      {gateway === "notchpay" && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={paymentPlan === "layaway"}
+              onChange={(e) => setPaymentPlan(e.target.checked ? "layaway" : "full")}
+            />
+            <span>
+              <span className="font-medium block">{t.checkout.layawayLabel}</span>
+              <span className="text-xs text-neutral-500">
+                {t.checkout.layawayNote
+                  .replace("{deposit}", formatFcfa(layawayDeposit))
+                  .replace("{final}", formatFcfa(layawayFinal))}
+              </span>
+            </span>
+          </label>
+        </div>
+      )}
+
       <div>
         <label className="text-sm font-medium block mb-2" htmlFor="phone">
           {t.checkout.phoneLabel}
@@ -558,7 +677,7 @@ export default function CheckoutForm({
           id="phone"
           required
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => handlePhoneChange(e.target.value)}
           placeholder={t.checkout.phonePlaceholder}
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
@@ -569,7 +688,11 @@ export default function CheckoutForm({
         disabled={status === "waiting"}
         className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
       >
-        {status === "waiting" ? t.checkout.checkingPhone : `${t.checkout.payButton} ${formatFcfa(total)}`}
+        {status === "waiting"
+          ? t.checkout.checkingPhone
+          : paymentPlan === "layaway"
+            ? `${t.checkout.payDepositButton} ${formatFcfa(layawayDeposit)}`
+            : `${t.checkout.payButton} ${formatFcfa(total)}`}
       </button>
       {status === "waiting" && (
         <p className="text-xs text-neutral-500 text-center">{t.checkout.waitingNote}</p>

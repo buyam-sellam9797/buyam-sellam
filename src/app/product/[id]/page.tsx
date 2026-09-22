@@ -2,15 +2,18 @@ import Link from "next/link";
 import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getProductById, getShopRatingSummary } from "@/lib/supabase";
-import { formatFcfa } from "@/lib/format";
+import { getProductById, getShopRatingSummary, getActiveGroupBuyForProduct } from "@/lib/supabase";
+import { getSellerResponseStats } from "@/lib/supabase-admin";
+import { formatFcfa, formatResponseTime } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 import { ShareButton } from "@/components/share-button";
 import { BuyNowButton } from "@/components/buy-now-button";
 import { ChatWidget } from "@/components/chat-widget";
-import { IconBag, IconShield, IconStar, IconPin, IconTruck, IconCard, StatusDot } from "@/components/dash-icons";
+import { FavoriteButton } from "@/components/favorite-button";
+import { RestockNotifyButton } from "@/components/restock-notify-button";
+import { IconBag, IconShield, IconStar, IconPin, IconTruck, IconCard, IconChat, StatusDot } from "@/components/dash-icons";
 
 const conditionKey = {
   new: "conditionNew",
@@ -76,6 +79,8 @@ export default async function ProductPage({
   const rating = product.shop
     ? await getShopRatingSummary(product.shop.id)
     : { average: 0, count: 0, completedOrders: 0 };
+  const responseStats = product.shop ? await getSellerResponseStats(product.shop.id) : null;
+  const activeGroupBuy = await getActiveGroupBuyForProduct(product.id);
   const shareUrl = `${getSiteUrl()}/product/${product.id}`;
 
   // Tells Google this is a product listing (price, availability, who
@@ -113,6 +118,9 @@ export default async function ProductPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
       <div className="relative aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
+        <div className="absolute top-3 right-3 z-10">
+          <FavoriteButton productId={product.id} />
+        </div>
         {product.image_urls?.[0] ? (
           <Image
             src={product.image_urls[0]}
@@ -206,6 +214,15 @@ export default async function ProductPage({
             <p className="text-neutral-500 mt-1 flex items-center gap-1">
               <IconTruck className="w-3.5 h-3.5 shrink-0" /> {product.shop.delivery_info || t.product.deliveryAvailable}
             </p>
+            {responseStats && (
+              <p className="text-neutral-500 mt-1 flex items-center gap-1">
+                <IconChat className="w-3.5 h-3.5 shrink-0" />
+                {t.product.responseTimeBadge.replace(
+                  "{time}",
+                  formatResponseTime(responseStats.avgResponseMinutes, t.product)
+                )}
+              </p>
+            )}
             {(product.shop.delivery_fee_fcfa != null || product.shop.delivery_eta_text) && (
               <p className="text-neutral-500 mt-1">
                 {product.shop.delivery_fee_fcfa != null &&
@@ -228,6 +245,7 @@ export default async function ProductPage({
               <IconCard className="w-3.5 h-3.5" /> Orange Money
             </span>
           </div>
+          <p className="text-xs text-neutral-500 mt-1.5">{t.product.layawayAvailableNote}</p>
         </div>
 
         <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
@@ -237,12 +255,43 @@ export default async function ProductPage({
           {t.product.escrowNotice}
         </div>
 
+        {activeGroupBuy && (
+          <div className="mt-4 rounded-lg bg-neutral-50 border border-neutral-200 p-4 text-sm">
+            <p className="font-semibold mb-1">{t.groupBuyJoin.bannerTitle}</p>
+            <p className="text-neutral-600 mb-2">
+              {t.groupBuyJoin.bannerBody
+                .replace("{joined}", String(activeGroupBuy.joined_quantity ?? 0))
+                .replace("{target}", String(activeGroupBuy.target_quantity))
+                .replace("{price}", formatFcfa(activeGroupBuy.group_price_fcfa))}
+            </p>
+            <div className="mb-2 h-1.5 rounded-full overflow-hidden bg-neutral-200">
+              <div
+                className="h-full rounded-full bg-amber-500"
+                style={{
+                  width: `${Math.min(100, Math.round(((activeGroupBuy.joined_quantity ?? 0) / activeGroupBuy.target_quantity) * 100))}%`,
+                }}
+              />
+            </div>
+            <Link
+              href={`/group-buy/${activeGroupBuy.id}`}
+              className="inline-block w-full text-center rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 hover:bg-neutral-700"
+            >
+              {t.groupBuyJoin.bannerCta}
+            </Link>
+          </div>
+        )}
+
         {product.shop?.is_open === false ? (
           <div className="mt-6 w-full text-center rounded-full bg-red-50 border border-red-200 text-red-700 font-semibold px-6 py-3 inline-flex items-center justify-center gap-1.5">
             <StatusDot tone="danger" /> {product.shop.closed_message || t.shop.temporarilyClosed}
           </div>
         ) : (
-          <BuyNowButton productId={product.id} stock={product.stock_quantity} />
+          <>
+            <BuyNowButton productId={product.id} stock={product.stock_quantity} />
+            {product.stock_quantity <= 0 && product.shop && (
+              <RestockNotifyButton productId={product.id} shopId={product.shop.id} />
+            )}
+          </>
         )}
 
         {product.shop && (

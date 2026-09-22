@@ -1,9 +1,20 @@
+import type { Metadata } from "next";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
-import { getSupportWhatsapp, getSupportEmail, buildSupportWhatsAppLink } from "@/lib/site";
+import { getSupportWhatsapp, getSupportEmail, buildSupportWhatsAppLink, getSiteUrl } from "@/lib/site";
 import { IconShield } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const url = `${getSiteUrl()}/help`;
+  return {
+    title: "Help Centre — Buyam Sellam",
+    description:
+      "Answers to common questions about buying and selling on Buyam Sellam: payments, escrow protection, delivery, and how the 5% seller commission works.",
+    alternates: { canonical: url },
+  };
+}
 
 function FaqSection({
   id,
@@ -38,8 +49,24 @@ export default async function HelpPage() {
     locale === "fr" ? "Bonjour, j'ai une question." : "Hi, I have a question."
   );
 
+  // Reuses the FAQ content already written for this page (see
+  // FaqSection below) as FAQPage structured data — Google can show
+  // these questions directly as an expandable result, which is real
+  // extra visibility for content that already exists rather than
+  // anything written new for SEO's sake.
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [...t.help.buying, ...t.help.selling, ...t.help.payments, ...t.help.delivery].map((item) => ({
+      "@type": "Question",
+      name: item.q,
+      acceptedAnswer: { "@type": "Answer", text: item.a },
+    })),
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <h1 className="text-2xl font-bold mb-1">{t.help.title}</h1>
       <p className="text-neutral-500 text-sm mb-8">{t.help.subtitle}</p>
 

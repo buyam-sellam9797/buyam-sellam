@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   supabase,
   getMyProfile,
@@ -12,14 +13,20 @@ import {
   createAddress,
   deleteAddress,
   getMyShop,
+  getMyFavorites,
+  toggleFavorite,
+  getMyLayawayOrders,
   type BuyerProfile,
   type BuyerOrder,
   type BuyerAddress,
+  type FavoriteProduct,
+  type LayawayOrder,
 } from "@/lib/supabase";
 import { getMyConversationsAsBuyer, type BuyerConversation } from "@/lib/messaging";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
-import { IconPin, IconChat } from "@/components/dash-icons";
+import { useFavoritesContext } from "@/components/favorites-provider";
+import { IconPin, IconChat, IconHeart, IconBag } from "@/components/dash-icons";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -29,6 +36,8 @@ export default function AccountPage() {
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
   const [conversations, setConversations] = useState<BuyerConversation[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+  const [layawayOrders, setLayawayOrders] = useState<LayawayOrder[]>([]);
   const [hasShop, setHasShop] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -43,18 +52,22 @@ export default function AccountPage() {
     // someone who owns a shop and lands here (e.g. via the "Account"
     // link in the header) still needs a way back to their dashboard —
     // otherwise this page is a dead end for them.
-    const [myProfile, myOrders, myAddresses, myShop, myConversations] = await Promise.all([
+    const [myProfile, myOrders, myAddresses, myShop, myConversations, myFavorites, myLayawayOrders] = await Promise.all([
       getMyProfile(),
       getMyBuyerOrders(),
       getMyAddresses(),
       getMyShop(),
       getMyConversationsAsBuyer(),
+      getMyFavorites(),
+      getMyLayawayOrders(),
     ]);
     setProfile(myProfile);
     setOrders(myOrders);
     setAddresses(myAddresses);
     setHasShop(!!myShop);
     setConversations(myConversations);
+    setFavorites(myFavorites);
+    setLayawayOrders(myLayawayOrders);
     setLoading(false);
   }, [router]);
 
@@ -110,6 +123,28 @@ export default function AccountPage() {
       />
 
       <MessagesSection conversations={conversations} t={t} />
+
+      <FavoritesSection
+        favorites={favorites}
+        t={t}
+        onRemoved={(productId) => setFavorites((prev) => prev.filter((p) => p.id !== productId))}
+      />
+
+      {layawayOrders.length > 0 && (
+        <LayawaySection
+          layawayOrders={layawayOrders}
+          t={t}
+          onPaid={(orderId) =>
+            setLayawayOrders((prev) =>
+              prev.map((o) =>
+                o.id === orderId
+                  ? { ...o, installments: o.installments.map((i) => ({ ...i, status: "paid", paid_at: new Date().toISOString() })) }
+                  : o
+              )
+            )
+          }
+        />
+      )}
 
       <OrdersSection orders={orders} t={t} />
     </div>
@@ -449,6 +484,251 @@ function MessagesSection({
         </div>
       )}
     </section>
+  );
+}
+
+function FavoritesSection({
+  favorites,
+  t,
+  onRemoved,
+}: {
+  favorites: FavoriteProduct[];
+  t: ReturnType<typeof useLocale>["t"];
+  onRemoved: (productId: string) => void;
+}) {
+  const { refresh } = useFavoritesContext();
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  async function handleRemove(productId: string) {
+    setRemovingId(productId);
+    try {
+      await toggleFavorite(productId, true);
+      onRemoved(productId);
+      refresh();
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold mb-3">{t.account.favoritesTitle}</h2>
+      {favorites.length === 0 ? (
+        <p className="text-sm text-neutral-500">{t.account.noFavorites}</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {favorites.map((p) => (
+            <div key={p.id} className="rounded-xl border border-neutral-200 bg-white overflow-hidden text-sm">
+              <Link href={`/product/${p.id}`} className="block">
+                <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
+                  {p.image_urls?.[0] ? (
+                    <Image src={p.image_urls[0]} alt={p.title} fill sizes="200px" className="object-cover" />
+                  ) : (
+                    <IconBag className="w-8 h-8 text-neutral-300" />
+                  )}
+                </div>
+                <div className="p-2.5">
+                  <p className="font-medium line-clamp-1">{p.title}</p>
+                  <p className="text-neutral-500 text-xs mt-0.5">
+                    {p.shop?.shop_name}
+                    {!p.is_active && ` · ${t.product.outOfStock}`}
+                  </p>
+                  <p className="font-semibold mt-0.5">{formatFcfa(p.sale_price_fcfa ?? p.price_fcfa)}</p>
+                </div>
+              </Link>
+              <button
+                onClick={() => handleRemove(p.id)}
+                disabled={removingId === p.id}
+                className="w-full flex items-center justify-center gap-1 text-xs text-neutral-500 hover:text-red-600 border-t border-neutral-100 py-1.5 disabled:opacity-60"
+              >
+                <IconHeart filled className="w-3 h-3 text-red-500" /> {t.product.favoriteRemove}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LayawaySection({
+  layawayOrders,
+  t,
+  onPaid,
+}: {
+  layawayOrders: LayawayOrder[];
+  t: ReturnType<typeof useLocale>["t"];
+  onPaid: (orderId: string) => void;
+}) {
+  return (
+    <section>
+      <h2 className="text-sm font-semibold mb-3">{t.account.layawayTitle}</h2>
+      <div className="flex flex-col gap-3">
+        {layawayOrders.map((o) => (
+          <LayawayCard key={o.id} order={o} t={t} onPaid={() => onPaid(o.id)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LayawayCard({
+  order,
+  t,
+  onPaid,
+}: {
+  order: LayawayOrder;
+  t: ReturnType<typeof useLocale>["t"];
+  onPaid: () => void;
+}) {
+  const nextInstallment = order.installments.find((i) => i.status === "pending");
+  const [paying, setPaying] = useState(false);
+  const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
+  const [phone, setPhone] = useState(order.buyer_phone ?? "");
+  const [status, setStatus] = useState<"idle" | "waiting" | "done" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function handlePay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nextInstallment) return;
+    setStatus("waiting");
+    setError(null);
+    try {
+      const startRes = await fetch(`/api/layaway/${order.id}/installment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, phone }),
+      });
+      const startData = await startRes.json();
+      if (!startRes.ok) {
+        setError(startData.error ?? t.checkout.errorStart);
+        setStatus("error");
+        return;
+      }
+      const reference: string = startData.reference;
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts += 1;
+        try {
+          const checkRes = await fetch(`/api/layaway/${order.id}/installment?reference=${encodeURIComponent(reference)}`);
+          const checkData = await checkRes.json();
+          if (checkData.status === "complete") {
+            clearInterval(poll);
+            setStatus("done");
+            onPaid();
+          } else if (checkData.status === "failed" || checkData.status === "canceled") {
+            clearInterval(poll);
+            setError(t.checkout.errorNotApproved);
+            setStatus("error");
+          }
+        } catch {
+          // transient network hiccup while polling — keep trying until timeout
+        }
+        if (attempts >= 20) {
+          clearInterval(poll);
+          setError(t.checkout.errorTimeout);
+          setStatus("error");
+        }
+      }, 3000);
+    } catch {
+      setError(t.checkout.errorUnreachable);
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-medium">{order.shop?.shop_name ?? ""}</p>
+          <p className="text-neutral-500 text-xs">{formatFcfa(order.total_amount_fcfa)}</p>
+        </div>
+        <Link href={`/order/${order.id}`} className="text-amber-600 text-xs font-medium hover:underline shrink-0">
+          {t.account.viewOrder} →
+        </Link>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-1">
+        {order.installments.map((inst) => (
+          <div key={inst.id} className="flex items-center justify-between text-xs">
+            <span className="text-neutral-500">
+              {t.account.layawayInstallmentLabel.replace("{n}", String(inst.installment_number))}
+            </span>
+            <span className={inst.status === "paid" ? "text-green-700 font-medium" : "text-neutral-500"}>
+              {formatFcfa(inst.amount_fcfa)} — {inst.status === "paid" ? t.account.layawayPaid : t.account.layawayDue}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {nextInstallment && status !== "done" && (
+        <>
+          {!paying ? (
+            <button
+              onClick={() => setPaying(true)}
+              className="mt-3 text-xs rounded-full bg-neutral-900 text-white px-4 py-1.5 hover:bg-neutral-700"
+            >
+              {t.account.layawayPayNext.replace("{amount}", formatFcfa(nextInstallment.amount_fcfa))}
+            </button>
+          ) : (
+            <form onSubmit={handlePay} className="mt-3 flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setProvider("mtn")}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                    provider === "mtn" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+                  }`}
+                >
+                  {t.checkout.mtn}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProvider("orange")}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                    provider === "orange" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+                  }`}
+                >
+                  {t.checkout.orange}
+                </button>
+              </div>
+              <input
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder={t.checkout.phonePlaceholder}
+                className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              />
+              {error && <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={status === "waiting"}
+                  className="text-xs rounded-full bg-neutral-900 text-white px-4 py-1.5 disabled:opacity-60"
+                >
+                  {status === "waiting"
+                    ? t.checkout.checkingPhone
+                    : `${t.checkout.payButton} ${formatFcfa(nextInstallment.amount_fcfa)}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaying(false)}
+                  disabled={status === "waiting"}
+                  className="text-xs rounded-full border border-neutral-300 px-4 py-1.5"
+                >
+                  {t.account.cancel}
+                </button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+      {status === "done" && (
+        <p className="mt-3 text-xs text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          {t.account.layawayFullyPaid}
+        </p>
+      )}
+    </div>
   );
 }
 

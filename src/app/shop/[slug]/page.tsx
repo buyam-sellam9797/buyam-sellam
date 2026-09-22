@@ -3,14 +3,14 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
-import { incrementShopViews } from "@/lib/supabase-admin";
-import { formatFcfa } from "@/lib/format";
+import { incrementShopViews, getSellerResponseStats } from "@/lib/supabase-admin";
+import { formatFcfa, formatResponseTime } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 import { isOpenNow, summarizeBusinessHours } from "@/lib/business-hours";
 import { ChatWidget } from "@/components/chat-widget";
-import { IconShield, IconPin, IconStar, IconCard, IconTruck, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
+import { IconShield, IconPin, IconStar, IconCard, IconTruck, IconLock, IconBag, IconChat, StatusDot } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -73,10 +73,11 @@ export default async function ShopPage({
   // if the write fails for any reason.
   incrementShopViews(shop.id).catch(() => {});
 
-  const [allShopProducts, rating, reviews] = await Promise.all([
+  const [allShopProducts, rating, reviews, responseStats] = await Promise.all([
     getShopProducts(shop.id),
     getShopRatingSummary(shop.id),
     getShopReviews(shop.id),
+    getSellerResponseStats(shop.id),
   ]);
 
   // Category chips: only the categories this shop actually has
@@ -217,6 +218,15 @@ export default async function ShopPage({
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 rounded-full px-3 py-1.5">
             <IconLock className="w-3.5 h-3.5" /> {t.shop.trustEscrow}
           </span>
+          {responseStats && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 rounded-full px-3 py-1.5">
+              <IconChat className="w-3.5 h-3.5" />
+              {t.product.responseTimeBadge.replace(
+                "{time}",
+                formatResponseTime(responseStats.avgResponseMinutes, t.product)
+              )}
+            </span>
+          )}
         </div>
 
         {shop.return_policy && (

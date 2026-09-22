@@ -23,6 +23,9 @@ type ChargeBody = {
   phone: string;
   otpCode?: string;
   deliveryName?: string;
+  deliveryPhone?: string;
+  isGift?: boolean;
+  giftNote?: string;
   deliveryCity?: string;
   deliveryNeighborhood?: string;
   deliveryAddress?: string;
@@ -126,6 +129,9 @@ export async function POST(req: NextRequest) {
       buyer_id: buyerId,
       buyer_phone: phone,
       delivery_name: deliveryName,
+      delivery_phone: body.deliveryPhone || phone,
+      is_gift: Boolean(body.isGift),
+      gift_note: body.isGift ? (body.giftNote || null) : null,
       delivery_city: deliveryCity,
       delivery_neighborhood: deliveryNeighborhood || null,
       delivery_address: deliveryAddress || null,
