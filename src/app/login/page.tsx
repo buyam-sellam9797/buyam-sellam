@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase, getMyProfile } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+import { IconBag, IconBox } from "@/components/dash-icons";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,7 +53,9 @@ export default function LoginPage() {
 
       <div className="flex flex-col gap-3 mb-8">
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
-          <p className="font-semibold mb-1">{t.login.buyerCardTitle}</p>
+          <p className="font-semibold mb-1 flex items-center gap-1.5">
+            <IconBag className="w-4 h-4" /> {t.login.buyerCardTitle}
+          </p>
           <p className="text-sm text-neutral-600 mb-4">{t.login.buyerCardBody}</p>
           <Link
             href="/browse"
@@ -69,7 +72,9 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
-          <p className="font-semibold mb-1">{t.login.sellerCardTitle}</p>
+          <p className="font-semibold mb-1 flex items-center gap-1.5">
+            <IconBox className="w-4 h-4" /> {t.login.sellerCardTitle}
+          </p>
           <p className="text-sm text-neutral-600 mb-4">{t.login.sellerCardBody}</p>
           <Link
             href="/sell"

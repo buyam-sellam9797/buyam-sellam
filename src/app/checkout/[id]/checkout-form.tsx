@@ -8,7 +8,7 @@ import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/del
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 import type { SebpayOperator } from "@/lib/sebpay";
-import { IconBag } from "@/components/dash-icons";
+import { IconBag, IconPin, IconLock } from "@/components/dash-icons";
 
 type Status = "form" | "waiting" | "held" | "failed";
 type Gateway = "notchpay" | "sebpay";
@@ -400,13 +400,16 @@ export default function CheckoutForm({
               type="button"
               onClick={useMyLocation}
               disabled={locating}
-              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 inline-flex items-center gap-1"
             >
-              {locating
-                ? t.checkout.locating
-                : buyerLat != null
-                  ? t.checkout.locationSet
-                  : t.checkout.useMyLocation}
+              {locating ? (
+                t.checkout.locating
+              ) : (
+                <>
+                  <IconPin className="w-3 h-3" />
+                  {buyerLat != null ? t.checkout.locationSet : t.checkout.useMyLocation}
+                </>
+              )}
             </button>
             {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
           </div>
@@ -571,8 +574,8 @@ export default function CheckoutForm({
       {status === "waiting" && (
         <p className="text-xs text-neutral-500 text-center">{t.checkout.waitingNote}</p>
       )}
-      <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center">
-        {t.checkout.protectionNotice}
+      <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-center inline-flex items-center justify-center gap-1">
+        <IconLock className="w-3 h-3 shrink-0" /> {t.checkout.protectionNotice}
       </p>
     </form>
   );

@@ -16,8 +16,10 @@ import {
   type BuyerOrder,
   type BuyerAddress,
 } from "@/lib/supabase";
+import { getMyConversationsAsBuyer, type BuyerConversation } from "@/lib/messaging";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
+import { IconPin, IconChat } from "@/components/dash-icons";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -26,6 +28,7 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<BuyerProfile | null>(null);
   const [orders, setOrders] = useState<BuyerOrder[]>([]);
   const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
+  const [conversations, setConversations] = useState<BuyerConversation[]>([]);
   const [hasShop, setHasShop] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -40,16 +43,18 @@ export default function AccountPage() {
     // someone who owns a shop and lands here (e.g. via the "Account"
     // link in the header) still needs a way back to their dashboard —
     // otherwise this page is a dead end for them.
-    const [myProfile, myOrders, myAddresses, myShop] = await Promise.all([
+    const [myProfile, myOrders, myAddresses, myShop, myConversations] = await Promise.all([
       getMyProfile(),
       getMyBuyerOrders(),
       getMyAddresses(),
       getMyShop(),
+      getMyConversationsAsBuyer(),
     ]);
     setProfile(myProfile);
     setOrders(myOrders);
     setAddresses(myAddresses);
     setHasShop(!!myShop);
+    setConversations(myConversations);
     setLoading(false);
   }, [router]);
 
@@ -103,6 +108,8 @@ export default function AccountPage() {
         t={t}
         onChanged={async () => setAddresses(await getMyAddresses())}
       />
+
+      <MessagesSection conversations={conversations} t={t} />
 
       <OrdersSection orders={orders} t={t} />
     </div>
@@ -365,13 +372,16 @@ function AddressesSection({
               type="button"
               onClick={useMyLocation}
               disabled={locating}
-              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+              className="text-xs rounded-full border border-neutral-300 px-3 py-1.5 hover:border-neutral-900 disabled:opacity-60 inline-flex items-center gap-1"
             >
-              {locating
-                ? t.account.locating
-                : latitude != null
-                  ? t.account.locationSet
-                  : t.account.useMyLocation}
+              {locating ? (
+                t.account.locating
+              ) : (
+                <>
+                  <IconPin className="w-3 h-3" />
+                  {latitude != null ? t.account.locationSet : t.account.useMyLocation}
+                </>
+              )}
             </button>
             {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
           </div>
@@ -395,6 +405,48 @@ function AddressesSection({
             </button>
           </div>
         </form>
+      )}
+    </section>
+  );
+}
+
+function MessagesSection({
+  conversations,
+  t,
+}: {
+  conversations: BuyerConversation[];
+  t: ReturnType<typeof useLocale>["t"];
+}) {
+  return (
+    <section>
+      <h2 className="text-sm font-semibold mb-3">{t.account.messagesTitle}</h2>
+      {conversations.length === 0 ? (
+        <p className="text-sm text-neutral-500">{t.account.noMessages}</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {conversations.map((c) => (
+            <div key={c.id} className="rounded-xl border border-neutral-200 bg-white p-4 text-sm flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium flex items-center gap-1.5 truncate">
+                  <IconChat className="w-3.5 h-3.5 shrink-0 text-neutral-400" />
+                  {c.shop?.shop_name ?? ""}
+                  {c.buyer_unread_count > 0 && (
+                    <span className="text-[10px] font-bold rounded-full bg-amber-500 text-neutral-900 w-[18px] h-[18px] flex items-center justify-center shrink-0">
+                      {c.buyer_unread_count}
+                    </span>
+                  )}
+                </p>
+                {c.product?.title && <p className="text-neutral-500 text-xs truncate">{c.product.title}</p>}
+                {c.last_message_preview && <p className="text-neutral-500 text-xs truncate mt-0.5">{c.last_message_preview}</p>}
+              </div>
+              {c.shop?.slug && (
+                <Link href={`/shop/${c.shop.slug}`} className="text-amber-600 text-sm font-medium hover:underline shrink-0">
+                  {t.account.openConversation} →
+                </Link>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );

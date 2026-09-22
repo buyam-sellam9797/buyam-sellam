@@ -6,7 +6,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatFcfa } from "@/lib/format";
 import { plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
-import { IconStar } from "@/components/dash-icons";
+import { IconStar, IconShield, IconTruck, IconAlertTriangle } from "@/components/dash-icons";
 
 const AUTO_RELEASE_DAYS = 5;
 
@@ -259,8 +259,9 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       )}
 
       {order.status === "disputed" && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-4">
-          {reportSubmitted ? t.order.reportThanks : t.order.disputedBanner}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-4 flex items-start gap-1.5">
+          {!reportSubmitted && <IconShield className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span>{reportSubmitted ? t.order.reportThanks : t.order.disputedBanner}</span>
         </div>
       )}
 
@@ -401,14 +402,20 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       {order.status === "shipped" && (
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <p>{t.order.autoReleaseNotice}</p>
+            <p className="flex items-start gap-1.5">
+              <IconTruck className="w-4 h-4 shrink-0 mt-0.5" /> <span>{t.order.autoReleaseNotice}</span>
+            </p>
             {daysLeft !== null && (
               <p className="mt-2 font-semibold">
-                {daysLeft > 1
-                  ? `${daysLeft} ${plural(daysLeft, locale, t.order.daysLeftOne, t.order.daysLeftOther)}`
-                  : daysLeft === 1
-                    ? t.order.releaseTomorrow
-                    : t.order.releaseToday}
+                {daysLeft > 1 ? (
+                  `${daysLeft} ${plural(daysLeft, locale, t.order.daysLeftOne, t.order.daysLeftOther)}`
+                ) : daysLeft === 1 ? (
+                  <span className="flex items-center gap-1.5">
+                    <IconAlertTriangle className="w-4 h-4 shrink-0" /> {t.order.releaseTomorrow}
+                  </span>
+                ) : (
+                  t.order.releaseToday
+                )}
               </p>
             )}
           </div>

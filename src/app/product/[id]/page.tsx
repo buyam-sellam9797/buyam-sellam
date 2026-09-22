@@ -6,10 +6,10 @@ import { getProductById, getShopRatingSummary } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { getSiteUrl } from "@/lib/site";
 import { ShareButton } from "@/components/share-button";
 import { BuyNowButton } from "@/components/buy-now-button";
+import { ChatWidget } from "@/components/chat-widget";
 import { IconBag, IconShield, IconStar, IconPin, IconTruck, IconCard, StatusDot } from "@/components/dash-icons";
 
 const conditionKey = {
@@ -245,20 +245,10 @@ export default async function ProductPage({
           <BuyNowButton productId={product.id} stock={product.stock_quantity} />
         )}
 
-        {product.shop?.whatsapp_number && (
-          <a
-            href={buildWhatsAppLink(
-              product.shop.whatsapp_number,
-              t.product.whatsappMessage
-                .replace("{title}", product.title)
-                .replace("{price}", formatFcfa(product.sale_price_fcfa ?? product.price_fcfa))
-            )}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 inline-block w-full text-center rounded-full border border-green-600 text-green-700 font-semibold px-6 py-3 hover:bg-green-50"
-          >
-            {t.product.chatOnWhatsapp}
-          </a>
+        {product.shop && (
+          <div className="mt-3">
+            <ChatWidget shopId={product.shop.id} shopName={product.shop.shop_name} productId={product.id} productTitle={product.title} />
+          </div>
         )}
 
         <ShareButton

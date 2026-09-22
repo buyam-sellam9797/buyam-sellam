@@ -74,7 +74,9 @@ export default async function Home() {
             </Link>
           </div>
           <div className="mt-6 pt-6 border-t border-white/10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
-            <span className="font-semibold">{t.home.trustStripTitle}</span>
+            <span className="font-semibold inline-flex items-center gap-1.5">
+              <IconLock className="w-4 h-4" /> {t.home.trustStripTitle}
+            </span>
             <span className="text-neutral-300">{t.home.trustStripSteps}</span>
           </div>
 

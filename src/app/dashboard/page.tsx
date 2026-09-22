@@ -28,6 +28,7 @@ import {
   IconCalculator,
   IconRepeat,
   IconAward,
+  IconChat,
   StatusDot,
 } from "@/components/dash-icons";
 import {
@@ -70,6 +71,7 @@ import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
 import { ShareButton } from "@/components/share-button";
+import { MessagesPanel } from "./messages-panel";
 import { getSiteUrl } from "@/lib/site";
 import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
@@ -83,7 +85,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "delivery" | "settings" | "payments" | "trust" | "reviews" | "analytics";
+type Tab = "overview" | "orders" | "products" | "delivery" | "settings" | "payments" | "trust" | "reviews" | "analytics" | "messages";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -251,6 +253,7 @@ export default function DashboardPage() {
   const tabs: { key: Tab; label: string; icon: ReactNode; section: string }[] = [
     { key: "overview", label: t.dashboard.tabOverview, icon: <IconGrid className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "orders", label: t.dashboard.tabOrders, icon: <IconCart className={iconClass} />, section: t.dashboard.navSectionActivity },
+    { key: "messages", label: t.dashboard.messagesTabLabel, icon: <IconChat className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "products", label: t.dashboard.tabProducts, icon: <IconBox className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "settings", label: t.dashboard.tabSettings, icon: <IconGear className={iconClass} />, section: t.dashboard.navSectionShop },
     { key: "delivery", label: t.dashboard.tabDelivery, icon: <IconTruck className={iconClass} />, section: t.dashboard.navSectionShop },
@@ -632,6 +635,8 @@ export default function DashboardPage() {
       )}
 
       {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
+
+      {tab === "messages" && <MessagesPanel shopId={shop.id} t={t} />}
 
       {tab === "analytics" && <AnalyticsPanel shop={shop} orders={orders} t={t} />}
 
@@ -2367,13 +2372,16 @@ function ShopSettingsForm({
             type="button"
             onClick={pinMyLocation}
             disabled={locating}
-            className="dash-btn-outline !py-1.5 !px-4 text-sm"
+            className="dash-btn-outline !py-1.5 !px-4 text-sm inline-flex items-center gap-1.5"
           >
-            {locating
-              ? t.dashboard.locating
-              : shop.latitude != null
-                ? t.dashboard.shopLocationUpdate
-                : t.dashboard.shopLocationSet}
+            {locating ? (
+              t.dashboard.locating
+            ) : (
+              <>
+                <IconPin className="w-3.5 h-3.5" />
+                {shop.latitude != null ? t.dashboard.shopLocationUpdate : t.dashboard.shopLocationSet}
+              </>
+            )}
           </button>
           {shop.latitude != null && (
             <span className="text-xs" style={{ color: "var(--dash-success)" }}>{t.dashboard.shopLocationConfirmed}</span>

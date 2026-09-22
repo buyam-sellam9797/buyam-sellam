@@ -17,7 +17,7 @@ import {
 } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
-import { IconCheckCircle } from "@/components/dash-icons";
+import { IconCheckCircle, IconPin } from "@/components/dash-icons";
 
 const TOTAL_STEPS = 9;
 
@@ -120,12 +120,12 @@ export default function SellPage() {
       }
       const shop = await getMyShop();
       if (!shop) {
-        setError("Your shop was created, but we couldn't load it — try refreshing.");
+        setError(t.sell.errorShopNotLoaded);
         return;
       }
       setStage({ kind: "wizard", step: 3, shop, hasProducts: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : t.sell.errorGeneric);
     } finally {
       setSubmitting(false);
     }
@@ -704,13 +704,16 @@ function DeliveryStep({
             type="button"
             onClick={pinMyLocation}
             disabled={locating}
-            className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 disabled:opacity-60"
+            className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900 disabled:opacity-60 inline-flex items-center gap-1.5"
           >
-            {locating
-              ? t.dashboard.locating
-              : shop.latitude != null
-                ? t.dashboard.shopLocationUpdate
-                : t.dashboard.shopLocationSet}
+            {locating ? (
+              t.dashboard.locating
+            ) : (
+              <>
+                <IconPin className="w-3.5 h-3.5" />
+                {shop.latitude != null ? t.dashboard.shopLocationUpdate : t.dashboard.shopLocationSet}
+              </>
+            )}
           </button>
           {shop.latitude != null && (
             <span className="text-xs text-green-700">{t.dashboard.shopLocationConfirmed}</span>

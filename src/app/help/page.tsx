@@ -1,6 +1,7 @@
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
 import { getSupportWhatsapp, getSupportEmail, buildSupportWhatsAppLink } from "@/lib/site";
+import { IconShield } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,9 @@ export default async function HelpPage() {
 
       <section id="buyer-protection" className="mb-10 scroll-mt-20">
         <div className="rounded-xl bg-amber-50 border border-amber-200 p-5 text-sm text-amber-900">
-          <p className="font-semibold mb-1">{t.help.protectionTitle}</p>
+          <p className="font-semibold mb-1 flex items-center gap-1.5">
+            <IconShield className="w-4 h-4" /> {t.help.protectionTitle}
+          </p>
           <p>{t.help.protectionBody}</p>
         </div>
       </section>

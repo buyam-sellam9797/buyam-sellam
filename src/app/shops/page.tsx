@@ -3,7 +3,7 @@ import Image from "next/image";
 import { getVerifiedShops, getShopRatingSummary } from "@/lib/supabase";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
-import { IconPin, IconStar } from "@/components/dash-icons";
+import { IconPin, IconStar, IconShield } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,9 @@ export default async function VerifiedShopsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-2xl font-bold mb-1">{t.shops.title}</h1>
+      <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
+        <IconShield className="w-5 h-5" /> {t.shops.title}
+      </h1>
       <p className="text-neutral-500 text-sm mb-8">{t.shops.subtitle}</p>
 
       {shops.length === 0 ? (

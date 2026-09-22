@@ -30,7 +30,7 @@ export default function BuyerSignupPage() {
       }
       router.push("/account");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : t.buyerSignup.errorGeneric);
     } finally {
       setSubmitting(false);
     }

@@ -8,9 +8,9 @@ import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
-import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { isOpenNow, summarizeBusinessHours } from "@/lib/business-hours";
-import { IconShield, IconPin, IconChat, IconStar, IconCard, IconTruck, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
+import { ChatWidget } from "@/components/chat-widget";
+import { IconShield, IconPin, IconStar, IconCard, IconTruck, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -156,19 +156,9 @@ export default async function ShopPage({
                 )}`}
             </p>
           </div>
-          {shop.whatsapp_number && (
-            <a
-              href={buildWhatsAppLink(
-                shop.whatsapp_number,
-                t.shop.whatsappShopMessage.replace("{shopName}", shop.shop_name)
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-green-600 text-green-700 font-semibold px-5 py-2.5 text-sm hover:bg-green-50 shrink-0"
-            >
-              <IconChat className="w-4 h-4" /> {t.shop.chatOnWhatsapp}
-            </a>
-          )}
+          <div className="shrink-0 w-full sm:w-64">
+            <ChatWidget shopId={shop.id} shopName={shop.shop_name} />
+          </div>
         </div>
 
         <p className="text-sm mb-4 flex items-center gap-1.5">
