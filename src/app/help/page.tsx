@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
@@ -68,7 +69,14 @@ export default async function HelpPage() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <h1 className="text-2xl font-bold mb-1">{t.help.title}</h1>
-      <p className="text-neutral-500 text-sm mb-8">{t.help.subtitle}</p>
+      <p className="text-neutral-500 text-sm mb-6">{t.help.subtitle}</p>
+      <Link
+        href="/guides"
+        className="mb-8 flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 hover:border-amber-400"
+      >
+        <span>{t.guides.helpBanner}</span>
+        <span aria-hidden>→</span>
+      </Link>
 
       <FaqSection id="buying" title={t.help.buyingTitle} items={t.help.buying} />
       <FaqSection id="selling" title={t.help.sellingTitle} items={t.help.selling} />
