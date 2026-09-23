@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
+import { sendOrderEmails } from "@/lib/order-emails";
 
 const VALID_REASONS = [
   "not_arrived",
@@ -112,6 +113,8 @@ export async function POST(
     body: `Reason: ${REASON_LABELS[reason] ?? reason}.${description ? ` "${description}"` : ""}`,
     orderId: order.id,
   });
+
+  after(() => sendOrderEmails(admin, order.id, "disputed"));
 
   return NextResponse.json({ ok: true });
 }
