@@ -67,18 +67,34 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <LocaleProvider locale={locale}>
         <FavoritesProvider>
           <header className="border-b border-neutral-200 bg-white sticky top-0 z-10">
-            <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-4">
-              <Link href="/" className="flex items-baseline gap-2">
-                <span className="text-xl font-bold tracking-tight">
+            <div className="mx-auto max-w-6xl px-3 sm:px-4 py-3 flex items-center justify-between gap-2 sm:gap-4">
+              <Link href="/" className="flex items-baseline gap-2 shrink-0">
+                <span className="text-base min-[360px]:text-lg sm:text-xl font-bold tracking-tight">
                   Buyam<span className="text-amber-600">Sellam</span>
                 </span>
                 <span className="hidden sm:inline text-xs text-neutral-500">
                   {t.nav.city}
                 </span>
               </Link>
-              <nav className="flex items-center gap-4 text-sm font-medium">
-                <Link href="/browse" className="hover:text-amber-600">
-                  {t.nav.browse}
+              <nav className="flex items-center gap-2.5 sm:gap-4 text-[13px] sm:text-sm font-medium whitespace-nowrap">
+                {/* On phones "Browse" becomes a magnifier icon so the
+                    header fits on one line next to Log in, the sell
+                    button and the language switch. */}
+                <Link href="/browse" className="hidden min-[340px]:inline hover:text-amber-600" aria-label={t.nav.browse}>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-5 h-5 sm:hidden"
+                    aria-hidden
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                  </svg>
+                  <span className="hidden sm:inline">{t.nav.browse}</span>
                 </Link>
                 <Link href="/shops" className="hidden sm:inline hover:text-amber-600">
                   {t.footer.verifiedSellers}
