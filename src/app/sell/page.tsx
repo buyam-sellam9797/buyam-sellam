@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   supabase,
   createSellerAccount,
@@ -45,6 +46,7 @@ type Stage =
 
 export default function SellPage() {
   const { t, locale } = useLocale();
+  const router = useRouter();
   const [stage, setStage] = useState<Stage>({ kind: "checking" });
   const [categories, setCategories] = useState<Category[]>([]);
 
@@ -68,7 +70,10 @@ export default function SellPage() {
       } = await supabase.auth.getSession();
       if (cancelled) return;
       if (!session) {
-        setStage({ kind: "step1" });
+        // New sellers create their account and shop on the shared
+        // /signup page (seller path pre-selected); once signed in they
+        // come back here and the wizard resumes at the next step.
+        router.replace("/signup?role=seller");
         return;
       }
       const shop = await getMyShop();
@@ -85,7 +90,7 @@ export default function SellPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     getCategories().then((cats) => {
