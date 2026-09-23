@@ -114,6 +114,21 @@ export default function AccountPage() {
         </Link>
       )}
 
+      {!hasShop && (
+        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+          <div>
+            <p className="font-semibold">{t.account.startSellingTitle}</p>
+            <p className="text-sm text-neutral-600 mt-1">{t.account.startSellingBody}</p>
+          </div>
+          <Link
+            href="/sell"
+            className="shrink-0 rounded-full bg-neutral-900 text-white text-sm font-semibold px-5 py-2.5 hover:bg-neutral-700 text-center"
+          >
+            {t.account.startSellingButton}
+          </Link>
+        </div>
+      )}
+
       <ProfileSection profile={profile} t={t} onSaved={(p) => setProfile((prev) => (prev ? { ...prev, ...p } : prev))} />
 
       <AddressesSection
