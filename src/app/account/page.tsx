@@ -25,6 +25,9 @@ import {
 import { getMyConversationsAsBuyer, type BuyerConversation } from "@/lib/messaging";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
+import { SpaceSwitch } from "@/components/space-switch";
+import { requestLocation, geoProblem } from "@/lib/geolocate";
+import { LocationProblem } from "@/components/location-problem";
 import { useFavoritesContext } from "@/components/favorites-provider";
 import { IconPin, IconChat, IconHeart, IconBag } from "@/components/dash-icons";
 
@@ -96,7 +99,10 @@ export default function AccountPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 flex flex-col gap-10">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t.account.title}</h1>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">{t.spaces.buyerSpace}</p>
+          <h1 className="text-2xl font-bold">{t.account.title}</h1>
+        </div>
         <button
           onClick={handleLogout}
           className="text-sm rounded-full border border-neutral-300 px-4 py-1.5 hover:border-neutral-900"
@@ -105,29 +111,10 @@ export default function AccountPage() {
         </button>
       </div>
 
-      {hasShop && (
-        <Link
-          href="/dashboard"
-          className="text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 hover:bg-amber-100 self-start"
-        >
-          {t.account.goToSellerDashboard}
-        </Link>
-      )}
-
-      {!hasShop && (
-        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-          <div>
-            <p className="font-semibold">{t.account.startSellingTitle}</p>
-            <p className="text-sm text-neutral-600 mt-1">{t.account.startSellingBody}</p>
-          </div>
-          <Link
-            href="/sell"
-            className="shrink-0 rounded-full bg-neutral-900 text-white text-sm font-semibold px-5 py-2.5 hover:bg-neutral-700 text-center"
-          >
-            {t.account.startSellingButton}
-          </Link>
-        </div>
-      )}
+      <div className="flex flex-col gap-2 -mt-4">
+        <SpaceSwitch active="buying" hasShop={hasShop} />
+        <p className="text-xs text-neutral-500">{hasShop ? t.spaces.buyerHintSeller : t.spaces.buyerHint}</p>
+      </div>
 
       <ProfileSection profile={profile} t={t} onSaved={(p) => setProfile((prev) => (prev ? { ...prev, ...p } : prev))} />
 
@@ -271,25 +258,18 @@ function AddressesSection({
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  function useMyLocation() {
-    if (!navigator.geolocation) {
-      setLocationError(t.account.locationUnsupported);
-      return;
-    }
+  async function useMyLocation() {
     setLocating(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLatitude(pos.coords.latitude);
-        setLongitude(pos.coords.longitude);
-        setLocating(false);
-      },
-      () => {
-        setLocationError(t.account.locationDenied);
-        setLocating(false);
-      },
-      { timeout: 10000 }
-    );
+    try {
+      const pos = await requestLocation();
+      setLatitude(pos.latitude);
+      setLongitude(pos.longitude);
+    } catch (err) {
+      setLocationError(geoProblem(err, t.account.locationDenied));
+    } finally {
+      setLocating(false);
+    }
   }
 
   async function handleAdd(e: React.FormEvent) {
@@ -433,7 +413,9 @@ function AddressesSection({
                 </>
               )}
             </button>
-            {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
+            {locationError && (
+              <LocationProblem problem={locationError} onRetry={useMyLocation} retrying={locating} optional />
+            )}
           </div>
           {error && (
             <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
