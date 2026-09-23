@@ -134,7 +134,7 @@ export function ChatWidget({
                   {t.chat.logIn}
                 </Link>
                 <span className="text-neutral-400 text-xs">{t.chat.or}</span>
-                <Link href="/buyer-signup" className="text-amber-600 hover:underline text-sm font-medium">
+                <Link href="/signup?role=buyer" className="text-amber-600 hover:underline text-sm font-medium">
                   {t.chat.createAccount}
                 </Link>
               </div>
