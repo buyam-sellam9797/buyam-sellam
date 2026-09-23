@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { supabase, getCategories, getActiveProducts } from "@/lib/supabase";
 import { getSiteUrl } from "@/lib/site";
 import { CITIES } from "@/lib/cities";
+import { GUIDES } from "@/lib/guides";
 
 // Regenerated at most once an hour rather than force-dynamic like the
 // buyer-facing pages: search engines don't need this second-by-second,
@@ -85,5 +86,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...staticEntries, ...categoryEntries, ...cityEntries, ...shopEntries, ...productEntries];
+  // Guides: every English and French version, each pointing at its
+  // translation so search engines pair them up.
+  const guideEntries: MetadataRoute.Sitemap = [
+    { url: `${siteUrl}/guides`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
+    ...GUIDES.map((g) => ({
+      url: `${siteUrl}/guides/${g.slug}`,
+      lastModified: new Date(g.updated),
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+      alternates: {
+        languages: {
+          [g.lang]: `${siteUrl}/guides/${g.slug}`,
+          [g.lang === "en" ? "fr" : "en"]: `${siteUrl}/guides/${g.altSlug}`,
+        },
+      },
+    })),
+  ];
+
+  return [...staticEntries, ...guideEntries, ...categoryEntries, ...cityEntries, ...shopEntries, ...productEntries];
 }
