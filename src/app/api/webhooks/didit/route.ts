@@ -35,7 +35,14 @@ export async function POST(req: NextRequest) {
   // (see /api/verification/didit/start) — that's the normal path.
   // Falling back to matching on session_id covers the unlikely case
   // where vendor_data didn't come back for some reason.
-  const shopId = payload.vendor_data;
+  // Didit's "Test Webhook" button (and anything else unexpected) sends
+  // a vendor_data that isn't one of our shop ids, e.g.
+  // "test-vendor-data-123". Passing that to a uuid column makes Postgres
+  // error out and this route answer 500, so anything that isn't a uuid
+  // is ignored here. A session that matches no shop is simply a no-op
+  // and still gets a 200, so Didit doesn't log it as a failed delivery.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const shopId = payload.vendor_data && UUID_RE.test(payload.vendor_data) ? payload.vendor_data : undefined;
   const sessionId = payload.session_id;
   if (!shopId && !sessionId) {
     return NextResponse.json({ ok: true });
