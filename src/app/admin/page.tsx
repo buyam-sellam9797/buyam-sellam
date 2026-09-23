@@ -10,7 +10,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { Dictionary } from "@/lib/i18n";
 import { IconStar, IconShield, IconBanknote } from "@/components/dash-icons";
 
-type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts" | "admins";
+type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts" | "admins" | "settings";
 
 type Overview = {
   totalUsers: number;
@@ -149,6 +149,7 @@ export default function AdminPage() {
     { key: "disputes", label: t.admin.tabDisputes },
     { key: "payouts", label: t.admin.tabPayouts },
     { key: "admins", label: t.admin.tabAdmins },
+    { key: "settings", label: t.admin.tabSettings },
   ];
 
   return (
@@ -187,6 +188,7 @@ export default function AdminPage() {
       {tab === "disputes" && <DisputesTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "payouts" && <PayoutsTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "admins" && <AdminsTab token={token} t={t} setAuthError={setAuthError} />}
+      {tab === "settings" && <SettingsTab token={token} t={t} setAuthError={setAuthError} />}
     </div>
   );
 }
@@ -855,5 +857,100 @@ function AdminsTab({
         )}
       </div>
     </div>
+  );
+}
+
+function SettingsTab({
+  token,
+  t,
+  setAuthError,
+}: {
+  token: string;
+  t: Dictionary;
+  setAuthError: (e: string | null) => void;
+}) {
+  const [minutes, setMinutes] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await authedFetch("/api/admin/settings", token);
+    const json = await res.json();
+    if (!res.ok) {
+      setAuthError(json.error ?? t.admin.notAuthorized);
+      return;
+    }
+    setMinutes(String(json.idleTimeoutMinutes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaved(false);
+    const n = Number(minutes);
+    if (!Number.isInteger(n) || n < 0 || n > 1440) {
+      setError(t.admin.idleInvalid);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await authedFetch("/api/admin/settings", token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idleTimeoutMinutes: n }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? t.admin.idleInvalid);
+        return;
+      }
+      setMinutes(String(json.idleTimeoutMinutes));
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSave} className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3 max-w-md">
+      <p className="text-sm font-semibold">{t.admin.idleTitle}</p>
+      <p className="text-xs text-neutral-500">{t.admin.idleHint}</p>
+      <label className="text-sm font-medium" htmlFor="idleMinutes">
+        {t.admin.idleMinutes}
+      </label>
+      <input
+        id="idleMinutes"
+        type="number"
+        min={0}
+        max={1440}
+        step={1}
+        required
+        disabled={minutes === null}
+        value={minutes ?? ""}
+        onChange={(e) => {
+          setMinutes(e.target.value);
+          setSaved(false);
+        }}
+        className="w-32 rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+      />
+      {error && <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+      {saved && (
+        <p className="text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg px-3 py-2">{t.admin.idleSaved}</p>
+      )}
+      <button
+        type="submit"
+        disabled={saving || minutes === null}
+        className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+      >
+        {saving ? t.admin.marking : t.admin.idleSave}
+      </button>
+    </form>
   );
 }
