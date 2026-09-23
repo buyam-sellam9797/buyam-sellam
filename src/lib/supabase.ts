@@ -828,6 +828,10 @@ export async function getMyShop(): Promise<Shop | null> {
   return data;
 }
 
+// Thrown by the sign-up helpers when the email already has an account;
+// the sign-up page shows a translated message with a link to log in.
+export const EMAIL_TAKEN = "EMAIL_TAKEN";
+
 export async function createSellerAccount(input: {
   fullName: string;
   email: string;
@@ -846,11 +850,19 @@ export async function createSellerAccount(input: {
     // depending on which language the person was signing up in.
     options: { data: { locale: input.locale ?? "en" } },
   });
-  if (signUpError) throw new Error(signUpError.message);
+  if (signUpError) {
+    if (/already registered|already exists/i.test(signUpError.message)) throw new Error(EMAIL_TAKEN);
+    throw new Error(signUpError.message);
+  }
   const user = signUpData.user;
   if (!user) {
     throw new Error("Could not create your account — please try again.");
   }
+  // When the email already belongs to an account, Supabase (with email
+  // confirmation on) doesn't return an error — it returns a placeholder
+  // user with no identities whose id doesn't exist. Writing a profile
+  // for that id would fail, so stop here with a clear message.
+  if (!user.identities || user.identities.length === 0) throw new Error(EMAIL_TAKEN);
 
   // Done via a server route (service role) rather than a direct table
   // write from the browser: right after sign-up there may not be an
@@ -892,11 +904,19 @@ export async function createBuyerAccount(input: {
     password: input.password,
     options: { data: { locale: input.locale ?? "en" } },
   });
-  if (signUpError) throw new Error(signUpError.message);
+  if (signUpError) {
+    if (/already registered|already exists/i.test(signUpError.message)) throw new Error(EMAIL_TAKEN);
+    throw new Error(signUpError.message);
+  }
   const user = signUpData.user;
   if (!user) {
     throw new Error("Could not create your account — please try again.");
   }
+  // When the email already belongs to an account, Supabase (with email
+  // confirmation on) doesn't return an error — it returns a placeholder
+  // user with no identities whose id doesn't exist. Writing a profile
+  // for that id would fail, so stop here with a clear message.
+  if (!user.identities || user.identities.length === 0) throw new Error(EMAIL_TAKEN);
 
   const res = await fetch("/api/signup-buyer", {
     method: "POST",
