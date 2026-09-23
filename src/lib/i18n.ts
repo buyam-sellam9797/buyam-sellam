@@ -339,6 +339,8 @@ const en = {
   },
   auth: {
     loginTitle: "Log in",
+    errorEmailTaken: "This email already has a Buyam Sellam account. Log in with it instead, or use another email.",
+    errorEmailTakenLink: "Go to log in",
     loginPanelHeadline: "Welcome back to Cameroon's trusted marketplace.",
     signupPanelHeadline: "Buy and sell across Cameroon — with confidence.",
     panelPoint1: "Pay by MTN MoMo or Orange Money. Money is held safely until the buyer confirms delivery.",
@@ -1531,6 +1533,8 @@ const fr: typeof en = {
   },
   auth: {
     loginTitle: "Connexion",
+    errorEmailTaken: "Cet e-mail a déjà un compte Buyam Sellam. Connectez-vous avec, ou utilisez un autre e-mail.",
+    errorEmailTakenLink: "Se connecter",
     loginPanelHeadline: "Bon retour sur la marketplace de confiance du Cameroun.",
     signupPanelHeadline: "Achetez et vendez partout au Cameroun — en toute confiance.",
     panelPoint1: "Payez par MTN MoMo ou Orange Money. L'argent est gardé en sécurité jusqu'à la confirmation de livraison.",
