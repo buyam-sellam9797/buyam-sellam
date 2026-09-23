@@ -11,6 +11,7 @@ import {
   SEBPAY_COUNTRY_CODE,
 } from "@/lib/sebpay";
 import { getSiteUrl } from "@/lib/site";
+import { cleanEmail } from "@/lib/email-address";
 
 // SebPay's second checkout path, kept as its own route rather than a
 // branch inside /api/checkout — see sebpay.ts for why. Mirrors that
@@ -26,6 +27,8 @@ type ChargeBody = {
   deliveryPhone?: string;
   isGift?: boolean;
   giftNote?: string;
+  buyerEmail?: string;
+  locale?: string;
   deliveryCity?: string;
   deliveryNeighborhood?: string;
   deliveryAddress?: string;
@@ -132,6 +135,8 @@ export async function POST(req: NextRequest) {
       delivery_phone: body.deliveryPhone || phone,
       is_gift: Boolean(body.isGift),
       gift_note: body.isGift ? (body.giftNote || null) : null,
+      buyer_email: cleanEmail(body.buyerEmail),
+      buyer_locale: body.locale === "fr" || body.locale === "en" ? body.locale : null,
       delivery_city: deliveryCity,
       delivery_neighborhood: deliveryNeighborhood || null,
       delivery_address: deliveryAddress || null,
