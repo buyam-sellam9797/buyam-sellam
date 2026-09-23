@@ -17,6 +17,9 @@ const en = {
     login: "Log in",
     dashboard: "Dashboard",
     admin: "Admin",
+    sell: "Sell",
+    loginShort: "Log in",
+    switchLanguage: "Passer en français",
   },
   footer: {
     rights: "Buyam Sellam. Cameroon.",
@@ -1161,6 +1164,9 @@ const fr: typeof en = {
     login: "Se connecter",
     dashboard: "Tableau de bord",
     admin: "Admin",
+    sell: "Vendre",
+    loginShort: "Connexion",
+    switchLanguage: "Switch to English",
   },
   footer: {
     rights: "Buyam Sellam. Cameroun.",
