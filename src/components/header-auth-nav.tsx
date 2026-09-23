@@ -119,7 +119,7 @@ export function HeaderAuthNav() {
 // stays on one line at 360–390px wide.
 function SellPill({ label, short }: { label: string; short: string }) {
   return (
-    <Link href="/sell" className="rounded-full bg-neutral-900 text-white px-3 sm:px-4 py-1.5 hover:bg-neutral-700">
+    <Link href="/become-seller" className="rounded-full bg-neutral-900 text-white px-3 sm:px-4 py-1.5 hover:bg-neutral-700">
       <span className="sm:hidden">{short}</span>
       <span className="hidden sm:inline">{label}</span>
     </Link>
