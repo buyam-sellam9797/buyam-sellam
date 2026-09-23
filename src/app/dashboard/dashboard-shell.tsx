@@ -27,6 +27,7 @@ export function DashboardShell<Tab extends string>({
   viewShopHref,
   viewShopLabel,
   notificationSlot,
+  switchSlot,
   children,
 }: {
   shopName: string;
@@ -39,6 +40,7 @@ export function DashboardShell<Tab extends string>({
   viewShopHref?: string;
   viewShopLabel: string;
   notificationSlot: ReactNode;
+  switchSlot?: ReactNode;
   children: ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -102,6 +104,7 @@ export function DashboardShell<Tab extends string>({
             </span>
             <span className="font-bold truncate">{shopName}</span>
           </div>
+          {switchSlot && <div className="px-5 pb-4">{switchSlot}</div>}
           {navList}
           <div className="mt-auto px-3 pb-5 pt-3 flex flex-col gap-1">
             {viewShopHref && (
@@ -141,6 +144,7 @@ export function DashboardShell<Tab extends string>({
                   ×
                 </button>
               </div>
+              {switchSlot && <div className="px-5 pb-4">{switchSlot}</div>}
               {navList}
               <div className="mt-auto px-3 pb-5 pt-3 flex flex-col gap-1">
                 {viewShopHref && (
