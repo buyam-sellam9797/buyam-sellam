@@ -60,6 +60,11 @@ export type Shop = {
   instagram_url: string | null;
   tiktok_url: string | null;
   return_policy: string | null;
+  // Pay-in-installments options the seller controls (see src/lib/layaway.ts).
+  layaway_enabled: boolean;
+  layaway_installments: number;
+  layaway_deposit_percent: number;
+  layaway_interval_days: number;
 };
 
 export type BusinessHoursDay = { closed: boolean; open?: string; close?: string };
@@ -117,6 +122,9 @@ export type Product = {
   sale_price_fcfa: number | null;
   // Boosting: a free "pin to top of my own shop" toggle.
   is_featured: boolean;
+  // Per-product installments override: null = follow the shop's
+  // setting, 0 = no installments for this product, 2–6 = that many.
+  layaway_installments?: number | null;
   shop?: Pick<
     Shop,
     | "id"
@@ -132,6 +140,10 @@ export type Product = {
     | "longitude"
     | "is_open"
     | "closed_message"
+    | "layaway_enabled"
+    | "layaway_installments"
+    | "layaway_deposit_percent"
+    | "layaway_interval_days"
   > | null;
   shopRating?: number | null;
   distanceKm?: number | null;
@@ -559,7 +571,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -779,7 +791,7 @@ export async function getShopProducts(
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, category:categories(name, slug)"
     )
     .eq("shop_id", shopId);
   if (!opts?.includeInactive) {
@@ -1087,6 +1099,7 @@ export async function createProduct(input: {
   colors: string[];
   salePriceFcfa?: number | null;
   isFeatured?: boolean;
+  layawayInstallments?: number | null;
 }) {
   const { error } = await supabase.from("products").insert({
     shop_id: input.shopId,
@@ -1102,6 +1115,7 @@ export async function createProduct(input: {
     colors: input.colors,
     sale_price_fcfa: input.salePriceFcfa ?? null,
     is_featured: input.isFeatured ?? false,
+    layaway_installments: input.layawayInstallments ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -1121,6 +1135,7 @@ export async function updateProduct(
     colors: string[];
     salePriceFcfa?: number | null;
     isFeatured?: boolean;
+    layawayInstallments?: number | null;
   }
 ) {
   const patch: Record<string, unknown> = {
@@ -1137,6 +1152,7 @@ export async function updateProduct(
   if (input.imageUrls) patch.image_urls = input.imageUrls;
   if (input.salePriceFcfa !== undefined) patch.sale_price_fcfa = input.salePriceFcfa;
   if (input.isFeatured !== undefined) patch.is_featured = input.isFeatured;
+  if (input.layawayInstallments !== undefined) patch.layaway_installments = input.layawayInstallments;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
   if (error) throw new Error(error.message);
 }
@@ -1169,6 +1185,10 @@ export async function updateShop(
     instagramUrl?: string;
     tiktokUrl?: string;
     returnPolicy?: string;
+    layawayEnabled?: boolean;
+    layawayInstallments?: number;
+    layawayDepositPercent?: number;
+    layawayIntervalDays?: number;
   }
 ) {
   const { error } = await supabase
@@ -1196,6 +1216,10 @@ export async function updateShop(
       ...(input.instagramUrl !== undefined ? { instagram_url: input.instagramUrl || null } : {}),
       ...(input.tiktokUrl !== undefined ? { tiktok_url: input.tiktokUrl || null } : {}),
       ...(input.returnPolicy !== undefined ? { return_policy: input.returnPolicy || null } : {}),
+      ...(input.layawayEnabled !== undefined ? { layaway_enabled: input.layawayEnabled } : {}),
+      ...(input.layawayInstallments !== undefined ? { layaway_installments: input.layawayInstallments } : {}),
+      ...(input.layawayDepositPercent !== undefined ? { layaway_deposit_percent: input.layawayDepositPercent } : {}),
+      ...(input.layawayIntervalDays !== undefined ? { layaway_interval_days: input.layawayIntervalDays } : {}),
     })
     .eq("id", shopId);
   if (error) throw new Error(error.message);
