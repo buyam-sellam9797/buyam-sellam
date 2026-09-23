@@ -77,6 +77,7 @@ import { GroupBuyPanel } from "./group-buy-panel";
 import { getSiteUrl } from "@/lib/site";
 import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
+import { LayawaySettingsPanel } from "./layaway-settings-panel";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
@@ -650,6 +651,7 @@ export default function DashboardPage() {
             <Stat icon={<IconCheckCircle className="w-5 h-5" />} iconBg="#f0fdf4" iconColor="var(--dash-success)" label={t.dashboard.balanceAvailable} value={formatFcfa(owed)} />
           </div>
           <PayoutDestinationForm shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
+          <LayawaySettingsPanel shop={shop} t={t} onSaved={(updated) => setShop({ ...shop, ...updated })} />
           <PayoutHistory orders={orders} t={t} />
         </div>
       )}
