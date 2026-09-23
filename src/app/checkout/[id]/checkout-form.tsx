@@ -7,6 +7,8 @@ import { supabase, getMyAddresses, type Product, type BuyerAddress, type Deliver
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
 import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
+import { requestLocation, geoProblem } from "@/lib/geolocate";
+import { LocationProblem } from "@/components/location-problem";
 import type { SebpayOperator } from "@/lib/sebpay";
 import { IconBag, IconPin, IconLock } from "@/components/dash-icons";
 import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
@@ -105,25 +107,18 @@ export default function CheckoutForm({
   const layawayDeposit = layawayPlan[0]?.amountFcfa ?? 0;
   const layawayFinal = total - layawayDeposit;
 
-  function useMyLocation() {
-    if (!navigator.geolocation) {
-      setLocationError(t.checkout.locationUnsupported);
-      return;
-    }
+  async function useMyLocation() {
     setLocating(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setBuyerLat(pos.coords.latitude);
-        setBuyerLng(pos.coords.longitude);
-        setLocating(false);
-      },
-      () => {
-        setLocationError(t.checkout.locationDenied);
-        setLocating(false);
-      },
-      { timeout: 10000 }
-    );
+    try {
+      const pos = await requestLocation();
+      setBuyerLat(pos.latitude);
+      setBuyerLng(pos.longitude);
+    } catch (err) {
+      setLocationError(geoProblem(err, t.checkout.locationDenied));
+    } finally {
+      setLocating(false);
+    }
   }
 
   useEffect(() => {
@@ -480,7 +475,9 @@ export default function CheckoutForm({
                 </>
               )}
             </button>
-            {locationError && <p className="text-xs text-red-600 mt-1">{locationError}</p>}
+            {locationError && (
+              <LocationProblem problem={locationError} onRetry={useMyLocation} retrying={locating} optional />
+            )}
           </div>
         )}
         <label className="flex items-center gap-2 text-xs text-neutral-600 mb-3">
