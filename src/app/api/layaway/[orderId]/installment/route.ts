@@ -3,9 +3,9 @@ import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
 import { completeLayawayInstallment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
 
-// Charges the next unpaid installment of an existing layaway order —
-// in v1 that's always installment #2, the final one, since a layaway
-// plan is exactly two installments (see /api/layaway/route.ts). Kept
+// Charges the next unpaid installment of an existing layaway order
+// (installment 2, 3, … up to however many the seller's plan has — see
+// /api/layaway/route.ts and src/lib/layaway.ts). Kept
 // as its own "[orderId]/installment" endpoint rather than folded into
 // the order-creation route so the buyer can come back later (a
 // different page load, possibly a different day) and pay just this
@@ -38,6 +38,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     return NextResponse.json({ error: "Layaway order not found." }, { status: 404 });
   }
 
+  const { count: totalInstallments } = await admin
+    .from("layaway_installments")
+    .select("id", { count: "exact", head: true })
+    .eq("order_id", orderId);
+
   const { data: installment } = await admin
     .from("layaway_installments")
     .select("id, installment_number, amount_fcfa, status")
@@ -59,7 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     amountFcfa: installment.amount_fcfa,
     phone,
     provider,
-    description: `Layaway installment ${installment.installment_number}/2`,
+    description: `Layaway installment ${installment.installment_number}/${totalInstallments ?? installment.installment_number}`,
     reference: chargeReference,
   });
   if (!charge.ok) {
@@ -73,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
 
 // Polled by the client after the POST above. Once NotchPay confirms
 // this charge, completeLayawayInstallment marks the installment paid
-// — and, being the last one, hands the order to the exact same
+// — and, if it was the last one, hands the order to the exact same
 // markOrderPaid() helper every other payment gateway finishes through,
 // so escrow, seller notification, and payout eligibility all follow
 // the one already-tested code path. The NotchPay webhook can complete
