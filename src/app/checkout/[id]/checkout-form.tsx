@@ -9,6 +9,7 @@ import { formatFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 import type { SebpayOperator } from "@/lib/sebpay";
 import { IconBag, IconPin, IconLock } from "@/components/dash-icons";
+import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
 
 type Status = "form" | "waiting" | "held" | "failed";
 type Gateway = "notchpay" | "sebpay";
@@ -93,11 +94,15 @@ export default function CheckoutForm({
         : deliveryFee;
   const total = unitPrice * quantity + effectiveDeliveryFee;
 
-  // Mirrors the 50/50 split the server computes in /api/layaway/route.ts
-  // — shown here only so the buyer knows what they're about to be
-  // charged before submitting; the server recomputes this itself from
+  // The seller's own installment plan (shop setting + optional
+  // per-product override), computed with the same helper the server
+  // uses in /api/layaway/route.ts — shown here only so the buyer knows
+  // exactly what they'll pay and when; the server recomputes it from
   // the authoritative price rather than trusting anything sent from here.
-  const layawayDeposit = Math.round(total * 0.5);
+  const layawaySettings = resolveLayawaySettings(product.shop, product.layaway_installments);
+  const layawayPlan = layawaySettings.enabled ? computeLayawayPlan(total, layawaySettings) : [];
+  const layawayAvailable = layawayPlan.length >= 2;
+  const layawayDeposit = layawayPlan[0]?.amountFcfa ?? 0;
   const layawayFinal = total - layawayDeposit;
 
   function useMyLocation() {
@@ -322,6 +327,7 @@ export default function CheckoutForm({
               ? t.checkout.layawayHeldBody
                   .replace("{deposit}", formatFcfa(layawayDeposit))
                   .replace("{final}", formatFcfa(layawayFinal))
+                  .replace("{count}", String(layawayPlan.length - 1))
               : `${formatFcfa(total)} ${t.checkout.heldBody}`}
           </p>
         </div>
@@ -648,7 +654,7 @@ export default function CheckoutForm({
         </div>
       )}
 
-      {gateway === "notchpay" && (
+      {gateway === "notchpay" && layawayAvailable && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <input
@@ -658,14 +664,31 @@ export default function CheckoutForm({
               onChange={(e) => setPaymentPlan(e.target.checked ? "layaway" : "full")}
             />
             <span>
-              <span className="font-medium block">{t.checkout.layawayLabel}</span>
+              <span className="font-medium block">
+                {t.checkout.layawayLabel.replace("{count}", String(layawayPlan.length))}
+              </span>
               <span className="text-xs text-neutral-500">
                 {t.checkout.layawayNote
                   .replace("{deposit}", formatFcfa(layawayDeposit))
-                  .replace("{final}", formatFcfa(layawayFinal))}
+                  .replace("{final}", formatFcfa(layawayFinal))
+                  .replace("{count}", String(layawayPlan.length - 1))}
               </span>
             </span>
           </label>
+          {paymentPlan === "layaway" && (
+            <ol className="mt-3 ml-7 flex flex-col gap-1 text-xs text-neutral-600">
+              {layawayPlan.map((p) => (
+                <li key={p.installmentNumber} className="flex justify-between gap-3">
+                  <span>
+                    {p.dueInDays === 0
+                      ? t.checkout.layawayToday
+                      : t.checkout.layawayInDays.replace("{days}", String(p.dueInDays))}
+                  </span>
+                  <span className="font-medium text-neutral-900">{formatFcfa(p.amountFcfa)}</span>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       )}
 
