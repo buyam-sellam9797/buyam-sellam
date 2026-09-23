@@ -919,6 +919,7 @@ function SettingsTab({
   }
 
   return (
+    <div className="flex flex-col gap-4">
     <form onSubmit={handleSave} className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3 max-w-md">
       <p className="text-sm font-semibold">{t.admin.idleTitle}</p>
       <p className="text-xs text-neutral-500">{t.admin.idleHint}</p>
@@ -952,5 +953,52 @@ function SettingsTab({
         {saving ? t.admin.marking : t.admin.idleSave}
       </button>
     </form>
+    <TestEmailCard t={t} token={token} />
+    </div>
+  );
+}
+
+// Sends one test email to the signed-in admin, to check the SMTP
+// settings in Vercel before relying on order emails.
+function TestEmailCard({ t, token }: { t: Dictionary; token: string }) {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function send() {
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await authedFetch("/api/admin/test-email", token, { method: "POST" });
+      const json = await res.json();
+      setResult(res.ok ? { ok: true, text: t.admin.testEmailSent.replace("{email}", json.to) } : { ok: false, text: json.error });
+    } catch {
+      setResult({ ok: false, text: t.admin.testEmailFailed });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3 max-w-md">
+      <p className="text-sm font-semibold">{t.admin.testEmailTitle}</p>
+      <p className="text-xs text-neutral-500">{t.admin.testEmailHint}</p>
+      {result && (
+        <p
+          className={`text-sm rounded-lg px-3 py-2 border ${
+            result.ok ? "text-green-800 bg-green-50 border-green-200" : "text-red-700 bg-red-50 border-red-200"
+          }`}
+        >
+          {result.text}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={send}
+        disabled={sending}
+        className="text-sm rounded-full bg-neutral-900 text-white px-5 py-2 disabled:opacity-60 self-start"
+      >
+        {sending ? t.admin.testEmailSending : t.admin.testEmailButton}
+      </button>
+    </div>
   );
 }
