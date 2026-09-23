@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   supabase,
   createSellerAccount,
+  openShopForCurrentUser,
+  getMyProfile,
   getMyShop,
   getShopProducts,
   getCategories,
@@ -61,6 +63,9 @@ export default function SellPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set when someone already signed in (usually a buyer) opens a shop:
+  // they skip the account step and the shop is added to this login.
+  const [signedInEmail, setSignedInEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +84,12 @@ export default function SellPage() {
       const shop = await getMyShop();
       if (cancelled) return;
       if (!shop) {
-        setStage({ kind: "step1" });
+        const profile = await getMyProfile();
+        if (cancelled) return;
+        setSignedInEmail(session.user.email ?? "");
+        if (profile?.full_name) setFullName(profile.full_name);
+        if (profile?.city) setCity(profile.city);
+        setStage({ kind: "step2" });
         return;
       }
       const products = await getShopProducts(shop.id);
@@ -111,6 +121,16 @@ export default function SellPage() {
     setError(null);
     setSubmitting(true);
     try {
+      if (signedInEmail !== null) {
+        await openShopForCurrentUser({ shopName, whatsappNumber: whatsapp, city });
+        const shop = await getMyShop();
+        if (!shop) {
+          setError(t.sell.errorShopNotLoaded);
+          return;
+        }
+        setStage({ kind: "wizard", step: 3, shop, hasProducts: false });
+        return;
+      }
       const result = await createSellerAccount({
         fullName,
         email,
@@ -209,6 +229,11 @@ export default function SellPage() {
       <WizardShell step={2} title={t.sell.title} subtitle={t.sell.subtitle}>
         <form onSubmit={handleCreateShop} className="flex flex-col gap-5">
           <h2 className="text-lg font-semibold">{t.sell.step2Title}</h2>
+          {signedInEmail !== null && (
+            <p className="text-sm text-neutral-600 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+              {t.sell.upgradeNote.replace("{email}", signedInEmail)}
+            </p>
+          )}
           <Field
             label={t.sell.shopName}
             id="shopName"
