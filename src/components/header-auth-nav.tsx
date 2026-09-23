@@ -64,32 +64,27 @@ export function HeaderAuthNav() {
     return null;
   }
 
-  // The plain text link (Log in / My account / Admin) matches the old
-  // "Account" link's mobile behaviour — hidden on small screens to keep
-  // the header from crowding. The pill next to it (Open a shop /
-  // Dashboard) matches "Open a shop"'s old behaviour instead — it was
-  // always visible, even on mobile, so it stays that way here too;
-  // whichever pill applies to this person fully replaces the other
+  // The plain text link (Log in / My account / Admin) is shown on every
+  // screen size, including phones — people on mobile need a way to log
+  // in too. To make room, the sell pill shortens to "Sell" on phones and
+  // "Browse" becomes an icon (see layout.tsx). Whichever pill applies to
+  // this person (Open a shop / Dashboard) fully replaces the other
   // rather than the two ever appearing side by side.
   if (state.kind === "loggedOut") {
     return (
       <>
-        <Link href="/login" className="hidden sm:inline hover:text-amber-600">
-          {t.nav.login}
+        <Link href="/login" className="hover:text-amber-600">
+          <span className="sm:hidden">{t.nav.loginShort}</span>
+          <span className="hidden sm:inline">{t.nav.login}</span>
         </Link>
-        <Link
-          href="/sell"
-          className="rounded-full bg-neutral-900 text-white px-4 py-1.5 hover:bg-neutral-700"
-        >
-          {t.nav.openShop}
-        </Link>
+        <SellPill label={t.nav.openShop} short={t.nav.sell} />
       </>
     );
   }
 
   if (state.kind === "admin") {
     return (
-      <Link href="/admin" className="hidden sm:inline hover:text-amber-600">
+      <Link href="/admin" className="hover:text-amber-600">
         {t.nav.admin}
       </Link>
     );
@@ -103,7 +98,7 @@ export function HeaderAuthNav() {
     return (
       <Link
         href="/dashboard"
-        className="rounded-full bg-amber-500 text-white font-semibold px-4 py-1.5 hover:bg-amber-600"
+        className="rounded-full bg-amber-500 text-white font-semibold px-3 sm:px-4 py-1.5 hover:bg-amber-600"
       >
         {t.nav.dashboard}
       </Link>
@@ -112,15 +107,21 @@ export function HeaderAuthNav() {
 
   return (
     <>
-      <Link href="/account" className="hidden sm:inline hover:text-amber-600">
+      <Link href="/account" className="hover:text-amber-600">
         {t.nav.account}
       </Link>
-      <Link
-        href="/sell"
-        className="rounded-full bg-neutral-900 text-white px-4 py-1.5 hover:bg-neutral-700"
-      >
-        {t.nav.openShop}
-      </Link>
+      <SellPill label={t.nav.openShop} short={t.nav.sell} />
     </>
+  );
+}
+
+// "Open a shop" on wider screens, just "Sell" on phones, so the header
+// stays on one line at 360–390px wide.
+function SellPill({ label, short }: { label: string; short: string }) {
+  return (
+    <Link href="/sell" className="rounded-full bg-neutral-900 text-white px-3 sm:px-4 py-1.5 hover:bg-neutral-700">
+      <span className="sm:hidden">{short}</span>
+      <span className="hidden sm:inline">{label}</span>
+    </Link>
   );
 }
