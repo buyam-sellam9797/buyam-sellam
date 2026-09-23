@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getProductById, getShopRatingSummary, getActiveGroupBuyForProduct } from "@/lib/supabase";
 import { getSellerResponseStats } from "@/lib/supabase-admin";
 import { formatFcfa, formatResponseTime } from "@/lib/format";
+import { resolveLayawaySettings } from "@/lib/layaway";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
@@ -245,7 +246,16 @@ export default async function ProductPage({
               <IconCard className="w-3.5 h-3.5" /> Orange Money
             </span>
           </div>
-          <p className="text-xs text-neutral-500 mt-1.5">{t.product.layawayAvailableNote}</p>
+          {(() => {
+            // Only mention installments when this seller actually offers
+            // them for this product, with the seller's own number.
+            const layaway = resolveLayawaySettings(product.shop, product.layaway_installments);
+            return layaway.enabled ? (
+              <p className="text-xs text-neutral-500 mt-1.5">
+                {t.product.layawayAvailableNote.replace("{count}", String(layaway.installments))}
+              </p>
+            ) : null;
+          })()}
         </div>
 
         <div className="mt-4 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
