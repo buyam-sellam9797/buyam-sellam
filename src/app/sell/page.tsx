@@ -18,6 +18,7 @@ import {
 import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
 import { IconCheckCircle, IconPin } from "@/components/dash-icons";
+import { isPasswordStrongEnough } from "@/lib/password";
 
 const TOTAL_STEPS = 9;
 
@@ -156,6 +157,11 @@ export default function SellPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (!isPasswordStrongEnough(password)) {
+              setError(t.resetPassword.errorTooShort);
+              return;
+            }
+            setError(null);
             setStage({ kind: "step2" });
           }}
           className="flex flex-col gap-5"
@@ -171,6 +177,11 @@ export default function SellPage() {
             value={password}
             onChange={setPassword}
           />
+          {error && (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
           <button
             type="submit"
             className="mt-2 rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700"
