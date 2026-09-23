@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { sendOrderEmails } from "@/lib/order-emails";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
 import { notifyShop } from "@/lib/supabase-admin";
 import { calculateCommission } from "@/lib/commission";
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
     body: `${formatFcfa(sellerPayoutFcfa)} has been sent to your mobile money number for this order.`,
     orderId: updated.id,
   });
+
+  const admin = check.admin;
+  after(() => sendOrderEmails(admin, updated.id, "payout"));
 
   return NextResponse.json({ ok: true });
 }
