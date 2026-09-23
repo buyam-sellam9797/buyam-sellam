@@ -50,6 +50,10 @@ export function ProductForm({
     existingProduct?.sale_price_fcfa != null ? String(existingProduct.sale_price_fcfa) : ""
   );
   const [isFeatured, setIsFeatured] = useState(existingProduct?.is_featured ?? false);
+  // "" = follow the shop's installment setting, "0" = off, "2".."6" = that many payments.
+  const [layawayChoice, setLayawayChoice] = useState(
+    existingProduct?.layaway_installments == null ? "" : String(existingProduct.layaway_installments)
+  );
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +93,7 @@ export function ProductForm({
         colors: parseList(colors),
         salePriceFcfa,
         isFeatured,
+        layawayInstallments: layawayChoice === "" ? null : Number(layawayChoice),
       };
       if (isEditing && existingProduct) {
         await updateProduct(existingProduct.id, { ...sharedFields, imageUrls });
@@ -176,6 +181,25 @@ export function ProductForm({
         {t.dashboard.isFeaturedLabel}
       </label>
       <p className="text-xs text-neutral-500 -mt-3">{t.dashboard.isFeaturedHint}</p>
+      <div>
+        <label className="text-sm font-medium block mb-1" htmlFor="layawayChoice">
+          {t.dashboard.layawayProductLabel}
+        </label>
+        <select
+          id="layawayChoice"
+          value={layawayChoice}
+          onChange={(e) => setLayawayChoice(e.target.value)}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        >
+          <option value="">{t.dashboard.layawayProductDefault}</option>
+          <option value="0">{t.dashboard.layawayProductOff}</option>
+          {[2, 3, 4, 5, 6].map((n) => (
+            <option key={n} value={String(n)}>
+              {t.dashboard.layawayProductCount.replace("{n}", String(n))}
+            </option>
+          ))}
+        </select>
+      </div>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.category}</label>
         <select
