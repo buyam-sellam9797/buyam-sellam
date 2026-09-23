@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
+import { sendOrderEmails } from "@/lib/order-emails";
 
 // Public order-status endpoint used by the buyer-facing /order/[id]
 // page. An order id (UUID) is hard to guess, but this route still
@@ -150,6 +151,8 @@ export async function POST(
       { status: 409 }
     );
   }
+
+  after(() => sendOrderEmails(admin, id, "completed"));
 
   return NextResponse.json({ order: updated });
 }
