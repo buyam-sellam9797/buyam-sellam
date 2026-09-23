@@ -29,6 +29,24 @@ textarea {
   color: #171717;
 }
 
+/* Tailwind CSS v4 no longer gives buttons the pointing-hand cursor by
+   default (only links get it from the browser). Put it back for every
+   clickable button on the site, and keep the plain arrow for disabled
+   ones so people can tell they can't be clicked. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  label[for],
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
 /* ============================================================
    SELLER DASHBOARD DESIGN SYSTEM ("dash-" prefix)
    Scoped entirely to the /dashboard route by naming convention —
