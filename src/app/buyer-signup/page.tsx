@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBuyerAccount } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+import { isPasswordStrongEnough, PASSWORD_MIN_LENGTH } from "@/lib/password";
 
 export default function BuyerSignupPage() {
   const router = useRouter();
@@ -21,6 +22,10 @@ export default function BuyerSignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!isPasswordStrongEnough(password)) {
+      setError(t.resetPassword.errorTooShort);
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await createBuyerAccount({ fullName, email, password, phone, city, locale });
@@ -89,7 +94,7 @@ export default function BuyerSignupPage() {
             id="password"
             type="password"
             required
-            minLength={6}
+            minLength={PASSWORD_MIN_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
