@@ -29,7 +29,7 @@ export default function CheckoutForm({
   deliveryZones?: DeliveryZone[];
   sebpayOperators?: SebpayOperator[];
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   // NotchPay stays the default in every case — SebPay is an extra
   // option that only ever appears once the checkout page has already
   // confirmed (live, from SebPay itself) that this account has it
@@ -59,6 +59,10 @@ export default function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  // Where order updates are emailed: a signed-in buyer's account email,
+  // or an optional address a guest types in.
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [buyerEmail, setBuyerEmail] = useState("");
   const [addresses, setAddresses] = useState<BuyerAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
   const [buyerLat, setBuyerLat] = useState<number | null>(null);
@@ -138,6 +142,7 @@ export default function CheckoutForm({
       } = await supabase.auth.getSession();
       if (!session) return;
       setAccessToken(session.access_token);
+      setAccountEmail(session.user.email ?? null);
       const myAddresses = await getMyAddresses();
       setAddresses(myAddresses);
       const preferred = myAddresses.find((a) => a.is_default) ?? myAddresses[0];
@@ -216,6 +221,8 @@ export default function CheckoutForm({
         deliveryNeighborhood,
         deliveryAddress,
         deliveryNotes,
+        buyerEmail: accountEmail ? undefined : buyerEmail.trim() || undefined,
+        locale,
         ...(buyerLat != null && buyerLng != null
           ? { deliveryLatitude: buyerLat, deliveryLongitude: buyerLng }
           : {}),
@@ -702,6 +709,26 @@ export default function CheckoutForm({
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
       </div>
+
+      {accountEmail ? (
+        <p className="text-xs text-neutral-500 -mt-2">{t.checkout.emailSignedIn.replace("{email}", accountEmail)}</p>
+      ) : (
+        <div>
+          <label className="text-sm font-medium block mb-2" htmlFor="buyerEmail">
+            {t.checkout.emailLabel}
+          </label>
+          <input
+            id="buyerEmail"
+            type="email"
+            autoComplete="email"
+            value={buyerEmail}
+            onChange={(e) => setBuyerEmail(e.target.value)}
+            placeholder={t.checkout.emailPlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-neutral-500 mt-1">{t.checkout.emailHint}</p>
+        </div>
+      )}
 
       <button
         type="submit"
