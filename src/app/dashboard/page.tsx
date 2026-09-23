@@ -69,6 +69,9 @@ import {
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
+import { SpaceSwitch } from "@/components/space-switch";
+import { requestLocation, geoProblem } from "@/lib/geolocate";
+import { LocationProblem } from "@/components/location-problem";
 import { ProductForm } from "@/components/product-form";
 import { ShareButton } from "@/components/share-button";
 import { MessagesPanel } from "./messages-panel";
@@ -378,6 +381,7 @@ export default function DashboardPage() {
       logoutLabel={t.dashboard.logout}
       viewShopHref={`/shop/${shop.slug}`}
       viewShopLabel={t.dashboard.previewShop}
+      switchSlot={<SpaceSwitch active="selling" hasShop />}
       notificationSlot={
         <NotificationBell
           notifications={notifications}
@@ -2148,32 +2152,18 @@ function ShopSettingsForm({
   // Pinning the shop's location is its own instant action (not tied to
   // the rest of the form's "Save" button) — it saves immediately so a
   // seller can do it in one tap and see it take effect right away.
-  function pinMyLocation() {
-    if (!navigator.geolocation) {
-      setLocationError(t.dashboard.locationUnsupported);
-      return;
-    }
+  async function pinMyLocation() {
     setLocating(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-        try {
-          await updateShop(shop.id, { latitude, longitude });
-          onSaved({ ...shop, latitude, longitude });
-        } catch (err) {
-          setLocationError(err instanceof Error ? err.message : t.dashboard.locationSaveError);
-        } finally {
-          setLocating(false);
-        }
-      },
-      () => {
-        setLocationError(t.dashboard.locationDenied);
-        setLocating(false);
-      },
-      { timeout: 10000 }
-    );
+    try {
+      const { latitude, longitude } = await requestLocation();
+      await updateShop(shop.id, { latitude, longitude });
+      onSaved({ ...shop, latitude, longitude });
+    } catch (err) {
+      setLocationError(geoProblem(err, t.dashboard.locationSaveError));
+    } finally {
+      setLocating(false);
+    }
   }
 
   async function handleSave() {
@@ -2456,7 +2446,7 @@ function ShopSettingsForm({
             <span className="text-xs" style={{ color: "var(--dash-success)" }}>{t.dashboard.shopLocationConfirmed}</span>
           )}
         </div>
-        {locationError && <p className="text-xs mt-1.5" style={{ color: "var(--dash-danger)" }}>{locationError}</p>}
+        {locationError && <LocationProblem problem={locationError} onRetry={pinMyLocation} retrying={locating} />}
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.shopSocialLinksLabel}</label>
