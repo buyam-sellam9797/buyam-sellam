@@ -1575,19 +1575,28 @@ export async function getMyShopGroupBuys(shopId: string): Promise<GroupBuy[]> {
 // visual "I've seen this, I'm preparing it" signal for the buyer's
 // tracking page. It never changes orders.status (still paid_held), so
 // it can't interfere with the payment/escrow state machine.
+//
+// Both go through /api/orders/[id]/seller so the buyer is emailed at
+// the same moment (a browser can't send email itself).
+async function sellerOrderAction(orderId: string, action: "accept" | "ship") {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Please log in again.");
+  const res = await fetch(`/api/orders/${orderId}/seller`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error ?? "Could not update this order.");
+  }
+}
+
 export async function markOrderAccepted(orderId: string) {
-  const { error } = await supabase
-    .from("orders")
-    .update({ accepted_at: new Date().toISOString() })
-    .eq("id", orderId);
-  if (error) throw new Error(error.message);
+  await sellerOrderAction(orderId, "accept");
 }
 
 export async function markOrderShipped(orderId: string) {
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from("orders")
-    .update({ status: "shipped", shipped_at: now, updated_at: now })
-    .eq("id", orderId);
-  if (error) throw new Error(error.message);
+  await sellerOrderAction(orderId, "ship");
 }
