@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
+import { sendOrderEmails } from "@/lib/order-emails";
 
 // A shipped order with no response from the buyer would otherwise sit
 // forever with the seller never getting paid. Vercel calls this once a
@@ -39,5 +40,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ autoConfirmed: updated?.length ?? 0 });
+  const confirmedIds = (updated ?? []).map((o) => o.id as string);
+  after(async () => {
+    for (const orderId of confirmedIds) await sendOrderEmails(admin, orderId, "completed");
+  });
+
+  return NextResponse.json({ autoConfirmed: confirmedIds.length });
 }
