@@ -887,6 +887,26 @@ export async function createSellerAccount(input: {
   return { hasSession: Boolean(signUpData.session), slug: data.slug };
 }
 
+// Adds a shop to the account that is already signed in (e.g. a buyer
+// who now wants to sell), keeping the same login.
+export async function openShopForCurrentUser(input: {
+  shopName: string;
+  whatsappNumber: string;
+  city: string;
+}): Promise<{ slug: string }> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Please log in first.");
+  const res = await fetch("/api/become-seller", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error ?? "Could not create your shop.");
+  return { slug: json.slug };
+}
+
 // Same shape of account as a seller (Supabase Auth + a profiles row),
 // just role: 'buyer' and no shop. Also routed through a server route
 // for the same reason as createSellerAccount: right after sign-up there
