@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
+import { after } from "next/server";
+import { sendOrderEmails } from "@/lib/order-emails";
 
 // Shared by every place that can hear "this order's payment was
 // confirmed" — a gateway's webhook, or the buyer's own browser polling
@@ -40,6 +42,8 @@ export async function markOrderPaid(
     body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
     orderId: updatedOrder.id,
   });
+
+  after(() => sendOrderEmails(admin, updatedOrder.id, "paid"));
 
   return updatedOrder;
 }
