@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createBuyerAccount, createSellerAccount } from "@/lib/supabase";
+import { createBuyerAccount, createSellerAccount, EMAIL_TAKEN } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
 import { isPasswordStrongEnough } from "@/lib/password";
 import { CITIES } from "@/lib/cities";
@@ -83,7 +83,8 @@ function SignupFlow() {
         else router.push("/sell");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t.auth.errorGeneric);
+      if (err instanceof Error && err.message === EMAIL_TAKEN) setError(EMAIL_TAKEN);
+      else setError(err instanceof Error ? err.message : t.auth.errorGeneric);
     } finally {
       setSubmitting(false);
     }
@@ -242,7 +243,16 @@ function SignupFlow() {
           onChange={(e) => setCity(e.target.value)}
         />
 
-        {error && <AuthError>{error}</AuthError>}
+        {error === EMAIL_TAKEN ? (
+          <AuthError>
+            {t.auth.errorEmailTaken}{" "}
+            <Link href="/login" className="font-semibold underline underline-offset-2">
+              {t.auth.errorEmailTakenLink}
+            </Link>
+          </AuthError>
+        ) : (
+          error && <AuthError>{error}</AuthError>
+        )}
         <AuthSubmit disabled={submitting}>
           {submitting ? t.auth.creating : isSeller ? t.auth.createSeller : t.auth.createBuyer}
         </AuthSubmit>
