@@ -134,6 +134,7 @@ function SignupFlow() {
             body={t.auth.roleSellerBody}
           />
         </div>
+        <p className="text-xs text-neutral-500 mt-3">{t.auth.roleHint}</p>
         <button
           type="button"
           onClick={() => setStep("form")}
