@@ -10,6 +10,7 @@ import { LocaleProvider } from "@/components/locale-provider";
 import { FavoritesProvider } from "@/components/favorites-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { HeaderAuthNav } from "@/components/header-auth-nav";
+import { IdleLogout } from "@/components/idle-logout";
 
 export const metadata: Metadata = {
   title: "Buyam Sellam — Shop Cameroon. Buy with Confidence.",
@@ -88,6 +89,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </header>
           <main className="flex-1">{children}</main>
+          <IdleLogout />
           <footer className="border-t border-neutral-200 bg-white mt-16">
             <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-neutral-500">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
