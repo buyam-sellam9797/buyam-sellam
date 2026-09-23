@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { sendOrderEmails } from "@/lib/order-emails";
 import { createClient } from "@supabase/supabase-js";
 import { resolveOrderPricing } from "@/lib/order-pricing";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
+import { cleanEmail } from "@/lib/email-address";
 
 // Server-side only — these keys never reach the browser.
 const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
@@ -29,6 +31,8 @@ type ChargeBody = {
   deliveryPhone?: string;
   isGift?: boolean;
   giftNote?: string;
+  buyerEmail?: string;
+  locale?: string;
   deliveryCity?: string;
   deliveryNeighborhood?: string;
   deliveryAddress?: string;
@@ -136,6 +140,8 @@ export async function POST(req: NextRequest) {
       delivery_phone: body.deliveryPhone || phone,
       is_gift: Boolean(body.isGift),
       gift_note: body.isGift ? (body.giftNote || null) : null,
+      buyer_email: cleanEmail(body.buyerEmail),
+      buyer_locale: body.locale === "fr" || body.locale === "en" ? body.locale : null,
       delivery_city: deliveryCity,
       delivery_neighborhood: deliveryNeighborhood || null,
       delivery_address: deliveryAddress || null,
@@ -308,6 +314,8 @@ export async function GET(req: NextRequest) {
             body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
             orderId: updatedOrder.id,
           });
+          const paidOrderId = updatedOrder.id as string;
+          after(() => sendOrderEmails(admin, paidOrderId, "paid"));
 
           // Stock is only taken off the shelf once payment is actually
           // confirmed — never at checkout start, so an abandoned mobile
