@@ -2,33 +2,24 @@
 
 import { useLocale } from "./locale-provider";
 
-// Manual override for the automatic browser-language detection —
-// small enough to sit in the header without crowding it.
+// Manual override for the automatic browser-language detection. Shows
+// only the language you can switch TO: "FR" while the site is in
+// English, "EN" while it is in French — one small button instead of a
+// two-part toggle, so it always fits in the header on phones.
 export function LanguageSwitcher() {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, t } = useLocale();
+  const next = locale === "en" ? "fr" : "en";
 
   return (
-    <div className="flex items-center rounded-full border border-neutral-300 text-xs font-semibold overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setLocale("en")}
-        aria-current={locale === "en"}
-        className={`px-2.5 py-1 ${
-          locale === "en" ? "bg-neutral-900 text-white" : "text-neutral-500 hover:text-neutral-900"
-        }`}
-      >
-        EN
-      </button>
-      <button
-        type="button"
-        onClick={() => setLocale("fr")}
-        aria-current={locale === "fr"}
-        className={`px-2.5 py-1 ${
-          locale === "fr" ? "bg-neutral-900 text-white" : "text-neutral-500 hover:text-neutral-900"
-        }`}
-      >
-        FR
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={() => setLocale(next)}
+      lang={next}
+      aria-label={t.nav.switchLanguage}
+      title={t.nav.switchLanguage}
+      className="shrink-0 rounded-full border border-neutral-300 px-2.5 py-1 text-xs font-semibold text-neutral-700 hover:border-neutral-900 hover:text-neutral-900"
+    >
+      {next.toUpperCase()}
+    </button>
   );
 }
