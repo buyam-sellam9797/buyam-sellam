@@ -3,11 +3,16 @@ import { resolveOrderPricing } from "@/lib/order-pricing";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
 import { completeLayawayInstallment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
+import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
 
-// Layaway v1: exactly two installments — a 50% deposit charged
-// immediately (same as a normal checkout, just for half the amount),
-// and the remaining 50% the buyer pays later from their account page
-// (see /api/layaway/[orderId]/installment). NotchPay only for now —
+// Layaway: the buyer pays a deposit now (charged immediately, same as a
+// normal checkout, just for part of the amount) and the rest in later
+// installments from their account page (see
+// /api/layaway/[orderId]/installment). How many payments, how big the
+// deposit and how far apart they are due is set by each seller in their
+// dashboard (shop-wide, with an optional per-product override) — see
+// src/lib/layaway.ts, which the checkout form uses too so the plan the
+// buyer is shown is exactly the plan charged here. NotchPay only for now —
 // SebPay's OTP-per-charge flow doesn't fit a "come back later and pay
 // again" pattern without more design work, so the checkout form only
 // offers this option on the NotchPay gateway.
@@ -18,8 +23,6 @@ import { getAdminClient } from "@/lib/supabase-admin";
 // well-tested markOrderPaid()/decrementStockAndNotify() helpers (see
 // order-fulfillment.ts) once the buyer has paid in full, so the escrow
 // and payout logic downstream of "fully paid" never had to change.
-const DEPOSIT_SHARE = 0.5;
-const SECOND_INSTALLMENT_DAYS = 14;
 
 type LayawayChargeBody = {
   productId: string;
@@ -80,7 +83,21 @@ export async function POST(req: NextRequest) {
   }
   const { product, quantity, unitPriceFcfa, deliveryFeeFcfa, deliveryDistanceKm, deliveryZoneName, totalAmountFcfa } = pricing;
 
-  const depositAmount = Math.round(totalAmountFcfa * DEPOSIT_SHARE);
+  const layaway = resolveLayawaySettings(pricing.shopLayaway, product.layaway_installments);
+  if (!layaway.enabled) {
+    return NextResponse.json(
+      { error: "This seller doesn't offer payment in installments for this product." },
+      { status: 409 }
+    );
+  }
+  const plan = computeLayawayPlan(totalAmountFcfa, layaway);
+  if (plan.length < 2) {
+    return NextResponse.json(
+      { error: "This order is too small to split into installments — please pay in full." },
+      { status: 409 }
+    );
+  }
+  const depositAmount = plan[0].amountFcfa;
   const finalAmount = totalAmountFcfa - depositAmount;
   const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -123,12 +140,15 @@ export async function POST(req: NextRequest) {
     unit_price_fcfa: unitPriceFcfa,
   });
 
-  const now = new Date();
-  const dueLater = new Date(now.getTime() + SECOND_INSTALLMENT_DAYS * 24 * 60 * 60 * 1000);
-  const { error: installmentsError } = await admin.from("layaway_installments").insert([
-    { order_id: order.id, installment_number: 1, amount_fcfa: depositAmount, due_at: now.toISOString() },
-    { order_id: order.id, installment_number: 2, amount_fcfa: finalAmount, due_at: dueLater.toISOString() },
-  ]);
+  const now = Date.now();
+  const { error: installmentsError } = await admin.from("layaway_installments").insert(
+    plan.map((p) => ({
+      order_id: order.id,
+      installment_number: p.installmentNumber,
+      amount_fcfa: p.amountFcfa,
+      due_at: new Date(now + p.dueInDays * 24 * 60 * 60 * 1000).toISOString(),
+    }))
+  );
   if (installmentsError) {
     return NextResponse.json({ error: "Could not set up the layaway plan. Please try again." }, { status: 500 });
   }
@@ -142,7 +162,7 @@ export async function POST(req: NextRequest) {
     amountFcfa: depositAmount,
     phone,
     provider,
-    description: `${product.title} — deposit (1/2)`,
+    description: `${product.title} — deposit (1/${plan.length})`,
     reference: chargeReference,
   });
   if (!charge.ok) {
@@ -161,14 +181,15 @@ export async function POST(req: NextRequest) {
     orderId: order.id,
     depositAmountFcfa: depositAmount,
     finalAmountFcfa: finalAmount,
+    installments: plan.length,
   });
 }
 
 // Polled by the client the same way the regular checkout's deposit is
 // polled — once NotchPay confirms it, completeLayawayInstallment marks
 // the first installment paid and takes the stock off the shelf, but
-// (being installment 1 of 2) never moves the order itself to
-// "paid_held" — that only happens once the second installment clears
+// (being the first of several installments) never moves the order itself to
+// "paid_held" — that only happens once the last installment clears
 // too (see the installment sub-route), so a seller never sees "paid,
 // ship now" until the buyer has actually paid in full. The NotchPay
 // webhook (/api/webhooks/notchpay) can also complete this same
