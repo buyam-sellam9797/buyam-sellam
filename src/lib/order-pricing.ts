@@ -24,7 +24,15 @@ export type OrderPricingSuccess = {
     price_fcfa: number;
     sale_price_fcfa: number | null;
     stock_quantity: number;
+    layaway_installments: number | null;
   };
+  // The shop's pay-in-installments settings, for the layaway route.
+  shopLayaway: {
+    layaway_enabled: boolean | null;
+    layaway_installments: number | null;
+    layaway_deposit_percent: number | null;
+    layaway_interval_days: number | null;
+  } | null;
   quantity: number;
   unitPriceFcfa: number;
   deliveryFeeFcfa: number;
@@ -42,7 +50,7 @@ export async function resolveOrderPricing(
   const { data: product, error: productError } = await admin
     .from("products")
     .select(
-      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
+      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, layaway_installments, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days)"
     )
     .eq("id", input.productId)
     .eq("is_active", true)
@@ -132,6 +140,14 @@ export async function resolveOrderPricing(
   return {
     ok: true,
     product,
+    shopLayaway: shopRecord
+      ? {
+          layaway_enabled: shopRecord.layaway_enabled ?? null,
+          layaway_installments: shopRecord.layaway_installments ?? null,
+          layaway_deposit_percent: shopRecord.layaway_deposit_percent ?? null,
+          layaway_interval_days: shopRecord.layaway_interval_days ?? null,
+        }
+      : null,
     quantity,
     unitPriceFcfa,
     deliveryFeeFcfa,
