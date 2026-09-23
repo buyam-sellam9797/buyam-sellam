@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+import { isPasswordStrongEnough, PASSWORD_MIN_LENGTH } from "@/lib/password";
 
 // Reached from the email link Supabase sends after /forgot-password.
 // Supabase's client SDK reads the recovery token out of the URL on load
@@ -56,7 +57,7 @@ export default function ResetPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) {
+    if (!isPasswordStrongEnough(password)) {
       setError(t.resetPassword.errorTooShort);
       return;
     }
@@ -106,7 +107,7 @@ export default function ResetPasswordPage() {
               id="password"
               type="password"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
               disabled={!ready}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -121,7 +122,7 @@ export default function ResetPasswordPage() {
               id="confirmPassword"
               type="password"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN_LENGTH}
               disabled={!ready}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
