@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { sendOrderEmails } from "@/lib/order-emails";
 import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 import { verifyNotchPayWebhook, extractNotchPayReference, extractNotchPayEventType } from "@/lib/notchpay";
 import { completeLayawayInstallment, completeGroupBuyJoin } from "@/lib/order-fulfillment";
@@ -92,6 +93,8 @@ export async function POST(req: NextRequest) {
         body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
         orderId: updatedOrder.id,
       });
+      const paidOrderId = updatedOrder.id as string;
+      after(() => sendOrderEmails(admin, paidOrderId, "paid"));
     } else {
       // No ordinary order was charged in full under this exact
       // reference — the other two shapes a NotchPay reference can take
