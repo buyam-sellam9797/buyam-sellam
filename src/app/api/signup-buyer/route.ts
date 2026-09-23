@@ -36,6 +36,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
 
+  // Only for accounts created moments ago by the sign-up form: this
+  // route takes the account id from the request, so without this check
+  // anyone could overwrite another person's profile.
+  const { data: authUser } = await admin.auth.admin.getUserById(userId);
+  const createdAt = authUser?.user?.created_at ? new Date(authUser.user.created_at).getTime() : 0;
+  if (!authUser?.user || Date.now() - createdAt > 60 * 60 * 1000) {
+    return NextResponse.json({ error: "This sign-up link has expired. Please log in instead." }, { status: 403 });
+  }
+
   const { error } = await admin.from("profiles").upsert({
     id: userId,
     role: "buyer",
