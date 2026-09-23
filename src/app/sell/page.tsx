@@ -22,6 +22,8 @@ import { useLocale } from "@/components/locale-provider";
 import { ProductForm } from "@/components/product-form";
 import { IconCheckCircle, IconPin } from "@/components/dash-icons";
 import { isPasswordStrongEnough } from "@/lib/password";
+import { requestLocation, geoProblem } from "@/lib/geolocate";
+import { LocationProblem } from "@/components/location-problem";
 
 const TOTAL_STEPS = 9;
 
@@ -84,6 +86,12 @@ export default function SellPage() {
       const shop = await getMyShop();
       if (cancelled) return;
       if (!shop) {
+        // Becoming a seller is a deliberate step: signed-in buyers
+        // confirm on /become-seller first, which sends them back here.
+        if (!new URLSearchParams(window.location.search).has("confirmed")) {
+          router.replace("/become-seller");
+          return;
+        }
         const profile = await getMyProfile();
         if (cancelled) return;
         setSignedInEmail(session.user.email ?? "");
@@ -651,32 +659,18 @@ function DeliveryStep({
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  function pinMyLocation() {
-    if (!navigator.geolocation) {
-      setLocationError(t.dashboard.locationUnsupported);
-      return;
-    }
+  async function pinMyLocation() {
     setLocating(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-        try {
-          await updateShop(shop.id, { latitude, longitude });
-          onSaved({ latitude, longitude });
-        } catch (err) {
-          setLocationError(err instanceof Error ? err.message : t.dashboard.locationSaveError);
-        } finally {
-          setLocating(false);
-        }
-      },
-      () => {
-        setLocationError(t.dashboard.locationDenied);
-        setLocating(false);
-      },
-      { timeout: 10000 }
-    );
+    try {
+      const { latitude, longitude } = await requestLocation();
+      await updateShop(shop.id, { latitude, longitude });
+      onSaved({ latitude, longitude });
+    } catch (err) {
+      setLocationError(geoProblem(err, t.dashboard.locationSaveError));
+    } finally {
+      setLocating(false);
+    }
   }
 
   async function handleSave() {
@@ -760,7 +754,7 @@ function DeliveryStep({
             <span className="text-xs text-green-700">{t.dashboard.shopLocationConfirmed}</span>
           )}
         </div>
-        {locationError && <p className="text-xs text-red-600 mt-1.5">{locationError}</p>}
+        {locationError && <LocationProblem problem={locationError} onRetry={pinMyLocation} retrying={locating} />}
       </div>
       {error && (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
