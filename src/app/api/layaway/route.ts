@@ -5,6 +5,7 @@ import { completeLayawayInstallment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
 import { cleanEmail } from "@/lib/email-address";
+import { getOrderSecrets } from "@/lib/order-secrets";
 
 // Layaway: the buyer pays a deposit now (charged immediately, same as a
 // normal checkout, just for part of the amount) and the rest in later
@@ -184,6 +185,7 @@ export async function POST(req: NextRequest) {
     reference: charge.reference,
     orderReference,
     orderId: order.id,
+    viewKey: (await getOrderSecrets(admin, order.id))?.view_key ?? null,
     depositAmountFcfa: depositAmount,
     finalAmountFcfa: finalAmount,
     installments: plan.length,
