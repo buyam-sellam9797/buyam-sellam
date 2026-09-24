@@ -3,7 +3,8 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getShopBySlug, getShopProducts, getShopRatingSummary, getShopReviews } from "@/lib/supabase";
-import { incrementShopViews, getSellerResponseStats } from "@/lib/supabase-admin";
+import { incrementShopViews, getSellerResponseStats, getAdminClient } from "@/lib/supabase-admin";
+import { FollowButton } from "@/components/follow-button";
 import { formatFcfa, formatResponseTime } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -102,6 +103,13 @@ export default async function ShopPage({
     ? summarizeBusinessHours(shop.business_hours, t.dashboard.dayLabels, t.shop.closedDayLabel)
     : null;
 
+
+  // Follower count for the Follow button (read with the service role:
+  // each follow row is private to its follower).
+  const followAdmin = getAdminClient();
+  const { count: followerCount } = followAdmin
+    ? await followAdmin.from("shop_follows").select("id", { count: "exact", head: true }).eq("shop_id", shop.id)
+    : { count: 0 };
   return (
     <div className="flex flex-col">
       {/* Cover photo + overlapping circular logo, the way most buyers
@@ -156,6 +164,9 @@ export default async function ShopPage({
                   t.product.orderOther
                 )}`}
             </p>
+            <div className="mt-2">
+              <FollowButton shopId={shop.id} initialCount={followerCount ?? 0} />
+            </div>
           </div>
           <div className="shrink-0 w-full sm:w-64">
             <ChatWidget shopId={shop.id} shopName={shop.shop_name} />
