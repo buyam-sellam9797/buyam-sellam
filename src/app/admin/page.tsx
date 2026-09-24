@@ -7,10 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
+import { SignatureTab } from "./signature-tab";
 import type { Dictionary } from "@/lib/i18n";
 import { IconStar, IconShield, IconBanknote } from "@/components/dash-icons";
 
-type Tab = "overview" | "orders" | "sellers" | "products" | "disputes" | "payouts" | "admins" | "settings";
+type Tab = "overview" | "orders" | "sellers" | "signature" | "products" | "disputes" | "payouts" | "admins" | "settings";
 
 type Overview = {
   totalUsers: number;
@@ -145,6 +146,7 @@ export default function AdminPage() {
     { key: "overview", label: t.admin.tabOverview },
     { key: "orders", label: t.admin.tabOrders },
     { key: "sellers", label: t.admin.tabSellers },
+    { key: "signature", label: t.signature.tabLabel },
     { key: "products", label: t.admin.tabProducts },
     { key: "disputes", label: t.admin.tabDisputes },
     { key: "payouts", label: t.admin.tabPayouts },
@@ -184,6 +186,7 @@ export default function AdminPage() {
       {tab === "overview" && <OverviewTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "orders" && <OrdersTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "sellers" && <SellersTab token={token} t={t} setAuthError={setAuthError} />}
+      {tab === "signature" && <SignatureTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "products" && <ProductsTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "disputes" && <DisputesTab token={token} t={t} setAuthError={setAuthError} />}
       {tab === "payouts" && <PayoutsTab token={token} t={t} setAuthError={setAuthError} />}
