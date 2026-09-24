@@ -70,6 +70,7 @@ import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { SpaceSwitch } from "@/components/space-switch";
+import { HandoverForm } from "./handover-form";
 import { requestLocation, geoProblem } from "@/lib/geolocate";
 import { LocationProblem } from "@/components/location-problem";
 import { ProductForm } from "@/components/product-form";
@@ -876,6 +877,10 @@ function OrdersPanel({
                     {isExpanded ? "▲" : "▼"}
                   </button>
                 </div>
+
+                {(o.status === "paid_held" || o.status === "shipped") && (
+                  <HandoverForm orderId={o.id} t={t} onDone={() => onChanged()} />
+                )}
 
                 {isExpanded && (
                   <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--dash-border)" }}>
