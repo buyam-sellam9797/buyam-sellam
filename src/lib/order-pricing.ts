@@ -156,3 +156,154 @@ export async function resolveOrderPricing(
     totalAmountFcfa,
   };
 }
+
+// ---------------------------------------------------------------
+// Several items from one shop in one order (the bag), or one item at
+// a price agreed through an offer. Same rules as resolveOrderPricing:
+// every price comes from the database, stock is checked per line, the
+// shop must be open, and delivery is charged once per order.
+// ---------------------------------------------------------------
+
+export const MAX_BAG_LINES = 20;
+
+export type BagLineInput = { productId: string; quantity?: number };
+
+export type BagPricingLine = {
+  product: { id: string; shop_id: string; title: string; price_fcfa: number; sale_price_fcfa: number | null; stock_quantity: number };
+  quantity: number;
+  unitPriceFcfa: number;
+};
+
+export type BagPricingSuccess = {
+  ok: true;
+  shopId: string;
+  lines: BagPricingLine[];
+  itemsTotalFcfa: number;
+  deliveryFeeFcfa: number;
+  deliveryDistanceKm: number | null;
+  deliveryZoneName: string | null;
+  totalAmountFcfa: number;
+  description: string;
+};
+
+export async function resolveBagPricing(
+  admin: SupabaseClient,
+  input: {
+    lines: BagLineInput[];
+    // Unit price agreed through an offer, for a single-line order.
+    agreedUnitPriceFcfa?: number;
+    deliveryLatitude?: number;
+    deliveryLongitude?: number;
+    deliveryZoneId?: string;
+  }
+): Promise<BagPricingSuccess | OrderPricingFailure> {
+  // Merge duplicate lines for the same product.
+  const wanted = new Map<string, number>();
+  for (const line of input.lines ?? []) {
+    if (!line?.productId || !/^[0-9a-f-]{36}$/i.test(line.productId)) continue;
+    const q = Number(line.quantity);
+    const qty = Number.isInteger(q) && q > 0 ? Math.min(q, 999) : 1;
+    wanted.set(line.productId, (wanted.get(line.productId) ?? 0) + qty);
+  }
+  if (wanted.size === 0) return { ok: false, error: "Your bag is empty.", status: 400 };
+  if (wanted.size > MAX_BAG_LINES) return { ok: false, error: `A bag can hold up to ${MAX_BAG_LINES} different items.`, status: 400 };
+  if (input.agreedUnitPriceFcfa != null && wanted.size !== 1) {
+    return { ok: false, error: "An offer price applies to one item.", status: 400 };
+  }
+
+  const { data: rows, error } = await admin
+    .from("products")
+    .select(
+      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
+    )
+    .in("id", [...wanted.keys()])
+    .eq("is_active", true);
+  if (error || !rows || rows.length !== wanted.size) {
+    return { ok: false, error: "One of these items is no longer available.", status: 404 };
+  }
+
+  const shopId = rows[0].shop_id as string;
+  if (rows.some((r) => r.shop_id !== shopId)) {
+    return { ok: false, error: "A bag can only hold items from one shop.", status: 400 };
+  }
+  const shopRecord = (Array.isArray(rows[0].shop) ? rows[0].shop[0] : rows[0].shop) as {
+    delivery_fee_fcfa: number | null;
+    latitude: number | null;
+    longitude: number | null;
+    is_open: boolean | null;
+    closed_message: string | null;
+  } | null;
+  if (shopRecord?.is_open === false) {
+    return {
+      ok: false,
+      error: shopRecord.closed_message || "This shop is temporarily closed and isn't accepting orders right now.",
+      status: 409,
+    };
+  }
+
+  const lines: BagPricingLine[] = [];
+  for (const row of rows) {
+    const quantity = input.agreedUnitPriceFcfa != null ? 1 : (wanted.get(row.id) ?? 1);
+    if (quantity > row.stock_quantity) {
+      return {
+        ok: false,
+        error: row.stock_quantity > 0 ? `Only ${row.stock_quantity} left of "${row.title}".` : `"${row.title}" is sold out.`,
+        status: 409,
+      };
+    }
+    lines.push({
+      product: {
+        id: row.id,
+        shop_id: row.shop_id,
+        title: row.title,
+        price_fcfa: row.price_fcfa,
+        sale_price_fcfa: row.sale_price_fcfa,
+        stock_quantity: row.stock_quantity,
+      },
+      quantity,
+      unitPriceFcfa: input.agreedUnitPriceFcfa ?? row.sale_price_fcfa ?? row.price_fcfa,
+    });
+  }
+
+  const flatDeliveryFeeFcfa: number = shopRecord?.delivery_fee_fcfa ?? 0;
+  let deliveryFeeFcfa = flatDeliveryFeeFcfa;
+  let deliveryDistanceKm: number | null = null;
+  if (
+    shopRecord?.latitude != null &&
+    shopRecord?.longitude != null &&
+    typeof input.deliveryLatitude === "number" &&
+    typeof input.deliveryLongitude === "number"
+  ) {
+    deliveryDistanceKm = haversineDistanceKm(shopRecord.latitude, shopRecord.longitude, input.deliveryLatitude, input.deliveryLongitude);
+    deliveryFeeFcfa = calculateDistanceDeliveryFeeFcfa(deliveryDistanceKm, flatDeliveryFeeFcfa);
+  }
+  let deliveryZoneName: string | null = null;
+  if (input.deliveryZoneId) {
+    const { data: zone } = await admin
+      .from("delivery_zones")
+      .select("id, name, fee_fcfa")
+      .eq("id", input.deliveryZoneId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    if (zone) {
+      deliveryFeeFcfa = zone.fee_fcfa;
+      deliveryDistanceKm = null;
+      deliveryZoneName = zone.name;
+    }
+  }
+
+  const itemsTotalFcfa = lines.reduce((sum, l) => sum + l.unitPriceFcfa * l.quantity, 0);
+  const first = lines[0].product.title;
+  const description = lines.length > 1 ? `${first} +${lines.length - 1}` : first;
+  return {
+    ok: true,
+    shopId,
+    lines,
+    itemsTotalFcfa,
+    deliveryFeeFcfa,
+    deliveryDistanceKm,
+    deliveryZoneName,
+    totalAmountFcfa: itemsTotalFcfa + deliveryFeeFcfa,
+    description,
+  };
+}
