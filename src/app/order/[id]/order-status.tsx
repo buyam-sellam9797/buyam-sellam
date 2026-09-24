@@ -6,6 +6,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatFcfa } from "@/lib/format";
 import { plural } from "@/lib/i18n";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
+import { supabase } from "@/lib/supabase";
 import { IconStar, IconShield, IconTruck, IconAlertTriangle } from "@/components/dash-icons";
 
 const AUTO_RELEASE_DAYS = 5;
@@ -64,6 +65,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [deliveryCode, setDeliveryCode] = useState<string | null>(null);
   const [productRating, setProductRating] = useState(0);
   const [sellerRating, setSellerRating] = useState(0);
   const [deliveryRating, setDeliveryRating] = useState(0);
@@ -83,7 +85,23 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/orders/${orderId}`)
+    (async () => {
+      // The delivery code is only returned to the buyer: this order's
+      // secret key (from the link in the payment email or this browser's
+      // checkout) or the buyer's own signed-in session.
+      let key = new URLSearchParams(window.location.search).get("k");
+      try {
+        if (key) localStorage.setItem(`bs_order_key_${orderId}`, key);
+        else key = localStorage.getItem(`bs_order_key_${orderId}`);
+      } catch {
+        // storage blocked — the key in the link still works
+      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      return fetch(`/api/orders/${orderId}${key ? `?k=${encodeURIComponent(key)}` : ""}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+    })()
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -91,6 +109,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           setOrder(data.order);
           setItems(Array.isArray(data.items) ? data.items : []);
           setReviewed(Boolean(data.reviewed));
+          setDeliveryCode(typeof data.deliveryCode === "string" ? data.deliveryCode : null);
         } else setNotFound(true);
       })
       .catch(() => {
@@ -321,6 +340,20 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           </div>
         )}
       </div>
+
+      {(order.status === "paid_held" || order.status === "shipped") && (
+        <div className="rounded-xl border-2 border-neutral-900 bg-white p-5 mb-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">{t.order.deliveryCodeTitle}</p>
+          {deliveryCode ? (
+            <>
+              <p className="text-4xl font-bold tracking-[0.3em] my-2 font-mono">{deliveryCode}</p>
+              <p className="text-sm text-neutral-700">{t.order.deliveryCodeBody}</p>
+            </>
+          ) : (
+            <p className="text-sm text-neutral-700 mt-2">{t.order.deliveryCodeHidden}</p>
+          )}
+        </div>
+      )}
 
       {(chatHref || !isTerminalIssue) && (
         <div className="flex gap-2 mb-4">
