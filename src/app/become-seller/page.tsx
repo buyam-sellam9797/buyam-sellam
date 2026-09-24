@@ -59,6 +59,13 @@ export default function BecomeSellerPage() {
       <h1 className="text-3xl font-bold tracking-tight">{t.becomeSeller.title}</h1>
       <p className="text-neutral-600 mt-3 max-w-2xl">{t.becomeSeller.subtitle}</p>
 
+      <Link
+        href="/sell-item"
+        className="mt-6 block rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium text-neutral-800 hover:border-neutral-900"
+      >
+        {t.sellItem.becomeSellerLink}
+      </Link>
+
       <ol className="mt-8 grid sm:grid-cols-2 gap-4">
         {points.map((p, i) => (
           <li key={p.title} className="rounded-2xl border border-neutral-200 bg-white p-5">
