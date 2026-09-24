@@ -8,16 +8,15 @@ import { IconChat } from "./dash-icons";
 // "Notify me when back in stock" for an out-of-stock product. Unlike
 // favorites, this deliberately works for guests too — most Buyam
 // Sellam checkouts are guest checkouts, and a low-commitment action
-// like this shouldn't require creating an account first. There's no
-// automated SMS/push behind this (that needs a real vendor + a cost
-// decision the shop owner hasn't made yet) — the seller sees who's
-// waiting in their dashboard and reaches out on WhatsApp themselves,
-// the same manual-but-real pattern already used for post-purchase
-// contact.
+// like this shouldn't require creating an account first. Signed-in
+// buyers and guests who leave an email get an automatic email when the
+// seller restocks; guests who only leave a phone number stay on the
+// seller's dashboard list to be contacted on WhatsApp.
 export function RestockNotifyButton({ productId, shopId }: { productId: string; shopId: string }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
 
@@ -35,7 +34,7 @@ export function RestockNotifyButton({ productId, shopId }: { productId: string; 
     e.preventDefault();
     setStatus("submitting");
     try {
-      await requestRestockNotification({ productId, shopId, contactPhone: phone });
+      await requestRestockNotification({ productId, shopId, contactPhone: phone, contactEmail: email, locale });
       setStatus("done");
     } catch {
       setStatus("error");
@@ -70,9 +69,16 @@ export function RestockNotifyButton({ productId, shopId }: { productId: string; 
         <p className="text-xs text-neutral-500 mb-3">{t.product.notifyModalBody}</p>
       ) : (
         <>
-          <p className="text-xs text-neutral-500 mb-2">{t.product.notifyModalBody}</p>
+          <p className="text-xs text-neutral-500 mb-2">{t.product.notifyGuestBody}</p>
           <input
-            required
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t.product.notifyEmailPlaceholder}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm mb-2"
+          />
+          <input
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
@@ -86,7 +92,7 @@ export function RestockNotifyButton({ productId, shopId }: { productId: string; 
       )}
       <button
         type="submit"
-        disabled={status === "submitting" || (!loggedIn && !phone)}
+        disabled={status === "submitting" || (!loggedIn && !phone.trim() && !email.trim())}
         className="w-full rounded-full bg-neutral-900 text-white font-semibold px-6 py-2.5 text-sm hover:bg-neutral-700 disabled:opacity-60"
       >
         {status === "submitting" ? t.product.notifySubmitting : t.product.notifySubmit}
