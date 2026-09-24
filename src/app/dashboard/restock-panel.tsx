@@ -71,7 +71,7 @@ export function RestockPanel({ shopId, t }: { shopId: string; t: Dictionary }) {
               {group.map((r) => (
                 <div key={r.id} className="flex items-center justify-between gap-2 text-xs">
                   <span style={{ color: "var(--dash-muted)" }}>
-                    {r.contact_phone ?? t.dashboard.restockRegisteredBuyer}
+                    {r.contact_phone ?? r.contact_email ?? t.dashboard.restockRegisteredBuyer}
                   </span>
                   <span className="flex items-center gap-2 shrink-0">
                     {r.contact_phone && (
