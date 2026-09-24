@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToUser, pushBody } from "@/lib/web-push";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -111,7 +112,25 @@ export async function notifyShop(
     body: input.body ?? null,
     order_id: input.orderId ?? null,
   });
+  // Same alert as a phone notification, if the owner turned them on.
+  const { data: shop } = await admin.from("shops").select("owner_id").eq("id", input.shopId).maybeSingle();
+  await sendPushToUser(admin, shop?.owner_id, {
+    title: input.title,
+    body: pushBody(input.body),
+    url: `/dashboard?tab=${SHOP_PUSH_TAB[input.type]}`,
+    tag: input.orderId ? `order-${input.orderId}` : `shop-${input.type}`,
+    urgency: input.type === "new_order" || input.type === "offer" || input.type === "dispute_filed" ? "high" : "normal",
+  });
 }
+
+const SHOP_PUSH_TAB: Record<string, string> = {
+  new_order: "orders",
+  dispute_filed: "orders",
+  low_stock: "products",
+  payout_released: "payments",
+  offer: "offers",
+  signature: "signature",
+};
 
 // One more view for a product today (dashboard "views" and the
 // homepage's "Trending" shelf). Same fire-and-forget shape as
