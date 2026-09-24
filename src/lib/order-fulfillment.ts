@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToUser, pushBody } from "@/lib/web-push";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { after } from "next/server";
@@ -378,7 +379,6 @@ async function emailBagPaid(
 ): Promise<void> {
   try {
     const { email, lang } = await userEmailAndLang(admin, userId);
-    if (!email) return;
     const l: Lang = lang ?? "fr";
     const who = c.payer.trim();
     const mail =
@@ -401,6 +401,14 @@ async function emailBagPaid(
             ],
             button: { label: "View my order", path: "/order/{id}" },
           };
+    await sendPushToUser(admin, userId, {
+      title: mail.title,
+      body: pushBody(mail.paragraphs[0]),
+      url: `/order/${c.orderId}`,
+      tag: `order-${c.orderId}`,
+      urgency: "high",
+    });
+    if (!email) return;
     const { text, html } = renderEmail(mail, l, c.orderId);
     await sendMail({ to: email, subject: mail.subject, text, html });
   } catch (err) {
