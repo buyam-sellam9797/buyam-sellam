@@ -89,6 +89,7 @@ import { OffersPanel, fetchSellerOffers, liveOfferStatus } from "./offers-panel"
 import { MoneyPulse } from "./money-pulse";
 import { BooksPanel } from "./books-panel";
 import { SignaturePanel } from "./signature-panel";
+import { PushToggle } from "@/components/push-toggle";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
@@ -99,7 +100,8 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "offers" | "products" | "delivery" | "settings" | "signature" | "payments" | "books" | "trust" | "reviews" | "analytics" | "messages";
+const TABS = ["overview", "orders", "offers", "products", "delivery", "settings", "signature", "payments", "books", "trust", "reviews", "analytics", "messages"] as const;
+type Tab = (typeof TABS)[number];
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -157,7 +159,14 @@ export default function DashboardPage() {
   const [rating, setRating] = useState<ShopRatingSummary | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [notifications, setNotifications] = useState<ShopNotification[]>([]);
-  const [tab, setTab] = useState<Tab>("overview");
+  // A phone notification opens /dashboard?tab=orders (or offers, …) so
+  // the seller lands on the right screen. The page shows a loader until
+  // the shop is loaded, so reading the URL here can't cause a mismatch.
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window === "undefined") return "overview";
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    return wanted && (TABS as readonly string[]).includes(wanted) ? (wanted as Tab) : "overview";
+  });
   const [openOffers, setOpenOffers] = useState(0);
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
@@ -477,6 +486,8 @@ export default function DashboardPage() {
             onShopUpdated={(patch) => setShop((prev) => (prev ? { ...prev, ...patch } : prev))}
             onOpenMessages={() => setTab("messages")}
           />
+
+          <PushToggle audience="seller" className="mb-6" />
 
           <div className="dash-card p-5 mb-6">
             <p className="text-sm font-semibold mb-1 flex items-center gap-1.5">
