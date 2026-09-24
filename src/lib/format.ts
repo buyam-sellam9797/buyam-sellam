@@ -1,3 +1,16 @@
+// The CFA franc (XAF) is pegged to the euro: 1 EUR = 655.957 XAF, fixed.
+// So a euro amount shown next to an FCFA price is exact, not a guess —
+// useful for buyers in the diaspora paying by card.
+export const XAF_PER_EUR = 655.957;
+
+export function formatEurFromFcfa(amountFcfa: number, locale: "en" | "fr" = "en") {
+  return new Intl.NumberFormat(locale === "fr" ? "fr-FR" : "en-IE", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: amountFcfa / XAF_PER_EUR >= 100 ? 0 : 2,
+  }).format(amountFcfa / XAF_PER_EUR);
+}
+
 export function formatFcfa(amount: number) {
   return new Intl.NumberFormat("fr-CM", {
     style: "currency",
