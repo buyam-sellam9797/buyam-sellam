@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToUser, pushBody } from "@/lib/web-push";
 import { sendMail } from "@/lib/smtp";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
@@ -300,7 +301,32 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
     const seller = await userEmailAndLang(admin, shop?.owner_id ?? null);
     const sellerLang: Lang = seller.lang ?? "fr";
 
+    // Phone notifications. The seller already gets one for new orders,
+    // disputes and payouts (see notifyShop), so here: the buyer for every
+    // step, and the seller only when the buyer confirms delivery.
+    const buyerBuild = BUYER[buyerLang][event];
+    const sellerBuild = SELLER[sellerLang][event];
+    const buyerMail = buyerBuild ? buyerBuild(buyerCtx) : null;
+    const sellerMail = event === "completed" && sellerBuild ? sellerBuild(ctx) : null;
+
     await Promise.all([
+      buyerMail
+        ? sendPushToUser(admin, order.buyer_id, {
+            title: buyerMail.title,
+            body: pushBody(buyerMail.paragraphs[0]),
+            url: buyerCtx.orderPath.replace("{id}", order.id),
+            tag: `order-${order.id}`,
+            urgency: event === "shipped" || event === "paid" ? "high" : "normal",
+          })
+        : Promise.resolve(),
+      sellerMail
+        ? sendPushToUser(admin, shop?.owner_id, {
+            title: sellerMail.title,
+            body: pushBody(sellerMail.paragraphs[0]),
+            url: "/dashboard?tab=orders",
+            tag: `order-${order.id}`,
+          })
+        : Promise.resolve(),
       deliver(buyerEmail, buyerLang, BUYER[buyerLang][event], buyerCtx, order.id),
       deliver(seller.email, sellerLang, SELLER[sellerLang][event], ctx, order.id),
       event === "disputed"
