@@ -19,7 +19,7 @@
  * A new version waits until the visitor taps "Refresh" in the app (or
  * closes it), so nobody is reloaded in the middle of paying.
  */
-const VERSION = "bs-v1";
+const VERSION = "bs-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGE_CACHE = `${VERSION}-pages`;
@@ -137,3 +137,62 @@ async function networkFirstPage(request) {
 self.addEventListener("message", (event) => {
   if (event.data === "skip-waiting") self.skipWaiting();
 });
+
+/* ---- Push notifications (orders, offers, payments) ---- */
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Buyam Sellam", body: event.data ? event.data.text() : "" };
+  }
+  const title = data.title || "Buyam Sellam";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || "",
+      icon: "/app-icon/192",
+      badge: "/app-icon/badge",
+      tag: data.tag || undefined,
+      renotify: Boolean(data.tag),
+      data: { url: typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      // Reuse an open Buyam Sellam window if there is one.
+      for (const win of wins) {
+        if (new URL(win.url).origin === self.location.origin && "focus" in win) {
+          return win.navigate(url).then((w) => (w || win).focus()).catch(() => win.focus());
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
+
+// The browser rotated this device's push address: tell the server so
+// notifications keep arriving without the person doing anything.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const old = event.oldSubscription;
+  event.waitUntil(
+    (async () => {
+      const keyRes = await fetch("/api/push/key");
+      const { publicKey } = await keyRes.json();
+      const sub = event.newSubscription || (await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey }));
+      if (!old || !sub) return;
+      const json = sub.toJSON();
+      await fetch("/api/push/renew", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldEndpoint: old.endpoint, endpoint: json.endpoint, keys: json.keys }),
+      });
+    })().catch(() => {})
+  );
+});
+
