@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
+import { getOrderSecrets } from "@/lib/order-secrets";
 
 // Public order-status endpoint used by the buyer-facing /order/[id]
 // page. An order id (UUID) is hard to guess, but this route still
@@ -9,7 +10,7 @@ import { sendOrderEmails } from "@/lib/order-emails";
 // never lets a caller set arbitrary columns the way a public RLS
 // write policy on the whole table would.
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -41,7 +42,29 @@ export async function GET(
     .eq("order_id", id)
     .maybeSingle();
 
-  return NextResponse.json({ order, items: items ?? [], reviewed: Boolean(existingReview) });
+  // The delivery code is only for the buyer: shown when the request
+  // carries this order's secret view key (from the checkout page or the
+  // payment email) or the signed-in buyer's own session — never to the
+  // seller, who types it in at handover.
+  let deliveryCode: string | null = null;
+  if (["paid_held", "shipped"].includes(order.status)) {
+    const secrets = await getOrderSecrets(admin, id);
+    const key = req.nextUrl.searchParams.get("k");
+    let isBuyer = Boolean(secrets && key && key === secrets.view_key);
+    if (!isBuyer && secrets) {
+      const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+      if (token) {
+        const [{ data: userData }, { data: owner }] = await Promise.all([
+          admin.auth.getUser(token),
+          admin.from("orders").select("buyer_id").eq("id", id).maybeSingle(),
+        ]);
+        isBuyer = Boolean(userData?.user && owner?.buyer_id && owner.buyer_id === userData.user.id);
+      }
+    }
+    if (isBuyer && secrets) deliveryCode = secrets.delivery_code;
+  }
+
+  return NextResponse.json({ order, items: items ?? [], reviewed: Boolean(existingReview), deliveryCode });
 }
 
 // The buyer taps "I received my order" on that page, which calls this
