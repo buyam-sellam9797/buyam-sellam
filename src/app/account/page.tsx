@@ -14,6 +14,9 @@ import {
   deleteAddress,
   getMyShop,
   getMyFavorites,
+  getMyFollowedShops,
+  setFollowing,
+  type FollowedShop,
   toggleFavorite,
   getMyLayawayOrders,
   type BuyerProfile,
@@ -125,6 +128,8 @@ export default function AccountPage() {
       />
 
       <MessagesSection conversations={conversations} t={t} />
+
+      <FollowedShopsSection t={t} />
 
       <FavoritesSection
         favorites={favorites}
@@ -479,6 +484,63 @@ function MessagesSection({
             </div>
           ))}
         </div>
+      )}
+    </section>
+  );
+}
+
+// Shops this buyer follows, with a one-tap unfollow.
+function FollowedShopsSection({ t }: { t: ReturnType<typeof useLocale>["t"] }) {
+  const [shops, setShops] = useState<FollowedShop[] | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMyFollowedShops().then((rows) => {
+      if (!cancelled) setShops(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function unfollow(shopId: string) {
+    setRemovingId(shopId);
+    try {
+      await setFollowing(shopId, false);
+      setShops((prev) => (prev ? prev.filter((s) => s.shop_id !== shopId) : prev));
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  if (shops === null) return null;
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold mb-1">{t.account.followingTitle}</h2>
+      <p className="text-xs text-neutral-500 mb-3">{t.account.followingHint}</p>
+      {shops.length === 0 ? (
+        <p className="text-sm text-neutral-500">{t.account.followingEmpty}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+          {shops.map((s) => (
+            <li key={s.shop_id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+              <Link href={`/shop/${s.shop?.slug ?? ""}`} className="font-medium hover:text-amber-700 truncate">
+                {s.shop?.shop_name ?? "—"}
+                {s.shop?.city && <span className="text-neutral-500 font-normal"> · {s.shop.city}</span>}
+              </Link>
+              <button
+                type="button"
+                onClick={() => unfollow(s.shop_id)}
+                disabled={removingId === s.shop_id}
+                className="shrink-0 text-xs rounded-full border border-neutral-300 px-3 py-1 hover:border-neutral-900 disabled:opacity-60"
+              >
+                {t.account.unfollow}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
