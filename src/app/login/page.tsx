@@ -71,7 +71,12 @@ function LoginForm() {
     }
     const profile = await getMyProfile();
     setSubmitting(false);
-    if (profile?.role === "admin") router.push("/admin");
+    // ?next=/product/... sends the buyer back to what they were doing
+    // (making an offer, sharing a bag). Only same-site paths are followed.
+    const next = searchParams.get("next");
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
+    if (profile?.role === "admin") router.push(safeNext ?? "/admin");
+    else if (safeNext) router.push(safeNext);
     else if (profile?.role === "seller") router.push("/dashboard");
     else router.push("/account");
   }
