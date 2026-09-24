@@ -98,7 +98,7 @@ export async function notifyShop(
   admin: SupabaseClient,
   input: {
     shopId: string;
-    type: "new_order" | "dispute_filed" | "low_stock" | "payout_released";
+    type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature";
     title: string;
     body?: string | null;
     orderId?: string | null;
@@ -111,4 +111,14 @@ export async function notifyShop(
     body: input.body ?? null,
     order_id: input.orderId ?? null,
   });
+}
+
+// One more view for a product today (dashboard "views" and the
+// homepage's "Trending" shelf). Same fire-and-forget shape as
+// incrementShopViews: never slows down or breaks the page.
+export async function recordProductView(productId: string): Promise<void> {
+  const admin = getAdminClient();
+  if (!admin) return;
+  const { error } = await admin.rpc("bump_product_view", { p_product: productId });
+  if (error) console.error("recordProductView:", error.message);
 }
