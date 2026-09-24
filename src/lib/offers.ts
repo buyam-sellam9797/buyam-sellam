@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendPushToUser, pushBody } from "@/lib/web-push";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { sendMail } from "@/lib/smtp";
@@ -204,9 +205,16 @@ async function emailBuyer(
 ) {
   try {
     const { email, lang } = await userEmailAndLang(admin, buyerId);
-    if (!email) return;
     const l: Lang = lang ?? "fr";
     const mail = BUYER_MAIL[l][kind]({ amount: formatFcfa(ctx.amount), title: ctx.title, shop: ctx.shop });
+    await sendPushToUser(admin, buyerId, {
+      title: mail.title,
+      body: pushBody(mail.paragraphs[0]),
+      url: "/account#offers",
+      tag: `offer-${ctx.title}`.slice(0, 60),
+      urgency: kind === "declined" ? "normal" : "high",
+    });
+    if (!email) return;
     const { text, html } = renderEmail(mail, l);
     await sendMail({ to: email, subject: mail.subject, text, html });
   } catch (err) {
