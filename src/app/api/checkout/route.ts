@@ -5,6 +5,7 @@ import { resolveOrderPricing } from "@/lib/order-pricing";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { cleanEmail } from "@/lib/email-address";
+import { getOrderSecrets } from "@/lib/order-secrets";
 
 // Server-side only — these keys never reach the browser.
 const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
@@ -243,6 +244,7 @@ export async function POST(req: NextRequest) {
       reference: usedReference,
       orderReference,
       orderId: order.id,
+      viewKey: (await getOrderSecrets(admin, order.id))?.view_key ?? null,
       debug: chargeData,
     });
   } catch {
