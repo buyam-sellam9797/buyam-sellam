@@ -67,6 +67,20 @@ export type Shop = {
   layaway_installments: number;
   layaway_deposit_percent: number;
   layaway_interval_days: number;
+  created_at?: string;
+  // Signature programme (known brands, designers, creators, makers) —
+  // set only by the server / admin, see src/lib/signature.ts.
+  signature_status?: "none" | "pending" | "approved" | "rejected";
+  signature_kind?: "brand" | "designer" | "creator" | "maker" | "boutique" | null;
+  signature_story?: string | null;
+  signature_founder?: string | null;
+  signature_founded_year?: number | null;
+  signature_audience?: string | null;
+  signature_proof_url?: string | null;
+  made_in_cameroon?: boolean;
+  signature_applied_at?: string | null;
+  signature_reviewed_at?: string | null;
+  signature_note?: string | null;
 };
 
 export type BusinessHoursDay = { closed: boolean; open?: string; close?: string };
@@ -104,7 +118,8 @@ export type BuyerAddress = {
   created_at: string;
 };
 
-export type ProductCondition = "new" | "like_new" | "used";
+// "used" is the old catch-all grade (shown as "Good"); see src/lib/conditions.ts.
+export type ProductCondition = "new" | "new_with_tags" | "like_new" | "very_good" | "good" | "fair" | "well_used" | "used";
 
 export type Product = {
   id: string;
@@ -129,6 +144,11 @@ export type Product = {
   layaway_installments?: number | null;
   // Optional short voice note recorded by the seller.
   voice_note_url?: string | null;
+  // Second-hand items: how long the seller owned it (src/lib/conditions.ts).
+  owned_for?: string | null;
+  // "Open to offers" (src/lib/offers.ts).
+  accepts_offers?: boolean;
+  created_at?: string;
   shop?: Pick<
     Shop,
     | "id"
@@ -148,7 +168,8 @@ export type Product = {
     | "layaway_installments"
     | "layaway_deposit_percent"
     | "layaway_interval_days"
-  > | null;
+  > &
+    Partial<Pick<Shop, "signature_status" | "signature_kind" | "signature_founder" | "made_in_cameroon" | "logo_url" | "created_at">> | null;
   shopRating?: number | null;
   distanceKm?: number | null;
   category?: Pick<Category, "name" | "slug"> | null;
@@ -471,7 +492,11 @@ export async function getCategories(): Promise<Category[]> {
   return data ?? [];
 }
 
-export type ProductSort = "newest" | "price_asc" | "price_desc" | "rating_desc" | "nearest";
+export type ProductSort = "newest" | "price_asc" | "price_desc" | "rating_desc" | "nearest" | "popular";
+
+// Columns a product card needs (browse, homepage shelves, category pages).
+export const PRODUCT_CARD_SELECT =
+  "id, shop_id, category_id, title, description, brand, price_fcfa, sale_price_fcfa, stock_quantity, image_urls, condition, owned_for, sizes, colors, is_active, accepts_offers, created_at, shop:shops(id, shop_name, slug, city, is_verified, latitude, longitude, signature_status, signature_kind, made_in_cameroon), category:categories(name, slug)";
 
 export async function getActiveProducts(
   categorySlug?: string,
@@ -488,15 +513,14 @@ export async function getActiveProducts(
     color?: string;
     nearLat?: number;
     nearLng?: number;
+    offersOnly?: boolean;
+    onSale?: boolean;
+    inStockOnly?: boolean;
+    limit?: number;
   }
 ): Promise<Product[]> {
   if (!isSupabaseConfigured) return [];
-  let query = supabase
-    .from("products")
-    .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, shop:shops(id, shop_name, slug, city, is_verified, latitude, longitude), category:categories(name, slug)"
-    )
-    .eq("is_active", true);
+  let query = supabase.from("products").select(PRODUCT_CARD_SELECT).eq("is_active", true);
 
   // "rating_desc" and "nearest" can't be pushed down as a DB-level
   // order-by — rating is aggregated from reviews (not a products
@@ -509,6 +533,10 @@ export async function getActiveProducts(
   } else if (filters?.sort !== "rating_desc" && filters?.sort !== "nearest") {
     query = query.order("created_at", { ascending: false });
   }
+  if (filters?.offersOnly) query = query.eq("accepts_offers", true);
+  if (filters?.onSale) query = query.not("sale_price_fcfa", "is", null);
+  if (filters?.inStockOnly) query = query.gt("stock_quantity", 0);
+  if (filters?.limit) query = query.limit(filters.limit);
 
   if (categorySlug) {
     query = query.eq("category.slug", categorySlug);
@@ -523,7 +551,11 @@ export async function getActiveProducts(
     query = query.lte("price_fcfa", filters.maxPrice);
   }
   if (filters?.condition) {
-    query = query.eq("condition", filters.condition);
+    // "good" also covers rows saved with the old catch-all "used" grade.
+    query =
+      filters.condition === "good" || filters.condition === "used"
+        ? query.in("condition", ["good", "used"])
+        : query.eq("condition", filters.condition);
   }
   if (filters?.brand) {
     query = query.ilike("brand", `%${filters.brand}%`);
@@ -557,7 +589,14 @@ export async function getActiveProducts(
     rows = rows.filter((p) => p.shop?.is_verified);
   }
 
-  if (filters?.sort === "rating_desc") {
+  if (filters?.sort === "popular") {
+    // Most wanted over the last 7 days (views, favourites, offers,
+    // sales — see product_popularity in migration 029); everything with
+    // no activity yet follows, newest first.
+    const { data: scores } = await supabase.rpc("product_popularity", { p_days: 7, p_limit: 100 });
+    const rank = new Map<string, number>(((scores ?? []) as { product_id: string; score: number }[]).map((r, i) => [r.product_id, i]));
+    rows = [...rows].sort((a, b) => (rank.get(a.id) ?? 1e6) - (rank.get(b.id) ?? 1e6));
+  } else if (filters?.sort === "rating_desc") {
     const shopIds = Array.from(new Set(rows.map((p) => p.shop_id)));
     const ratings = await getShopRatingsByIds(shopIds);
     rows = rows
@@ -629,7 +668,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, voice_note_url, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, owned_for, sizes, colors, is_active, sale_price_fcfa, is_featured, accepts_offers, layaway_installments, voice_note_url, created_at, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days, signature_status, signature_kind, signature_founder, made_in_cameroon, logo_url, created_at), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -639,6 +678,24 @@ export async function getProductById(id: string): Promise<Product | null> {
     return null;
   }
   return (data as unknown as Product) ?? null;
+}
+
+// Several active products at once (the bag, shared "pay for me"
+// links), with the same shop details the single product page loads.
+export async function getProductsByIds(ids: string[]): Promise<Product[]> {
+  if (!isSupabaseConfigured || ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, owned_for, sizes, colors, is_active, sale_price_fcfa, is_featured, accepts_offers, layaway_installments, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days)"
+    )
+    .in("id", ids.slice(0, 50))
+    .eq("is_active", true);
+  if (error) {
+    console.error("getProductsByIds error:", error.message);
+    return [];
+  }
+  return (data ?? []) as unknown as Product[];
 }
 
 // Average + count of a shop's reviews, plus how many orders it has
@@ -719,7 +776,7 @@ export async function replyToReview(reviewId: string, reply: string): Promise<vo
 export type ShopNotification = {
   id: string;
   shop_id: string;
-  type: "new_order" | "dispute_filed" | "low_stock" | "payout_released";
+  type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature";
   title: string;
   body: string | null;
   order_id: string | null;
@@ -849,7 +906,7 @@ export async function getShopProducts(
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, voice_note_url, category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, owned_for, sizes, colors, is_active, sale_price_fcfa, is_featured, accepts_offers, layaway_installments, voice_note_url, created_at, category:categories(name, slug)"
     )
     .eq("shop_id", shopId);
   if (!opts?.includeInactive) {
@@ -1200,6 +1257,8 @@ export async function createProduct(input: {
   isFeatured?: boolean;
   layawayInstallments?: number | null;
   voiceNoteUrl?: string | null;
+  ownedFor?: string | null;
+  acceptsOffers?: boolean;
 }) {
   const { data: created, error } = await supabase.from("products").insert({
     shop_id: input.shopId,
@@ -1217,6 +1276,8 @@ export async function createProduct(input: {
     is_featured: input.isFeatured ?? false,
     layaway_installments: input.layawayInstallments ?? null,
     voice_note_url: input.voiceNoteUrl ?? null,
+    owned_for: input.ownedFor ?? null,
+    accepts_offers: input.acceptsOffers ?? false,
   }).select("id").single();
   if (error) throw new Error(error.message);
   if (created?.id) pingProductEvents(created.id);
@@ -1240,6 +1301,8 @@ export async function updateProduct(
     isFeatured?: boolean;
     layawayInstallments?: number | null;
     voiceNoteUrl?: string | null;
+    ownedFor?: string | null;
+    acceptsOffers?: boolean;
   }
 ) {
   const patch: Record<string, unknown> = {
@@ -1258,9 +1321,48 @@ export async function updateProduct(
   if (input.isFeatured !== undefined) patch.is_featured = input.isFeatured;
   if (input.layawayInstallments !== undefined) patch.layaway_installments = input.layawayInstallments;
   if (input.voiceNoteUrl !== undefined) patch.voice_note_url = input.voiceNoteUrl;
+  if (input.ownedFor !== undefined) patch.owned_for = input.ownedFor;
+  if (input.acceptsOffers !== undefined) patch.accepts_offers = input.acceptsOffers;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
   if (error) throw new Error(error.message);
   pingProductEvents(productId);
+}
+
+// The seller's private negotiation numbers for one product (instant
+// deal / lowest price, see src/lib/offers.ts). Only the shop owner can
+// read or write them (RLS).
+export async function getOfferSettings(
+  productId: string
+): Promise<{ autoaccept_fcfa: number | null; floor_fcfa: number | null } | null> {
+  const { data } = await supabase
+    .from("product_offer_settings")
+    .select("autoaccept_fcfa, floor_fcfa")
+    .eq("product_id", productId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function saveOfferSettings(input: {
+  productId: string;
+  shopId: string;
+  autoacceptFcfa: number | null;
+  floorFcfa: number | null;
+}): Promise<void> {
+  if (input.autoacceptFcfa == null && input.floorFcfa == null) {
+    await supabase.from("product_offer_settings").delete().eq("product_id", input.productId);
+    return;
+  }
+  const { error } = await supabase.from("product_offer_settings").upsert(
+    {
+      product_id: input.productId,
+      shop_id: input.shopId,
+      autoaccept_fcfa: input.autoacceptFcfa,
+      floor_fcfa: input.floorFcfa,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "product_id" }
+  );
+  if (error) throw new Error(error.message);
 }
 
 // Tells the server a product was just saved, so it can email anyone
