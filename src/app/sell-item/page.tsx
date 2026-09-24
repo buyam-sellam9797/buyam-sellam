@@ -12,9 +12,10 @@ import {
   uploadProductImage,
   createProduct,
   type Category,
-  type ProductCondition,
 } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+import { ConditionPicker } from "@/components/condition-picker";
+import { isSecondHand, isOwnedFor, type Condition } from "@/lib/conditions";
 import { formatFcfa } from "@/lib/format";
 import { CITIES } from "@/lib/cities";
 
@@ -38,7 +39,10 @@ export default function SellItemPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [condition, setCondition] = useState<ProductCondition>("used");
+  const [condition, setCondition] = useState<Condition>("good");
+  const [ownedFor, setOwnedFor] = useState("");
+  // Personal sellers usually expect to haggle, so offers start switched on.
+  const [acceptsOffers, setAcceptsOffers] = useState(true);
   const [categoryId, setCategoryId] = useState("");
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [price, setPrice] = useState("");
@@ -123,6 +127,8 @@ export default function SellItemPage() {
         stockQuantity: 1,
         imageUrls: [imageUrl],
         condition,
+        ownedFor: isSecondHand(condition) && isOwnedFor(ownedFor) ? ownedFor : null,
+        acceptsOffers,
         sizes: [],
         colors: [],
       });
@@ -213,14 +219,21 @@ export default function SellItemPage() {
             <p className="text-xs text-neutral-500 mt-1">{t.sellItem.suggestedCategory.replace("{name}", suggestion.category.name)}</p>
           )}
         </div>
-        <div>
-          <label className="text-sm font-medium block mb-1" htmlFor="condition">{t.sellItem.condition}</label>
-          <select id="condition" value={condition} onChange={(e) => setCondition(e.target.value as ProductCondition)} className={field}>
-            <option value="new">{t.product.conditionNew}</option>
-            <option value="like_new">{t.product.conditionLikeNew}</option>
-            <option value="used">{t.product.conditionUsed}</option>
-          </select>
-        </div>
+        <ConditionPicker
+          value={condition}
+          onChange={setCondition}
+          ownedFor={ownedFor}
+          onOwnedForChange={setOwnedFor}
+          t={t}
+          showShopStock={false}
+        />
+        <label className="flex items-start gap-2.5 rounded-xl border border-neutral-200 p-3 cursor-pointer">
+          <input type="checkbox" className="mt-1" checked={acceptsOffers} onChange={(e) => setAcceptsOffers(e.target.checked)} />
+          <span>
+            <span className="block text-sm font-semibold">{t.offers.formToggle}</span>
+            <span className="block text-xs text-neutral-500">{t.offers.formToggleHint}</span>
+          </span>
+        </label>
         <div>
           <label className="text-sm font-medium block mb-1" htmlFor="price">{t.sellItem.price}</label>
           <input id="price" required type="number" min={100} step={50} value={price} onChange={(e) => setPrice(e.target.value)} className={field} />
