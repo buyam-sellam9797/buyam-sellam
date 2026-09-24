@@ -12,6 +12,7 @@ import {
 } from "@/lib/sebpay";
 import { getSiteUrl } from "@/lib/site";
 import { cleanEmail } from "@/lib/email-address";
+import { getOrderSecrets } from "@/lib/order-secrets";
 
 // SebPay's second checkout path, kept as its own route rather than a
 // branch inside /api/checkout — see sebpay.ts for why. Mirrors that
@@ -180,6 +181,7 @@ export async function POST(req: NextRequest) {
     transactionId: result.transactionId,
     orderReference,
     orderId: order.id,
+    viewKey: (await getOrderSecrets(admin, order.id))?.view_key ?? null,
     status: result.status,
   });
 }
