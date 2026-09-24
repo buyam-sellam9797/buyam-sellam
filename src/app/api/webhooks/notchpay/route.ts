@@ -1,9 +1,7 @@
-import { NextRequest, NextResponse, after } from "next/server";
-import { sendOrderEmails } from "@/lib/order-emails";
-import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
+import { NextRequest, NextResponse } from "next/server";
+import { getAdminClient } from "@/lib/supabase-admin";
 import { verifyNotchPayWebhook, extractNotchPayReference, extractNotchPayEventType } from "@/lib/notchpay";
-import { completeLayawayInstallment, completeGroupBuyJoin } from "@/lib/order-fulfillment";
-import { formatFcfa } from "@/lib/format";
+import { completeLayawayInstallment, completeGroupBuyJoin, markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
 
 // Before this route existed, an order only flipped from
 // "pending_payment" to "paid_held" when the BUYER'S OWN BROWSER polled
@@ -65,36 +63,23 @@ export async function POST(req: NextRequest) {
     // instant it clears the way every other order is — it's contingent
     // on the whole campaign succeeding — so it's left for the
     // completeGroupBuyJoin branch below to handle instead.
-    const { data: updatedOrder } = await admin
-      .from("orders")
-      .update({
-        status: "paid_held",
-        paid_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("payment_reference", reference)
-      .eq("status", "pending_payment")
-      .is("group_buy_id", null)
-      .select("id, shop_id, total_amount_fcfa")
-      .maybeSingle();
+    // Now shared with the buyer's own polling and SebPay through
+    // markOrderPaid (escrow, payment event, seller alert, emails,
+    // offer / shared-bag closing). Stock also comes off the shelf here:
+    // card payments never poll (the buyer is on NotchPay's own page),
+    // so without this their stock was never reduced.
+    const updatedOrder = await markOrderPaid(admin, {
+      paymentReference: reference,
+      provider: "notchpay",
+      eventType,
+      rawPayload: payload,
+      excludeGroupBuy: true,
+    });
 
     if (updatedOrder) {
-      await admin.from("payment_events").insert({
-        order_id: updatedOrder.id,
-        provider: "notchpay",
-        event_type: eventType,
-        raw_payload: payload as object,
-      });
-
-      await notifyShop(admin, {
-        shopId: updatedOrder.shop_id,
-        type: "new_order",
-        title: "New order — payment received",
-        body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
-        orderId: updatedOrder.id,
-      });
-      const paidOrderId = updatedOrder.id as string;
-      after(() => sendOrderEmails(admin, paidOrderId, "paid"));
+      if (updatedOrder.payment_plan !== "layaway") {
+        await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
+      }
     } else {
       // No ordinary order was charged in full under this exact
       // reference — the other two shapes a NotchPay reference can take
