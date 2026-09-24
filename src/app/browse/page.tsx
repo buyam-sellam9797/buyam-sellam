@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import {
   getCategories,
   getActiveProducts,
@@ -7,17 +6,17 @@ import {
   type ProductCondition,
   type ProductSort,
 } from "@/lib/supabase";
-import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import NearMeButton from "./near-me-button";
-import { IconShield, IconBag, IconStar, IconPin, StatusDot } from "@/components/dash-icons";
-import { FavoriteButton } from "@/components/favorite-button";
+import { IconShield, IconStar, IconPin, IconHandshake } from "@/components/dash-icons";
+import { ProductCard } from "@/components/product-card";
+import { CONDITIONS } from "@/lib/conditions";
 
 export const dynamic = "force-dynamic";
 
-const VALID_CONDITIONS: ProductCondition[] = ["new", "like_new", "used"];
-const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc", "rating_desc", "nearest"];
+const VALID_CONDITIONS: ProductCondition[] = [...CONDITIONS, "used"];
+const VALID_SORTS: ProductSort[] = ["newest", "popular", "price_asc", "price_desc", "rating_desc", "nearest"];
 
 export default async function BrowsePage({
   searchParams,
@@ -36,12 +35,16 @@ export default async function BrowsePage({
     color?: string;
     lat?: string;
     lng?: string;
+    offers?: string;
+    sale?: string;
   }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const { category, q, minPrice, maxPrice, condition, sort, verified, city, brand, size, color, lat, lng } =
+  const { category, q, minPrice, maxPrice, condition, sort, verified, city, brand, size, color, lat, lng, offers, sale } =
     await searchParams;
+  const offersOnly = offers === "1";
+  const onSale = sale === "1";
   const minPriceNum = minPrice ? Number(minPrice) : undefined;
   const maxPriceNum = maxPrice ? Number(maxPrice) : undefined;
   const conditionFilter = VALID_CONDITIONS.includes(condition as ProductCondition)
@@ -67,6 +70,8 @@ export default async function BrowsePage({
       color: color || undefined,
       nearLat: Number.isFinite(nearLat) ? nearLat : undefined,
       nearLng: Number.isFinite(nearLng) ? nearLng : undefined,
+      offersOnly,
+      onSale,
     }),
   ]);
   const activeCategory = categories.find((c) => c.slug === category);
@@ -81,6 +86,8 @@ export default async function BrowsePage({
       brand ||
       size ||
       color ||
+      offersOnly ||
+      onSale ||
       (sort && sort !== "newest")
   );
 
@@ -127,9 +134,11 @@ export default async function BrowsePage({
           className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
         >
           <option value="">{t.browse.anyCondition}</option>
-          <option value="new">{t.product.conditionNew}</option>
-          <option value="like_new">{t.product.conditionLikeNew}</option>
-          <option value="used">{t.product.conditionUsed}</option>
+          {CONDITIONS.map((c) => (
+            <option key={c} value={c}>
+              {t.conditions.grades[c]}
+            </option>
+          ))}
         </select>
         {cities.length > 0 && (
           <select
@@ -172,6 +181,7 @@ export default async function BrowsePage({
           className="rounded-lg border border-neutral-300 px-3 py-2 text-sm bg-white"
         >
           <option value="newest">{t.browse.sortNewest}</option>
+          <option value="popular">{t.shelves.sortPopular}</option>
           <option value="price_asc">{t.browse.sortPriceAsc}</option>
           <option value="price_desc">{t.browse.sortPriceDesc}</option>
           <option value="rating_desc">{t.browse.sortRatingDesc}</option>
@@ -181,6 +191,11 @@ export default async function BrowsePage({
           <input type="checkbox" name="verified" value="1" defaultChecked={verifiedOnly} />
           <IconShield className="w-3.5 h-3.5" /> {t.browse.verifiedOnly}
         </label>
+        <label className="flex items-center gap-1.5 text-sm rounded-lg border border-neutral-300 px-3 py-2 cursor-pointer">
+          <input type="checkbox" name="offers" value="1" defaultChecked={offersOnly} />
+          <IconHandshake className="w-3.5 h-3.5" /> {t.offers.openToOffers}
+        </label>
+        {onSale && <input type="hidden" name="sale" value="1" />}
         <button
           type="submit"
           className="rounded-lg bg-neutral-900 text-white px-4 py-2 text-sm font-semibold hover:bg-neutral-700"
@@ -225,53 +240,18 @@ export default async function BrowsePage({
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {filtered.map((p) => (
-          <Link
-            key={p.id}
-            href={`/product/${p.id}`}
-            className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
-          >
-            <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
-              <div className="absolute top-2 right-2 z-10">
-                <FavoriteButton productId={p.id} size="sm" />
-              </div>
-              {p.image_urls?.[0] ? (
-                <Image
-                  src={p.image_urls[0]}
-                  alt={p.title}
-                  fill
-                  sizes="(max-width: 640px) 50vw, 25vw"
-                  className="object-cover"
-                />
-              ) : (
-                <IconBag className="w-10 h-10 text-neutral-300" />
-              )}
-            </div>
-            <div className="p-3">
-              <p className="text-sm font-medium line-clamp-1">{p.title}</p>
+          <ProductCard key={p.id} product={p} t={t}>
+            {sortOption === "rating_desc" && typeof p.shopRating === "number" && p.shopRating > 0 && (
+              <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                <IconStar filled className="w-3 h-3 shrink-0" /> {p.shopRating.toFixed(1)}
+              </p>
+            )}
+            {sortOption === "nearest" && typeof p.distanceKm === "number" && (
               <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
-                {p.shop?.shop_name}
-                {p.shop?.is_verified && <StatusDot tone="success" className="inline-block w-1.5 h-1.5 rounded-full shrink-0" />}
+                <IconPin className="w-3 h-3 shrink-0" /> {p.distanceKm.toFixed(1)} km
               </p>
-              {p.condition !== "new" && (
-                <span className="inline-block mt-1 text-[10px] font-semibold rounded-full bg-neutral-100 px-2 py-0.5">
-                  {p.condition === "like_new" ? t.product.conditionLikeNew : t.product.conditionUsed}
-                </span>
-              )}
-              <p className="text-sm font-semibold mt-1">
-                {formatFcfa(p.price_fcfa)}
-              </p>
-              {sortOption === "rating_desc" && typeof p.shopRating === "number" && p.shopRating > 0 && (
-                <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
-                  <IconStar filled className="w-3 h-3 shrink-0" /> {p.shopRating.toFixed(1)}
-                </p>
-              )}
-              {sortOption === "nearest" && typeof p.distanceKm === "number" && (
-                <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
-                  <IconPin className="w-3 h-3 shrink-0" /> {p.distanceKm.toFixed(1)} km
-                </p>
-              )}
-            </div>
-          </Link>
+            )}
+          </ProductCard>
         ))}
         {filtered.length === 0 && (
           <p className="text-neutral-500 text-sm col-span-full py-12 text-center">
