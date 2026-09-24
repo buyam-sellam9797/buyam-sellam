@@ -33,6 +33,7 @@ import { requestLocation, geoProblem } from "@/lib/geolocate";
 import { LocationProblem } from "@/components/location-problem";
 import { useFavoritesContext } from "@/components/favorites-provider";
 import { IconPin, IconChat, IconHeart, IconBag } from "@/components/dash-icons";
+import { MyOffersSection, SharedBagsSection } from "./offers-and-links";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -127,6 +128,8 @@ export default function AccountPage() {
         onChanged={async () => setAddresses(await getMyAddresses())}
       />
 
+      <MyOffersSection t={t} />
+
       <MessagesSection conversations={conversations} t={t} />
 
       <FollowedShopsSection t={t} />
@@ -152,6 +155,8 @@ export default function AccountPage() {
           }
         />
       )}
+
+      <SharedBagsSection t={t} />
 
       <OrdersSection orders={orders} t={t} />
     </div>
