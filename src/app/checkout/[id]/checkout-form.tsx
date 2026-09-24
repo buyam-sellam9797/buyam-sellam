@@ -12,6 +12,7 @@ import { LocationProblem } from "@/components/location-problem";
 import type { SebpayOperator } from "@/lib/sebpay";
 import { IconBag, IconPin, IconLock } from "@/components/dash-icons";
 import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
+import { removeFromBag } from "@/lib/bag";
 
 type Status = "form" | "waiting" | "held" | "failed";
 type Gateway = "notchpay" | "sebpay";
@@ -21,8 +22,10 @@ export default function CheckoutForm({
   initialQuantity = 1,
   deliveryFee = 0,
   deliveryZones = [],
-  sebpayOperators = [],
+  sebpayOperators: sebpayOperatorsProp = [],
   cardsEnabled = false,
+  bagLines,
+  offer,
 }: {
   product: Product;
   initialQuantity?: number;
@@ -30,8 +33,19 @@ export default function CheckoutForm({
   deliveryZones?: DeliveryZone[];
   sebpayOperators?: SebpayOperator[];
   cardsEnabled?: boolean;
+  // Several items from this product's shop, paid in one order (the bag).
+  bagLines?: { product: Product; quantity: number }[];
+  // One item at a price agreed with the seller through an offer.
+  offer?: { id: string; unitPriceFcfa: number };
 }) {
   const { t, locale } = useLocale();
+  const isBag = Boolean(bagLines && bagLines.length > 0);
+  // Bag and offer orders are paid in full through NotchPay (Mobile
+  // Money or card): installments and SebPay work per single item.
+  const sebpayOperators = isBag || offer ? [] : sebpayOperatorsProp;
+  const [bagQty, setBagQty] = useState<Record<string, number>>(() =>
+    Object.fromEntries((bagLines ?? []).map((l) => [l.product.id, Math.max(1, Math.min(l.quantity, l.product.stock_quantity))]))
+  );
   // NotchPay stays the default in every case — SebPay is an extra
   // option that only ever appears once the checkout page has already
   // confirmed (live, from SebPay itself) that this account has it
@@ -79,7 +93,13 @@ export default function CheckoutForm({
   // Promotions: a seller-set sale price always wins when present — same
   // rule the server applies at checkout, so the price shown here is
   // exactly what gets charged.
-  const unitPrice = product.sale_price_fcfa ?? product.price_fcfa;
+  const unitPrice = offer ? offer.unitPriceFcfa : (product.sale_price_fcfa ?? product.price_fcfa);
+  const itemsTotal = isBag
+    ? (bagLines ?? []).reduce(
+        (sum, l) => sum + (l.product.sale_price_fcfa ?? l.product.price_fcfa) * (bagQty[l.product.id] ?? 1),
+        0
+      )
+    : unitPrice * (offer ? 1 : quantity);
 
   // Automatic, distance-based delivery pricing: once we know both the
   // shop's pinned location and the buyer's, the flat delivery fee (used
@@ -101,7 +121,7 @@ export default function CheckoutForm({
       : distanceKm != null
         ? calculateDistanceDeliveryFeeFcfa(distanceKm, deliveryFee)
         : deliveryFee;
-  const total = unitPrice * quantity + effectiveDeliveryFee;
+  const total = itemsTotal + effectiveDeliveryFee;
 
   // The seller's own installment plan (shop setting + optional
   // per-product override), computed with the same helper the server
@@ -109,7 +129,7 @@ export default function CheckoutForm({
   // exactly what they'll pay and when; the server recomputes it from
   // the authoritative price rather than trusting anything sent from here.
   const layawaySettings = resolveLayawaySettings(product.shop, product.layaway_installments);
-  const layawayPlan = layawaySettings.enabled ? computeLayawayPlan(total, layawaySettings) : [];
+  const layawayPlan = layawaySettings.enabled && !isBag && !offer ? computeLayawayPlan(total, layawaySettings) : [];
   const layawayAvailable = layawayPlan.length >= 2;
   const layawayDeposit = layawayPlan[0]?.amountFcfa ?? 0;
   const layawayFinal = total - layawayDeposit;
@@ -200,6 +220,11 @@ export default function CheckoutForm({
 
   const activeSebpayOperator = sebpayOperators.find((o) => o.slug === sebpayOperator) ?? null;
 
+  // Once a bag is paid, its items leave the bag on this device.
+  function clearPaidBagLines() {
+    if (isBag) (bagLines ?? []).forEach((l) => removeFromBag(l.product.id));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -218,8 +243,11 @@ export default function CheckoutForm({
 
     try {
       const sharedBody = {
-        productId: product.id,
-        quantity,
+        ...(isBag
+          ? { items: (bagLines ?? []).map((l) => ({ productId: l.product.id, quantity: bagQty[l.product.id] ?? 1 })) }
+          : offer
+            ? { productId: product.id, quantity: 1, offerId: offer.id }
+            : { productId: product.id, quantity }),
         phone,
         deliveryName,
         deliveryPhone: deliveryPhone || phone,
@@ -266,6 +294,7 @@ export default function CheckoutForm({
         } catch {
           // storage blocked — the return link carries the key
         }
+        clearPaidBagLines();
         window.location.href = startData.authorizationUrl;
         return;
       }
@@ -324,6 +353,7 @@ export default function CheckoutForm({
           const checkData = await checkRes.json();
           if (checkData.status === "complete") {
             if (pollRef.current) clearInterval(pollRef.current);
+            clearPaidBagLines();
             setStatus("held");
           } else if (checkData.status === "failed" || checkData.status === "canceled") {
             if (pollRef.current) clearInterval(pollRef.current);
@@ -393,52 +423,120 @@ export default function CheckoutForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
         <p className="text-xs font-semibold text-neutral-500 mb-3">{t.checkout.orderSummaryTitle}</p>
-        <div className="flex gap-3 items-center mb-3">
-          <div className="relative w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
-            {product.image_urls?.[0] ? (
-              <Image src={product.image_urls[0]} alt={product.title} fill sizes="56px" className="object-cover" />
-            ) : (
-              <IconBag className="w-6 h-6 text-neutral-300" />
-            )}
+        {isBag ? (
+          <ul className="flex flex-col gap-3 mb-3">
+            {(bagLines ?? []).map((l) => {
+              const q = bagQty[l.product.id] ?? 1;
+              const max = Math.max(1, l.product.stock_quantity);
+              const price = l.product.sale_price_fcfa ?? l.product.price_fcfa;
+              return (
+                <li key={l.product.id} className="flex gap-3 items-center">
+                  <div className="relative w-12 h-12 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
+                    {l.product.image_urls?.[0] ? (
+                      <Image src={l.product.image_urls[0]} alt={l.product.title} fill sizes="48px" className="object-cover" />
+                    ) : (
+                      <IconBag className="w-5 h-5 text-neutral-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{l.product.title}</p>
+                    <p className="text-xs text-neutral-500">{formatFcfa(price)}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBagQty((m) => ({ ...m, [l.product.id]: Math.max(1, q - 1) }))}
+                      className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+                      aria-label="Decrease quantity"
+                    >
+                      −
+                    </button>
+                    <span className="w-5 text-center text-sm">{q}</span>
+                    <button
+                      type="button"
+                      onClick={() => setBagQty((m) => ({ ...m, [l.product.id]: Math.min(max, q + 1) }))}
+                      className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="flex gap-3 items-center mb-3">
+            <div className="relative w-14 h-14 rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden shrink-0">
+              {product.image_urls?.[0] ? (
+                <Image src={product.image_urls[0]} alt={product.title} fill sizes="56px" className="object-cover" />
+              ) : (
+                <IconBag className="w-6 h-6 text-neutral-300" />
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">{product.title}</p>
+              <p className="text-xs text-neutral-500">{product.shop?.shop_name}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">{product.title}</p>
-            <p className="text-xs text-neutral-500">{product.shop?.shop_name}</p>
+        )}
+        {isBag ? (
+          <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
+            <span className="text-neutral-500">{t.bag.itemsSubtotal}</span>
+            <span>{formatFcfa(itemsTotal)}</span>
           </div>
-        </div>
-        <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
-          <span className="text-neutral-500">{t.checkout.productLabel}</span>
-          {product.sale_price_fcfa != null ? (
-            <span className="flex items-center gap-1.5">
-              <span className="text-neutral-400 line-through text-xs">{formatFcfa(product.price_fcfa)}</span>
-              <span className="font-semibold text-red-600">{formatFcfa(unitPrice)}</span>
+        ) : offer ? (
+          <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
+            <span className="text-neutral-500 inline-flex items-center gap-1.5">
+              {t.offers.agreedPrice}
+              <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5">
+                {t.offers.dealBadge}
+              </span>
             </span>
-          ) : (
-            <span>{formatFcfa(unitPrice)}</span>
-          )}
-        </div>
-        <div className="flex items-center justify-between text-sm mt-1.5">
-          <span className="text-neutral-500">{t.checkout.quantityLabel}</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
-              aria-label="Decrease quantity"
-            >
-              −
-            </button>
-            <span className="w-5 text-center">{quantity}</span>
-            <button
-              type="button"
-              onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
-              className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
-              aria-label="Increase quantity"
-            >
-              +
-            </button>
+            <span className="flex items-center gap-1.5">
+              <span className="text-neutral-400 line-through text-xs">
+                {formatFcfa(product.sale_price_fcfa ?? product.price_fcfa)}
+              </span>
+              <span className="font-semibold">{formatFcfa(unitPrice)}</span>
+            </span>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="border-t border-neutral-100 pt-3 flex items-center justify-between text-sm">
+              <span className="text-neutral-500">{t.checkout.productLabel}</span>
+              {product.sale_price_fcfa != null ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="text-neutral-400 line-through text-xs">{formatFcfa(product.price_fcfa)}</span>
+                  <span className="font-semibold text-red-600">{formatFcfa(unitPrice)}</span>
+                </span>
+              ) : (
+                <span>{formatFcfa(unitPrice)}</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between text-sm mt-1.5">
+              <span className="text-neutral-500">{t.checkout.quantityLabel}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+                  aria-label="Decrease quantity"
+                >
+                  −
+                </button>
+                <span className="w-5 text-center">{quantity}</span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
+                  className="w-6 h-6 rounded-full border border-neutral-300 text-xs font-semibold hover:border-neutral-900"
+                  aria-label="Increase quantity"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </>
+        )}
         {effectiveDeliveryFee > 0 && (
           <div className="flex items-center justify-between text-sm mt-1.5">
             <span className="text-neutral-500">
