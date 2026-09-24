@@ -262,6 +262,55 @@ export async function getMyFavoriteProductIds(): Promise<Set<string>> {
   return new Set(data.map((r) => r.product_id));
 }
 
+// --- Following shops (signed-in buyers). Followers get one email when a
+// shop adds new products (at most every 12 hours). ---
+
+export async function getFollowState(shopId: string): Promise<{ loggedIn: boolean; following: boolean }> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user) return { loggedIn: false, following: false };
+  const { data: row } = await supabase
+    .from("shop_follows")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return { loggedIn: true, following: Boolean(row) };
+}
+
+export async function setFollowing(shopId: string, follow: boolean): Promise<void> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user) throw new Error("Please log in first.");
+  if (follow) {
+    const { error } = await supabase.from("shop_follows").upsert(
+      { shop_id: shopId, user_id: user.id },
+      { onConflict: "shop_id,user_id", ignoreDuplicates: true }
+    );
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("shop_follows").delete().eq("shop_id", shopId).eq("user_id", user.id);
+    if (error) throw new Error(error.message);
+  }
+}
+
+export type FollowedShop = { shop_id: string; shop: { shop_name: string; slug: string; city: string; logo_url: string | null } | null };
+
+export async function getMyFollowedShops(): Promise<FollowedShop[]> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (!user) return [];
+  const { data: rows } = await supabase
+    .from("shop_follows")
+    .select("shop_id, shop:shops(shop_name, slug, city, logo_url)")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+  return ((rows ?? []) as unknown as { shop_id: string; shop: FollowedShop["shop"] | FollowedShop["shop"][] }[]).map((r) => ({
+    shop_id: r.shop_id,
+    shop: Array.isArray(r.shop) ? r.shop[0] ?? null : r.shop,
+  }));
+}
+
 // Full favorited products (with shop info) for the account page's "My
 // Favorites" list — a plain product-id set isn't enough there, the
 // page needs to actually render each item.
@@ -318,6 +367,7 @@ export type RestockRequest = {
   shop_id: string;
   buyer_id: string | null;
   contact_phone: string | null;
+  contact_email?: string | null;
   notified_at: string | null;
   created_at: string;
   product?: Pick<Product, "id" | "title" | "image_urls" | "stock_quantity"> | null;
@@ -327,6 +377,8 @@ export async function requestRestockNotification(input: {
   productId: string;
   shopId: string;
   contactPhone?: string;
+  contactEmail?: string;
+  locale?: "en" | "fr";
 }): Promise<void> {
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
@@ -334,7 +386,9 @@ export async function requestRestockNotification(input: {
     product_id: input.productId,
     shop_id: input.shopId,
     buyer_id: user?.id ?? null,
-    contact_phone: user ? null : (input.contactPhone || null),
+    contact_phone: user ? null : (input.contactPhone?.trim() || null),
+    contact_email: user ? null : (input.contactEmail?.trim().toLowerCase() || null),
+    locale: input.locale ?? null,
   });
   if (error) throw new Error(error.message);
 }
@@ -346,7 +400,7 @@ export async function getRestockRequestsForShop(shopId: string): Promise<Restock
   if (!isSupabaseConfigured) return [];
   const { data, error } = await supabase
     .from("restock_requests")
-    .select("id, product_id, shop_id, buyer_id, contact_phone, notified_at, created_at, product:products(id, title, image_urls, stock_quantity)")
+    .select("id, product_id, shop_id, buyer_id, contact_phone, contact_email, notified_at, created_at, product:products(id, title, image_urls, stock_quantity)")
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -1141,7 +1195,7 @@ export async function createProduct(input: {
   isFeatured?: boolean;
   layawayInstallments?: number | null;
 }) {
-  const { error } = await supabase.from("products").insert({
+  const { data: created, error } = await supabase.from("products").insert({
     shop_id: input.shopId,
     category_id: input.categoryId,
     title: input.title,
@@ -1156,8 +1210,9 @@ export async function createProduct(input: {
     sale_price_fcfa: input.salePriceFcfa ?? null,
     is_featured: input.isFeatured ?? false,
     layaway_installments: input.layawayInstallments ?? null,
-  });
+  }).select("id").single();
   if (error) throw new Error(error.message);
+  if (created?.id) pingProductEvents(created.id);
 }
 
 export async function updateProduct(
@@ -1195,6 +1250,14 @@ export async function updateProduct(
   if (input.layawayInstallments !== undefined) patch.layaway_installments = input.layawayInstallments;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
   if (error) throw new Error(error.message);
+  pingProductEvents(productId);
+}
+
+// Tells the server a product was just saved, so it can email anyone
+// waiting for it to come back in stock and the shop's followers about
+// new items. Fire-and-forget: the seller never waits on it.
+function pingProductEvents(productId: string) {
+  fetch(`/api/products/${productId}/events`, { method: "POST", keepalive: true }).catch(() => {});
 }
 
 // Sellers editing their own shop's storefront info — description and
@@ -1301,6 +1364,7 @@ export async function deleteProduct(productId: string) {
 export async function setProductActive(productId: string, isActive: boolean) {
   const { error } = await supabase.from("products").update({ is_active: isActive }).eq("id", productId);
   if (error) throw new Error(error.message);
+  if (isActive) pingProductEvents(productId);
 }
 
 export async function uploadShopLogo(file: File, shopId: string): Promise<string> {
