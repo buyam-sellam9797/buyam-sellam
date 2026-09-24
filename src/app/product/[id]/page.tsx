@@ -1,26 +1,24 @@
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
+import { after } from "next/server";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getProductById, getShopRatingSummary, getActiveGroupBuyForProduct } from "@/lib/supabase";
-import { getSellerResponseStats } from "@/lib/supabase-admin";
+import { getSellerResponseStats, recordProductView } from "@/lib/supabase-admin";
 import { formatFcfa, formatEurFromFcfa, formatResponseTime } from "@/lib/format";
 import { resolveLayawaySettings } from "@/lib/layaway";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 import { ShareButton } from "@/components/share-button";
-import { BuyNowButton } from "@/components/buy-now-button";
+import { PurchasePanel } from "@/components/purchase-panel";
+import { ProductGallery } from "@/components/product-gallery";
+import { ConditionMeter } from "@/components/condition-meter";
+import { SignatureBadge } from "@/components/signature-badge";
 import { ChatWidget } from "@/components/chat-widget";
 import { FavoriteButton } from "@/components/favorite-button";
 import { RestockNotifyButton } from "@/components/restock-notify-button";
-import { IconBag, IconShield, IconStar, IconPin, IconTruck, IconCard, IconChat, StatusDot } from "@/components/dash-icons";
-
-const conditionKey = {
-  new: "conditionNew",
-  like_new: "conditionLikeNew",
-  used: "conditionUsed",
-} as const;
+import { IconShield, IconStar, IconPin, IconTruck, IconCard, IconChat, IconHandshake, StatusDot } from "@/components/dash-icons";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +74,13 @@ export default async function ProductPage({
   const { id } = await params;
   const product = await getProductById(id);
   if (!product) notFound();
+  // Daily view count for the seller's dashboard and "Trending" shelves
+  // (search engines and link previews don't count).
+  const userAgent = (await headers()).get("user-agent") ?? "";
+  if (!/bot|crawl|spider|slurp|preview|facebookexternalhit|whatsapp|headless/i.test(userAgent)) {
+    const viewedId = product.id;
+    after(() => recordProductView(viewedId));
+  }
 
   const rating = product.shop
     ? await getShopRatingSummary(product.shop.id)
@@ -118,22 +123,12 @@ export default async function ProductPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
-      <div className="relative aspect-square bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden">
-        <div className="absolute top-3 right-3 z-10">
-          <FavoriteButton productId={product.id} />
-        </div>
-        {product.image_urls?.[0] ? (
-          <Image
-            src={product.image_urls[0]}
-            alt={product.title}
-            fill
-            sizes="(max-width: 640px) 100vw, 448px"
-            preload
-            className="object-cover"
-          />
-        ) : (
-          <IconBag className="w-16 h-16 text-neutral-300" />
-        )}
+      <div>
+        <ProductGallery images={product.image_urls ?? []} title={product.title}>
+          <div className="absolute top-3 right-3 z-10">
+            <FavoriteButton productId={product.id} />
+          </div>
+        </ProductGallery>
       </div>
       <div>
         {product.category && (
@@ -146,9 +141,7 @@ export default async function ProductPage({
           <p className="text-sm text-neutral-500 mt-0.5">{product.brand}</p>
         )}
 
-        <span className="inline-block mt-2 text-xs font-semibold rounded-full bg-neutral-100 px-2.5 py-1">
-          {t.product[conditionKey[product.condition] ?? "conditionNew"]}
-        </span>
+        <ConditionMeter condition={product.condition} ownedFor={product.owned_for} t={t} />
 
         {product.description && (
           <p className="text-sm text-neutral-600 mt-2">{product.description}</p>
@@ -184,8 +177,13 @@ export default async function ProductPage({
             {formatFcfa(product.price_fcfa)}
           </p>
         )}
-        <p className="text-xs text-neutral-500 mt-0.5">
-          ≈ {formatEurFromFcfa(product.sale_price_fcfa ?? product.price_fcfa, locale)}
+        <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-2 flex-wrap">
+          <span>≈ {formatEurFromFcfa(product.sale_price_fcfa ?? product.price_fcfa, locale)}</span>
+          {product.accepts_offers && product.stock_quantity > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-900">
+              <IconHandshake className="w-3.5 h-3.5" /> {t.offers.openToOffers}
+            </span>
+          )}
         </p>
 
         {product.shop && (
@@ -195,12 +193,20 @@ export default async function ProductPage({
               className="font-medium hover:text-amber-600 flex items-center gap-1.5 flex-wrap"
             >
               {product.shop.shop_name}
+              {product.shop.signature_status === "approved" && (
+                <SignatureBadge kind={product.shop.signature_kind ?? null} madeInCameroon={product.shop.made_in_cameroon} t={t} />
+              )}
               {product.shop.is_verified && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
                   <IconShield className="w-3 h-3" /> {t.product.verified}
                 </span>
               )}
             </Link>
+            {product.shop.signature_status === "approved" && product.shop.signature_kind === "creator" && product.shop.signature_founder && (
+              <p className="text-xs font-semibold text-amber-800 mt-1">
+                {t.signature.wardrobeOf.replace("{name}", product.shop.signature_founder)}
+              </p>
+            )}
             <p className="text-neutral-500 mt-1 flex items-center gap-1">
               {rating.count > 0 ? (
                 <>
@@ -307,7 +313,14 @@ export default async function ProductPage({
           </div>
         ) : (
           <>
-            <BuyNowButton productId={product.id} stock={product.stock_quantity} />
+            <PurchasePanel
+              productId={product.id}
+              productTitle={product.title}
+              shopId={product.shop_id}
+              stock={product.stock_quantity}
+              listPrice={product.sale_price_fcfa ?? product.price_fcfa}
+              acceptsOffers={Boolean(product.accepts_offers)}
+            />
             {product.stock_quantity <= 0 && product.shop && (
               <RestockNotifyButton productId={product.id} shopId={product.shop.id} />
             )}
