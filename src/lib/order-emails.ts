@@ -10,7 +10,7 @@ import { getSiteUrl } from "@/lib/site";
 // run it inside next/server's after() so the response isn't delayed.
 
 export type OrderEmailEvent = "paid" | "accepted" | "shipped" | "completed" | "disputed" | "payout";
-type Lang = "en" | "fr";
+export type Lang = "en" | "fr";
 
 const SUPPORT_EMAIL = "support@buyamsellam.shop";
 
@@ -25,7 +25,13 @@ type Ctx = {
   phone: string;
 };
 
-type Mail = { subject: string; title: string; paragraphs: string[]; button?: { label: string; path: string } };
+export type Mail = {
+  subject: string;
+  title: string;
+  paragraphs: string[];
+  button?: { label: string; path: string };
+  footer?: string;
+};
 
 const BUYER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> = {
   en: {
@@ -193,7 +199,7 @@ const SELLER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> =
   },
 };
 
-const FOOTER: Record<Lang, string> = {
+export const FOOTER: Record<Lang, string> = {
   en: "Buyam Sellam — buy and sell safely in Cameroon. Questions? Just reply to this email.",
   fr: "Buyam Sellam — achetez et vendez en sécurité au Cameroun. Des questions ? Répondez simplement à cet e-mail.",
 };
@@ -201,10 +207,11 @@ const FOOTER: Record<Lang, string> = {
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function render(mail: Mail, lang: Lang, orderId: string) {
+export function renderEmail(mail: Mail, lang: Lang, orderId = "") {
   const site = getSiteUrl();
   const url = mail.button ? site + mail.button.path.replace("{id}", orderId) : null;
-  const text = [mail.title, "", ...mail.paragraphs, ...(url ? ["", `${mail.button!.label}: ${url}`] : []), "", FOOTER[lang]].join("\n");
+  const footer = mail.footer ?? FOOTER[lang];
+  const text = [mail.title, "", ...mail.paragraphs, ...(url ? ["", `${mail.button!.label}: ${url}`] : []), "", footer].join("\n");
   const html = `<!doctype html><html lang="${lang}"><body style="margin:0;background:#f5f5f4;font-family:Arial,Helvetica,sans-serif;color:#171717">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f4;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e5e5;border-radius:16px">
@@ -213,12 +220,12 @@ function render(mail: Mail, lang: Lang, orderId: string) {
 ${mail.paragraphs.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#404040">${escapeHtml(p)}</p>`).join("\n")}
 ${url ? `<p style="margin:20px 0 8px"><a href="${escapeHtml(url)}" style="display:inline-block;background:#171717;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:999px">${escapeHtml(mail.button!.label)}</a></p>` : ""}
 </td></tr>
-<tr><td style="padding:16px 28px 24px;font-size:12px;line-height:1.5;color:#737373;border-top:1px solid #f0f0f0">${escapeHtml(FOOTER[lang])}</td></tr>
+<tr><td style="padding:16px 28px 24px;font-size:12px;line-height:1.5;color:#737373;border-top:1px solid #f0f0f0">${escapeHtml(footer)}</td></tr>
 </table></td></tr></table></body></html>`;
   return { text, html };
 }
 
-async function userEmailAndLang(
+export async function userEmailAndLang(
   admin: SupabaseClient,
   userId: string | null
 ): Promise<{ email: string | null; lang: Lang | null }> {
@@ -232,7 +239,7 @@ async function userEmailAndLang(
 async function deliver(to: string | null, lang: Lang, build: ((c: Ctx) => Mail) | undefined, ctx: Ctx, orderId: string) {
   if (!to || !build) return;
   const mail = build(ctx);
-  const { text, html } = render(mail, lang, orderId);
+  const { text, html } = renderEmail(mail, lang, orderId);
   try {
     await sendMail({ to, subject: mail.subject, text, html, replyTo: SUPPORT_EMAIL });
   } catch (err) {
