@@ -37,6 +37,8 @@ export type Shop = {
   latitude: number | null;
   longitude: number | null;
   is_verified: boolean;
+  // Personal shop created by "Sell one item" (a private seller, not a business).
+  is_personal?: boolean;
   is_active: boolean;
   verification_requested_at: string | null;
   view_count: number;
@@ -125,6 +127,8 @@ export type Product = {
   // Per-product installments override: null = follow the shop's
   // setting, 0 = no installments for this product, 2–6 = that many.
   layaway_installments?: number | null;
+  // Optional short voice note recorded by the seller.
+  voice_note_url?: string | null;
   shop?: Pick<
     Shop,
     | "id"
@@ -625,7 +629,7 @@ export async function getProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days), category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, brand, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, voice_note_url, shop:shops(id, shop_name, slug, city, whatsapp_number, is_verified, delivery_info, delivery_fee_fcfa, delivery_eta_text, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days), category:categories(name, slug)"
     )
     .eq("id", id)
     .eq("is_active", true)
@@ -845,7 +849,7 @@ export async function getShopProducts(
   let query = supabase
     .from("products")
     .select(
-      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, category:categories(name, slug)"
+      "id, shop_id, category_id, title, description, price_fcfa, stock_quantity, image_urls, condition, sizes, colors, is_active, sale_price_fcfa, is_featured, layaway_installments, voice_note_url, category:categories(name, slug)"
     )
     .eq("shop_id", shopId);
   if (!opts?.includeInactive) {
@@ -947,6 +951,7 @@ export async function openShopForCurrentUser(input: {
   shopName: string;
   whatsappNumber: string;
   city: string;
+  isPersonal?: boolean;
 }): Promise<{ slug: string }> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -1194,6 +1199,7 @@ export async function createProduct(input: {
   salePriceFcfa?: number | null;
   isFeatured?: boolean;
   layawayInstallments?: number | null;
+  voiceNoteUrl?: string | null;
 }) {
   const { data: created, error } = await supabase.from("products").insert({
     shop_id: input.shopId,
@@ -1210,9 +1216,11 @@ export async function createProduct(input: {
     sale_price_fcfa: input.salePriceFcfa ?? null,
     is_featured: input.isFeatured ?? false,
     layaway_installments: input.layawayInstallments ?? null,
+    voice_note_url: input.voiceNoteUrl ?? null,
   }).select("id").single();
   if (error) throw new Error(error.message);
   if (created?.id) pingProductEvents(created.id);
+  return { id: (created?.id as string | undefined) ?? null };
 }
 
 export async function updateProduct(
@@ -1231,6 +1239,7 @@ export async function updateProduct(
     salePriceFcfa?: number | null;
     isFeatured?: boolean;
     layawayInstallments?: number | null;
+    voiceNoteUrl?: string | null;
   }
 ) {
   const patch: Record<string, unknown> = {
@@ -1248,6 +1257,7 @@ export async function updateProduct(
   if (input.salePriceFcfa !== undefined) patch.sale_price_fcfa = input.salePriceFcfa;
   if (input.isFeatured !== undefined) patch.is_featured = input.isFeatured;
   if (input.layawayInstallments !== undefined) patch.layaway_installments = input.layawayInstallments;
+  if (input.voiceNoteUrl !== undefined) patch.voice_note_url = input.voiceNoteUrl;
   const { error } = await supabase.from("products").update(patch).eq("id", productId);
   if (error) throw new Error(error.message);
   pingProductEvents(productId);
@@ -1404,6 +1414,16 @@ export async function uploadVerificationDocument(file: File, shopId: string): Pr
     .upload(path, file, { cacheControl: "3600", upsert: false });
   if (error) throw new Error(error.message);
   return path;
+}
+
+export async function uploadProductVoiceNote(blob: Blob, shopId: string, ext: string): Promise<string> {
+  const path = `${shopId}/voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, blob, { cacheControl: "3600", upsert: false, contentType: blob.type || "audio/webm" });
+  if (error) throw new Error(error.message);
+  const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function uploadProductImage(file: File, shopId: string): Promise<string> {
