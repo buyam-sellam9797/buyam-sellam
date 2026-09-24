@@ -29,6 +29,9 @@ import {
   IconRepeat,
   IconAward,
   IconChat,
+  IconHandshake,
+  IconBook,
+  IconSeal,
   StatusDot,
 } from "@/components/dash-icons";
 import {
@@ -82,6 +85,10 @@ import { getSiteUrl } from "@/lib/site";
 import { plural } from "@/lib/i18n";
 import type { Dictionary } from "@/lib/i18n";
 import { LayawaySettingsPanel } from "./layaway-settings-panel";
+import { OffersPanel, fetchSellerOffers, liveOfferStatus } from "./offers-panel";
+import { MoneyPulse } from "./money-pulse";
+import { BooksPanel } from "./books-panel";
+import { SignaturePanel } from "./signature-panel";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
@@ -92,7 +99,7 @@ type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; product:
 // things get touched at very different frequencies (orders daily,
 // listings whenever stock changes, shop setup and verification almost
 // never), so they're now separate tabs a seller can jump straight to.
-type Tab = "overview" | "orders" | "products" | "delivery" | "settings" | "payments" | "trust" | "reviews" | "analytics" | "messages";
+type Tab = "overview" | "orders" | "offers" | "products" | "delivery" | "settings" | "signature" | "payments" | "books" | "trust" | "reviews" | "analytics" | "messages";
 
 type OrderFilter = "all" | "action" | "preparing" | "shipped" | "completed" | "issues";
 
@@ -151,6 +158,7 @@ export default function DashboardPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [notifications, setNotifications] = useState<ShopNotification[]>([]);
   const [tab, setTab] = useState<Tab>("overview");
+  const [openOffers, setOpenOffers] = useState(0);
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
   // initializer rather than read directly during render.
@@ -173,14 +181,17 @@ export default function DashboardPage() {
     // includeInactive: true — a paused listing still needs to show up
     // here so the seller can turn it back on; only the public storefront
     // hides it.
-    const [myProducts, myOrders, cats, ratingSummary, myReviews, myNotifications] = await Promise.all([
+    const [myProducts, myOrders, cats, ratingSummary, myReviews, myNotifications, myOffers] = await Promise.all([
       getShopProducts(myShop.id, { includeInactive: true }),
       getMyOrders(myShop.id),
       getCategories(),
       getShopRatingSummary(myShop.id),
       getShopReviewsForDashboard(myShop.id),
       getMyNotifications(myShop.id),
+      fetchSellerOffers(),
     ]);
+    const nowTs = Date.now();
+    setOpenOffers(myOffers.filter((o) => liveOfferStatus(o, nowTs) === "pending").length);
     setProducts(myProducts);
     setOrders(myOrders);
     setCategories(cats);
@@ -260,12 +271,20 @@ export default function DashboardPage() {
   const tabs: { key: Tab; label: string; icon: ReactNode; section: string }[] = [
     { key: "overview", label: t.dashboard.tabOverview, icon: <IconGrid className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "orders", label: t.dashboard.tabOrders, icon: <IconCart className={iconClass} />, section: t.dashboard.navSectionActivity },
+    {
+      key: "offers",
+      label: openOffers > 0 ? `${t.offers.sellerTitle} (${openOffers})` : t.offers.sellerTitle,
+      icon: <IconHandshake className={iconClass} />,
+      section: t.dashboard.navSectionActivity,
+    },
     { key: "messages", label: t.dashboard.messagesTabLabel, icon: <IconChat className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "products", label: t.dashboard.tabProducts, icon: <IconBox className={iconClass} />, section: t.dashboard.navSectionActivity },
     { key: "settings", label: t.dashboard.tabSettings, icon: <IconGear className={iconClass} />, section: t.dashboard.navSectionShop },
     { key: "delivery", label: t.dashboard.tabDelivery, icon: <IconTruck className={iconClass} />, section: t.dashboard.navSectionShop },
     { key: "trust", label: t.dashboard.tabTrust, icon: <IconShield className={iconClass} />, section: t.dashboard.navSectionShop },
+    { key: "signature", label: t.signature.tabLabel, icon: <IconSeal className={iconClass} />, section: t.dashboard.navSectionShop },
     { key: "payments", label: t.dashboard.tabPayments, icon: <IconCard className={iconClass} />, section: t.dashboard.navSectionMoney },
+    { key: "books", label: t.books.tabLabel, icon: <IconBook className={iconClass} />, section: t.dashboard.navSectionMoney },
     { key: "reviews", label: t.dashboard.tabReviews, icon: <IconStar className={iconClass} />, section: t.dashboard.navSectionPerformance },
     { key: "analytics", label: t.dashboard.tabAnalytics, icon: <IconTrendingUp className={iconClass} />, section: t.dashboard.navSectionPerformance },
   ];
@@ -304,6 +323,15 @@ export default function DashboardPage() {
         setTab("orders");
         setOrderFilter("action");
       },
+    });
+  }
+  if (openOffers > 0) {
+    todoItems.push({
+      key: "offers",
+      level: "red",
+      label: `${openOffers} ${plural(openOffers, locale, t.offers.todoOne, t.offers.todoOther)}`,
+      buttonLabel: t.dashboard.todoButtonView,
+      onClick: () => setTab("offers"),
     });
   }
   if (outOfStockCount > 0) {
@@ -440,6 +468,15 @@ export default function DashboardPage() {
               </a>
             </div>
           </div>
+
+          <MoneyPulse
+            shop={shop}
+            orders={orders}
+            products={products}
+            t={t}
+            onShopUpdated={(patch) => setShop((prev) => (prev ? { ...prev, ...patch } : prev))}
+            onOpenMessages={() => setTab("messages")}
+          />
 
           <div className="dash-card p-5 mb-6">
             <p className="text-sm font-semibold mb-1 flex items-center gap-1.5">
@@ -680,6 +717,37 @@ export default function DashboardPage() {
       {tab === "reviews" && <ReviewsPanel reviews={reviews} t={t} onChanged={loadData} />}
 
       {tab === "messages" && <MessagesPanel shopId={shop.id} t={t} />}
+
+      {tab === "offers" && (
+        <OffersPanel
+          t={t}
+          onChanged={async () => {
+            const list = await fetchSellerOffers();
+            const nowTs = Date.now();
+            setOpenOffers(list.filter((o) => liveOfferStatus(o, nowTs) === "pending").length);
+          }}
+        />
+      )}
+
+      {tab === "books" && (
+        <BooksPanel
+          shop={shop}
+          products={products}
+          orders={orders}
+          t={t}
+          locale={locale}
+          onStockChanged={async () => setProducts(await getShopProducts(shop.id, { includeInactive: true }))}
+        />
+      )}
+
+      {tab === "signature" && (
+        <SignaturePanel
+          shop={shop}
+          t={t}
+          onSubmitted={(patch) => setShop((prev) => (prev ? { ...prev, ...patch } : prev))}
+          onGoVerify={() => setTab("trust")}
+        />
+      )}
 
       {tab === "analytics" && <AnalyticsPanel shop={shop} orders={orders} t={t} />}
 
