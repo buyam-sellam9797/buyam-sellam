@@ -58,6 +58,7 @@ export default function CheckoutForm({
   const [status, setStatus] = useState<Status>("form");
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [viewKey, setViewKey] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   // Where order updates are emailed: a signed-in buyer's account email,
   // or an optional address a guest types in.
@@ -251,6 +252,14 @@ export default function CheckoutForm({
       }
 
       setOrderId(startData.orderId ?? null);
+      setViewKey(startData.viewKey ?? null);
+      // Lets this browser show the buyer their delivery code later on the
+      // order page (the code is also in the payment email).
+      try {
+        if (startData.orderId && startData.viewKey) localStorage.setItem(`bs_order_key_${startData.orderId}`, startData.viewKey);
+      } catch {
+        // storage blocked — the emailed link still works
+      }
       let attempts = 0;
 
       if (gateway === "sebpay") {
@@ -335,7 +344,7 @@ export default function CheckoutForm({
         </div>
         {orderId && (
           <Link
-            href={paymentPlan === "layaway" ? "/account" : `/order/${orderId}`}
+            href={paymentPlan === "layaway" ? "/account" : `/order/${orderId}${viewKey ? `?k=${viewKey}` : ""}`}
             className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-center hover:border-neutral-900"
           >
             {paymentPlan === "layaway" ? t.checkout.viewLayawayPlan : t.checkout.trackOrder}
