@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse, after } from "next/server";
-import { sendOrderEmails } from "@/lib/order-emails";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveOrderPricing } from "@/lib/order-pricing";
-import { notifyShop } from "@/lib/supabase-admin";
-import { formatFcfa } from "@/lib/format";
+import { resolveBagPricing, type BagLineInput } from "@/lib/order-pricing";
+import { markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
+import { resolveAgreedOffer } from "@/lib/offers";
+import { getSharedBagByToken, isSharedBagOpen, pricingInputFor, type SharedBagRow } from "@/lib/shared-bags";
 import { cleanEmail } from "@/lib/email-address";
 import { getSiteUrl } from "@/lib/site";
 import { getOrderSecrets } from "@/lib/order-secrets";
@@ -25,8 +25,16 @@ function getAdminClient() {
 }
 
 type ChargeBody = {
-  productId: string;
+  // One item (Buy now) ...
+  productId?: string;
   quantity?: number;
+  // ... or several items from one shop (the bag) ...
+  items?: BagLineInput[];
+  // ... or one item at a price agreed through an offer ...
+  offerId?: string;
+  // ... or a bag someone shared with a "pay for me" link.
+  sharedBagToken?: string;
+  payerName?: string;
   provider: "mtn" | "orange" | "card";
   phone: string;
   deliveryName?: string;
@@ -72,21 +80,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const {
-    productId,
-    provider,
-    phone,
-    deliveryName,
-    deliveryCity,
-    deliveryNeighborhood,
-    deliveryAddress,
-    deliveryNotes,
-  } = body;
+  const { provider, phone } = body;
   if (provider === "card" && process.env.NOTCHPAY_CARDS_ENABLED !== "true") {
     return NextResponse.json({ error: "Card payment is not available yet." }, { status: 400 });
   }
-  if (!productId || !provider || !phone) {
-    return NextResponse.json({ error: "Missing product, provider, or phone." }, { status: 400 });
+  if (!provider || !phone) {
+    return NextResponse.json({ error: "Missing provider or phone." }, { status: 400 });
   }
 
   // Logged-in buyers are optional — most checkouts are still guests
@@ -102,60 +101,114 @@ export async function POST(req: NextRequest) {
     const { data: userData } = await admin.auth.getUser(bearerToken);
     if (userData?.user) buyerId = userData.user.id;
   }
-  if (!deliveryName || !deliveryCity) {
+
+  // A shared bag carries its own items and the recipient's delivery
+  // details; the person paying only adds their payment number (and,
+  // optionally, their name so the recipient knows who paid).
+  let sharedBag: SharedBagRow | null = null;
+  if (body.sharedBagToken) {
+    sharedBag = await getSharedBagByToken(admin, body.sharedBagToken);
+    if (!sharedBag || !isSharedBagOpen(sharedBag)) {
+      return NextResponse.json({ error: "This payment link has expired or was already paid." }, { status: 410 });
+    }
+  }
+
+  const delivery = sharedBag
+    ? {
+        name: sharedBag.delivery.name,
+        phone: sharedBag.delivery.phone,
+        city: sharedBag.delivery.city,
+        neighborhood: sharedBag.delivery.neighborhood ?? null,
+        address: sharedBag.delivery.address ?? null,
+        notes: sharedBag.delivery.notes ?? null,
+        latitude: sharedBag.delivery.latitude ?? undefined,
+        longitude: sharedBag.delivery.longitude ?? undefined,
+        zoneId: sharedBag.delivery.zoneId ?? undefined,
+      }
+    : {
+        name: body.deliveryName ?? "",
+        phone: body.deliveryPhone || phone,
+        city: body.deliveryCity ?? "",
+        neighborhood: body.deliveryNeighborhood || null,
+        address: body.deliveryAddress || null,
+        notes: body.deliveryNotes || null,
+        latitude: typeof body.deliveryLatitude === "number" ? body.deliveryLatitude : undefined,
+        longitude: typeof body.deliveryLongitude === "number" ? body.deliveryLongitude : undefined,
+        zoneId: body.deliveryZoneId,
+      };
+  if (!delivery.name || !delivery.city) {
     return NextResponse.json(
       { error: "Please tell us who to deliver this to, and which city." },
       { status: 400 }
     );
   }
 
-  const pricing = await resolveOrderPricing(admin, {
-    productId,
-    quantity: body.quantity,
-    deliveryLatitude: body.deliveryLatitude,
-    deliveryLongitude: body.deliveryLongitude,
-    deliveryZoneId: body.deliveryZoneId,
-  });
+  // Offer price: only for the buyer who agreed it, on that product.
+  let agreedUnitPriceFcfa: number | undefined;
+  if (body.offerId && !sharedBag) {
+    if (!body.productId) return NextResponse.json({ error: "Missing product." }, { status: 400 });
+    const agreed = await resolveAgreedOffer(admin, { offerId: body.offerId, buyerId, productId: body.productId });
+    if (!agreed.ok) return NextResponse.json({ error: agreed.error, code: agreed.code }, { status: agreed.status });
+    agreedUnitPriceFcfa = agreed.unitPriceFcfa;
+  }
+
+  const lines: BagLineInput[] = sharedBag
+    ? sharedBag.items
+    : Array.isArray(body.items) && body.items.length > 0
+      ? body.items
+      : body.productId
+        ? [{ productId: body.productId, quantity: body.quantity }]
+        : [];
+  if (lines.length === 0) {
+    return NextResponse.json({ error: "Missing product." }, { status: 400 });
+  }
+
+  const pricing = sharedBag
+    ? await resolveBagPricing(admin, pricingInputFor(sharedBag))
+    : await resolveBagPricing(admin, {
+        lines,
+        agreedUnitPriceFcfa,
+        deliveryLatitude: delivery.latitude,
+        deliveryLongitude: delivery.longitude,
+        deliveryZoneId: delivery.zoneId,
+      });
   if (!pricing.ok) {
     return NextResponse.json({ error: pricing.error }, { status: pricing.status });
   }
-  const {
-    product,
-    quantity,
-    unitPriceFcfa,
-    deliveryFeeFcfa,
-    deliveryDistanceKm,
-    deliveryZoneName,
-    totalAmountFcfa,
-  } = pricing;
+  const { deliveryFeeFcfa, deliveryDistanceKm, deliveryZoneName, totalAmountFcfa } = pricing;
 
   const orderReference = `bs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const { data: order, error: orderError } = await admin
     .from("orders")
     .insert({
-      shop_id: product.shop_id,
+      shop_id: pricing.shopId,
       status: "pending_payment",
       total_amount_fcfa: totalAmountFcfa,
       payment_provider: "notchpay",
       payment_reference: orderReference,
-      buyer_id: buyerId,
+      // A shared bag's order belongs to the person who asked: it shows
+      // in their account with the delivery code, and emails go to them.
+      buyer_id: sharedBag ? sharedBag.creator_id : buyerId,
       buyer_phone: phone,
-      delivery_name: deliveryName,
-      delivery_phone: body.deliveryPhone || phone,
-      is_gift: Boolean(body.isGift),
-      gift_note: body.isGift ? (body.giftNote || null) : null,
-      buyer_email: cleanEmail(body.buyerEmail),
+      delivery_name: delivery.name,
+      delivery_phone: delivery.phone,
+      is_gift: sharedBag ? false : Boolean(body.isGift),
+      gift_note: !sharedBag && body.isGift ? (body.giftNote || null) : null,
+      buyer_email: sharedBag ? null : cleanEmail(body.buyerEmail),
       buyer_locale: body.locale === "fr" || body.locale === "en" ? body.locale : null,
-      delivery_city: deliveryCity,
-      delivery_neighborhood: deliveryNeighborhood || null,
-      delivery_address: deliveryAddress || null,
-      delivery_notes: deliveryNotes || null,
+      delivery_city: delivery.city,
+      delivery_neighborhood: delivery.neighborhood,
+      delivery_address: delivery.address,
+      delivery_notes: delivery.notes,
       delivery_fee_fcfa: deliveryFeeFcfa,
-      delivery_latitude: typeof body.deliveryLatitude === "number" ? body.deliveryLatitude : null,
-      delivery_longitude: typeof body.deliveryLongitude === "number" ? body.deliveryLongitude : null,
+      delivery_latitude: delivery.latitude ?? null,
+      delivery_longitude: delivery.longitude ?? null,
       delivery_distance_km: deliveryDistanceKm,
       delivery_zone_name: deliveryZoneName,
+      offer_id: agreedUnitPriceFcfa != null ? body.offerId : null,
+      shared_bag_id: sharedBag?.id ?? null,
+      payer_name: sharedBag ? (body.payerName ?? "").trim().slice(0, 80) || null : null,
     })
     .select("id")
     .single();
@@ -164,14 +217,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Could not start the order. Please try again." }, { status: 500 });
   }
 
-  await admin.from("order_items").insert({
-    order_id: order.id,
-    product_id: product.id,
-    quantity,
-    unit_price_fcfa: unitPriceFcfa,
-  });
+  const { error: itemsError } = await admin.from("order_items").insert(
+    pricing.lines.map((l) => ({
+      order_id: order.id,
+      product_id: l.product.id,
+      quantity: l.quantity,
+      unit_price_fcfa: l.unitPriceFcfa,
+    }))
+  );
+  if (itemsError) {
+    await admin.from("orders").update({ status: "cancelled" }).eq("id", order.id);
+    return NextResponse.json({ error: "Could not start the order. Please try again." }, { status: 500 });
+  }
 
-  const viewKey = (await getOrderSecrets(admin, order.id))?.view_key ?? null;
+  // The person paying for someone else's bag never gets the order's
+  // private key: the delivery code belongs to the one receiving it.
+  const viewKey = sharedBag ? null : ((await getOrderSecrets(admin, order.id))?.view_key ?? null);
 
   try {
     // Step 1: initialize the payment
@@ -184,11 +245,18 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         amount: totalAmountFcfa,
         currency: "XAF",
-        description: product.title,
+        description: pricing.description,
         reference: orderReference,
-        customer: provider === "card" ? { phone, email: cleanEmail(body.buyerEmail) ?? undefined, name: deliveryName } : { phone },
+        customer:
+          provider === "card"
+            ? { phone, email: cleanEmail(body.buyerEmail) ?? undefined, name: sharedBag ? body.payerName || undefined : delivery.name }
+            : { phone },
         ...(provider === "card"
-          ? { callback: `${getSiteUrl()}/order/${order.id}${viewKey ? `?k=${viewKey}` : ""}` }
+          ? {
+              callback: sharedBag
+                ? `${getSiteUrl()}/pay/${sharedBag.token}?paid=1`
+                : `${getSiteUrl()}/order/${order.id}${viewKey ? `?k=${viewKey}` : ""}`,
+            }
           : {}),
       }),
     });
@@ -309,74 +377,17 @@ export async function GET(req: NextRequest) {
     if (status === "complete" && orderReference) {
       const admin = getAdminClient();
       if (admin) {
-        const { data: updatedOrder } = await admin
-          .from("orders")
-          .update({
-            status: "paid_held",
-            paid_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("payment_reference", orderReference)
-          .eq("status", "pending_payment")
-          .select("id, shop_id, total_amount_fcfa")
-          .maybeSingle();
-
-        if (updatedOrder) {
-          await admin.from("payment_events").insert({
-            order_id: updatedOrder.id,
-            provider: "notchpay",
-            event_type: "payment.complete",
-            raw_payload: data,
-          });
-
-          await notifyShop(admin, {
-            shopId: updatedOrder.shop_id,
-            type: "new_order",
-            title: "New order — payment received",
-            body: `A buyer just paid ${formatFcfa(updatedOrder.total_amount_fcfa)}. It's held safely until you ship and they confirm delivery.`,
-            orderId: updatedOrder.id,
-          });
-          const paidOrderId = updatedOrder.id as string;
-          after(() => sendOrderEmails(admin, paidOrderId, "paid"));
-
-          // Stock is only taken off the shelf once payment is actually
-          // confirmed — never at checkout start, so an abandoned mobile
-          // money prompt never permanently reserves inventory. This is a
-          // simple read-then-write (not an atomic decrement), which is an
-          // accepted simplification at this order volume.
-          const { data: items } = await admin
-            .from("order_items")
-            .select("product_id, quantity")
-            .eq("order_id", updatedOrder.id);
-          for (const item of items ?? []) {
-            const { data: prod } = await admin
-              .from("products")
-              .select("stock_quantity, title")
-              .eq("id", item.product_id)
-              .maybeSingle();
-            if (prod) {
-              const newStock = Math.max(0, prod.stock_quantity - item.quantity);
-              await admin
-                .from("products")
-                .update({ stock_quantity: newStock })
-                .eq("id", item.product_id);
-
-              // Only fire the moment stock crosses into "needs attention"
-              // (<=3, same threshold as the dashboard's low-stock badge) —
-              // never re-fire on every later checkout of an already-low item.
-              if (newStock <= 3 && prod.stock_quantity > 3) {
-                await notifyShop(admin, {
-                  shopId: updatedOrder.shop_id,
-                  type: "low_stock",
-                  title: newStock === 0 ? "Out of stock" : "Low stock",
-                  body:
-                    newStock === 0
-                      ? `"${prod.title}" just sold out.`
-                      : `"${prod.title}" has only ${newStock} left.`,
-                });
-              }
-            }
-          }
+        // Shared with the NotchPay webhook: whichever hears first wins,
+        // the other is a no-op. Stock is only taken off the shelf once
+        // payment is confirmed, never at checkout start.
+        const updatedOrder = await markOrderPaid(admin, {
+          paymentReference: orderReference,
+          provider: "notchpay",
+          eventType: "payment.complete",
+          rawPayload: data,
+        });
+        if (updatedOrder && updatedOrder.payment_plan !== "layaway") {
+          await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
         }
       }
     }
