@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { after } from "next/server";
-import { sendOrderEmails } from "@/lib/order-emails";
+import { sendOrderEmails, renderEmail, userEmailAndLang, type Lang } from "@/lib/order-emails";
+import { sendMail } from "@/lib/smtp";
 
 // Shared by every place that can hear "this order's payment was
 // confirmed" — a gateway's webhook, or the buyer's own browser polling
@@ -12,9 +13,16 @@ import { sendOrderEmails } from "@/lib/order-emails";
 // same idea applied to how an order's price is computed.
 export async function markOrderPaid(
   admin: SupabaseClient,
-  input: { paymentReference: string; provider: string; eventType: string; rawPayload: unknown }
-): Promise<{ id: string; shop_id: string; total_amount_fcfa: number } | null> {
-  const { data: updatedOrder } = await admin
+  input: {
+    paymentReference: string;
+    provider: string;
+    eventType: string;
+    rawPayload: unknown;
+    // Group-buy orders are finished by completeGroupBuyJoin instead.
+    excludeGroupBuy?: boolean;
+  }
+): Promise<{ id: string; shop_id: string; total_amount_fcfa: number; payment_plan: string } | null> {
+  let update = admin
     .from("orders")
     .update({
       status: "paid_held",
@@ -22,11 +30,13 @@ export async function markOrderPaid(
       updated_at: new Date().toISOString(),
     })
     .eq("payment_reference", input.paymentReference)
-    .eq("status", "pending_payment")
-    .select("id, shop_id, total_amount_fcfa")
-    .maybeSingle();
+    .eq("status", "pending_payment");
+  if (input.excludeGroupBuy) update = update.is("group_buy_id", null);
+  const { data: updatedOrder } = await update.select("id, shop_id, total_amount_fcfa, payment_plan").maybeSingle();
 
   if (!updatedOrder) return null;
+
+  await closeOfferAndSharedBag(admin, updatedOrder.id);
 
   await admin.from("payment_events").insert({
     order_id: updatedOrder.id,
@@ -321,5 +331,79 @@ export async function expireGroupBuy(admin: SupabaseClient, groupBuyId: string):
       description: `Group buy did not reach its target quantity by the deadline. The buyer paid ${formatFcfa(order.total_amount_fcfa)} and is owed a refund.`,
       status: "open",
     });
+  }
+}
+
+// An order paid at an agreed offer price closes that offer; an order
+// paid through a shared "pay for me" link closes the bag and tells the
+// person who asked that someone paid for them.
+export async function closeOfferAndSharedBag(admin: SupabaseClient, orderId: string): Promise<void> {
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, offer_id, shared_bag_id, payer_name, buyer_id, total_amount_fcfa, shop:shops(shop_name)")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!order) return;
+  const now = new Date().toISOString();
+  if (order.offer_id) {
+    await admin.from("offers").update({ status: "paid", order_id: order.id, updated_at: now }).eq("id", order.offer_id);
+  }
+  if (order.shared_bag_id) {
+    const { data: bag } = await admin
+      .from("shared_bags")
+      .update({ status: "paid", order_id: order.id })
+      .eq("id", order.shared_bag_id)
+      .eq("status", "open")
+      .select("creator_id")
+      .maybeSingle();
+    if (bag?.creator_id) {
+      const shop = (Array.isArray(order.shop) ? order.shop[0] : order.shop) as { shop_name: string } | null;
+      const creatorId = bag.creator_id as string;
+      after(() =>
+        emailBagPaid(admin, creatorId, {
+          orderId: order.id,
+          payer: order.payer_name ?? "",
+          amount: formatFcfa(order.total_amount_fcfa),
+          shop: shop?.shop_name ?? "Buyam Sellam",
+        })
+      );
+    }
+  }
+}
+
+async function emailBagPaid(
+  admin: SupabaseClient,
+  userId: string,
+  c: { orderId: string; payer: string; amount: string; shop: string }
+): Promise<void> {
+  try {
+    const { email, lang } = await userEmailAndLang(admin, userId);
+    if (!email) return;
+    const l: Lang = lang ?? "fr";
+    const who = c.payer.trim();
+    const mail =
+      l === "fr"
+        ? {
+            subject: `${who || "Quelqu'un"} a payé votre panier`,
+            title: `${who || "Quelqu'un"} a payé votre panier`,
+            paragraphs: [
+              `Votre panier chez ${c.shop} (${c.amount}) est payé. L'argent est gardé par Buyam Sellam jusqu'à ce que vous confirmiez la livraison.`,
+              "Le vendeur va vous contacter pour la livraison. Votre code de livraison est sur la page de la commande : ne le donnez qu'une fois la commande reçue et vérifiée.",
+            ],
+            button: { label: "Voir ma commande", path: "/order/{id}" },
+          }
+        : {
+            subject: `${who || "Someone"} paid for your bag`,
+            title: `${who || "Someone"} paid for your bag`,
+            paragraphs: [
+              `Your bag from ${c.shop} (${c.amount}) is paid. The money is held by Buyam Sellam until you confirm delivery.`,
+              "The seller will contact you about delivery. Your delivery code is on the order page: only give it once you have received and checked the order.",
+            ],
+            button: { label: "View my order", path: "/order/{id}" },
+          };
+    const { text, html } = renderEmail(mail, l, c.orderId);
+    await sendMail({ to: email, subject: mail.subject, text, html });
+  } catch (err) {
+    console.error("shared bag paid email failed:", err instanceof Error ? err.message : err);
   }
 }
