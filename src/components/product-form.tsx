@@ -6,11 +6,13 @@ import {
   createProduct,
   updateProduct,
   uploadProductImage,
+  uploadProductVoiceNote,
   type Category,
   type Product,
   type ProductCondition,
 } from "@/lib/supabase";
 import type { Dictionary } from "@/lib/i18n";
+import { VoiceNoteRecorder } from "@/components/voice-note-recorder";
 
 // Shared add/edit product form — used by the seller dashboard and by
 // the "add your first product" step of the onboarding wizard, so the
@@ -55,6 +57,8 @@ export function ProductForm({
     existingProduct?.layaway_installments == null ? "" : String(existingProduct.layaway_installments)
   );
   const [file, setFile] = useState<File | null>(null);
+  // undefined = unchanged, null = removed, object = newly recorded.
+  const [voice, setVoice] = useState<{ blob: Blob; ext: string } | null | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +84,9 @@ export function ProductForm({
         const url = await uploadProductImage(file, shopId);
         imageUrls = [url];
       }
+      let voiceNoteUrl: string | null | undefined;
+      if (voice === null) voiceNoteUrl = null;
+      else if (voice) voiceNoteUrl = await uploadProductVoiceNote(voice.blob, shopId, voice.ext);
       const salePriceFcfa = salePrice.trim() ? Number(salePrice) : null;
       const sharedFields = {
         categoryId: categoryId || null,
@@ -94,6 +101,7 @@ export function ProductForm({
         salePriceFcfa,
         isFeatured,
         layawayInstallments: layawayChoice === "" ? null : Number(layawayChoice),
+        voiceNoteUrl,
       };
       if (isEditing && existingProduct) {
         await updateProduct(existingProduct.id, { ...sharedFields, imageUrls });
@@ -131,6 +139,7 @@ export function ProductForm({
           className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
       </div>
+      <VoiceNoteRecorder existingUrl={existingProduct?.voice_note_url ?? null} t={t} onChange={setVoice} />
       <div>
         <label className="text-sm font-medium block mb-1">{t.dashboard.brand}</label>
         <input
