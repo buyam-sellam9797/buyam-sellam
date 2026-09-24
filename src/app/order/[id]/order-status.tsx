@@ -282,6 +282,15 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
         </div>
       )}
 
+      {order.status === "pending_payment" && (
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-800 mb-4">
+          <p>{t.order.paymentConfirming}</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-2 font-semibold underline underline-offset-2">
+            {t.order.refresh}
+          </button>
+        </div>
+      )}
+
       {order.status === "disputed" && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 mb-4 flex items-start gap-1.5">
           {!reportSubmitted && <IconShield className="w-4 h-4 shrink-0 mt-0.5" />}
