@@ -3,6 +3,7 @@ import { sendMail } from "@/lib/smtp";
 import { formatFcfa } from "@/lib/format";
 import { calculateCommission } from "@/lib/commission";
 import { getSiteUrl } from "@/lib/site";
+import { getOrderSecrets } from "@/lib/order-secrets";
 
 // Order emails for buyers and sellers, sent from support@buyamsellam.shop.
 // Every call is best-effort: a mail problem is logged and never breaks
@@ -23,6 +24,8 @@ type Ctx = {
   name: string;
   city: string;
   phone: string;
+  code: string;
+  orderPath: string;
 };
 
 export type Mail = {
@@ -42,8 +45,9 @@ const BUYER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> = 
         `Hi ${c.name}, we received your payment of ${c.amount} for ${c.items} from ${c.shop}.`,
         "Buyam Sellam holds the money: the seller is only paid after you confirm delivery. The seller will now prepare your order and contact you through the chat or on WhatsApp to arrange delivery.",
         "Only confirm delivery once you have received and checked your order.",
+        ...(c.code ? [`Your delivery code: ${c.code}. Give it to the seller only when you have your order in hand and have checked it — it confirms delivery and releases the payment. Never give it before.`] : []),
       ],
-      button: { label: "Track my order", path: "/order/{id}" },
+      button: { label: "Track my order", path: c.orderPath },
     }),
     accepted: (c) => ({
       subject: `${c.shop} is preparing your order ${c.ref}`,
@@ -58,8 +62,9 @@ const BUYER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> = 
         `${c.shop} has marked your order (${c.items}) as sent.`,
         "When it arrives, check it, then tap “I received my order” on your order page. If something is wrong, report the problem before confirming — your payment stays on hold while we look at it.",
         "If you do nothing, the order is confirmed automatically 5 days after it was sent.",
+        ...(c.code ? [`When it's handed to you: check it first, then give the seller your delivery code ${c.code}.`] : []),
       ],
-      button: { label: "Open my order", path: "/order/{id}" },
+      button: { label: "Open my order", path: c.orderPath },
     }),
     completed: (c) => ({
       subject: `Order ${c.ref} completed — thank you`,
@@ -88,8 +93,9 @@ const BUYER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> = 
         `Bonjour ${c.name}, nous avons reçu votre paiement de ${c.amount} pour ${c.items} chez ${c.shop}.`,
         "Buyam Sellam garde l'argent : le vendeur n'est payé qu'après votre confirmation de livraison. Le vendeur va maintenant préparer votre commande et vous contacter via la messagerie ou WhatsApp pour organiser la livraison.",
         "Ne confirmez la livraison qu'après avoir reçu et vérifié votre commande.",
+        ...(c.code ? [`Votre code de livraison : ${c.code}. Donnez-le au vendeur uniquement quand vous avez la commande en main et l'avez vérifiée — il confirme la livraison et libère le paiement. Jamais avant.`] : []),
       ],
-      button: { label: "Suivre ma commande", path: "/order/{id}" },
+      button: { label: "Suivre ma commande", path: c.orderPath },
     }),
     accepted: (c) => ({
       subject: `${c.shop} prépare votre commande ${c.ref}`,
@@ -104,8 +110,9 @@ const BUYER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> = 
         `${c.shop} a indiqué que votre commande (${c.items}) est envoyée.`,
         "À la réception, vérifiez-la, puis appuyez sur « J'ai reçu ma commande » sur la page de votre commande. En cas de problème, signalez-le avant de confirmer — votre paiement reste bloqué pendant notre examen.",
         "Sans action de votre part, la commande est confirmée automatiquement 5 jours après l'envoi.",
+        ...(c.code ? [`À la remise : vérifiez d'abord, puis donnez au vendeur votre code de livraison ${c.code}.`] : []),
       ],
-      button: { label: "Voir ma commande", path: "/order/{id}" },
+      button: { label: "Voir ma commande", path: c.orderPath },
     }),
     completed: (c) => ({
       subject: `Commande ${c.ref} terminée — merci`,
@@ -276,7 +283,15 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
       name: order.delivery_name ?? "",
       city: order.delivery_city ?? "",
       phone: order.delivery_phone ?? "",
+      code: "",
+      orderPath: "/order/{id}",
     };
+    // Buyer emails carry the delivery code and a link that shows it on
+    // the order page; the seller's copy of ctx never gets them.
+    const secrets = event === "paid" || event === "shipped" ? await getOrderSecrets(admin, order.id) : null;
+    const buyerCtx: Ctx = secrets
+      ? { ...ctx, code: secrets.delivery_code, orderPath: `/order/{id}?k=${secrets.view_key}` }
+      : { ...ctx, orderPath: "/order/{id}" };
 
     const buyerAccount = await userEmailAndLang(admin, order.buyer_id);
     const buyerEmail = order.buyer_email || buyerAccount.email;
@@ -286,7 +301,7 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
     const sellerLang: Lang = seller.lang ?? "fr";
 
     await Promise.all([
-      deliver(buyerEmail, buyerLang, BUYER[buyerLang][event], ctx, order.id),
+      deliver(buyerEmail, buyerLang, BUYER[buyerLang][event], buyerCtx, order.id),
       deliver(seller.email, sellerLang, SELLER[sellerLang][event], ctx, order.id),
       event === "disputed"
         ? deliver(SUPPORT_EMAIL, "en", (c) => ({
