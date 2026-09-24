@@ -293,6 +293,70 @@ export function IconTag(props: IconProps) {
   );
 }
 
+// Signature shops: a scalloped seal with a check.
+export function IconSeal(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M12 2.8l2.05 1.5 2.52-.2.83 2.39 2.2 1.25-.55 2.47 1.15 2.26-1.9 1.67-.36 2.5-2.5.46-1.53 2.02L12 17.9l-2.38 1.2-1.53-2.02-2.5-.46-.36-2.5-1.9-1.67 1.15-2.26-.55-2.47 2.2-1.25.83-2.39 2.52.2Z" />
+      <path d="m9 10.8 2.1 2.1 4-4" />
+    </Base>
+  );
+}
+
+// Offers / negotiation.
+export function IconHandshake(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="m11 17 2 2a1.4 1.4 0 0 0 2-2" />
+      <path d="m14 14 2.5 2.5a1.4 1.4 0 0 0 2-2l-3.9-3.9a2.4 2.4 0 0 0-3.4 0l-.9.9a1.4 1.4 0 0 1-2-2l2.8-2.8a4.9 4.9 0 0 1 6 -.7l.5.3a3.3 3.3 0 0 0 1.9.4H21" />
+      <path d="M21 14.5V6.5" />
+      <path d="M3 6.5h2l6 6" />
+      <path d="M3 14.5 8 19.5a1.4 1.4 0 0 0 2-2" />
+      <path d="M3 6.5v8" />
+    </Base>
+  );
+}
+
+// Shop books (sales, stock, expenses).
+export function IconBook(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15.5H6.5A1.5 1.5 0 0 0 5 20Z" />
+      <path d="M5 20a1.5 1.5 0 0 0 1.5 1.5H19V18.5" />
+      <path d="M9 7.5h6M9 11h4" />
+    </Base>
+  );
+}
+
+export function IconPrinter(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M7 8V3.5h10V8" />
+      <rect x="3.5" y="8" width="17" height="8" rx="1.5" />
+      <path d="M7 13.5h10v7H7Z" />
+    </Base>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <Base {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </Base>
+  );
+}
+
+export function IconGift(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="3.5" y="8" width="17" height="4" rx="1" />
+      <path d="M5 12v8.5h14V12M12 8v12.5" />
+      <path d="M12 8c-1.5-3.5-5.5-3.5-5.5-1S10 8 12 8Zm0 0c1.5-3.5 5.5-3.5 5.5-1S14 8 12 8Z" />
+    </Base>
+  );
+}
+
 /**
  * A small solid-color status dot — replaces the platform-dependent
  * 🟢🟡🔴 emoji everywhere the dashboard needs to show a red/amber/green
