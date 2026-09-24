@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getProductById, getShopRatingSummary, getActiveGroupBuyForProduct } from "@/lib/supabase";
 import { getSellerResponseStats } from "@/lib/supabase-admin";
-import { formatFcfa, formatResponseTime } from "@/lib/format";
+import { formatFcfa, formatEurFromFcfa, formatResponseTime } from "@/lib/format";
 import { resolveLayawaySettings } from "@/lib/layaway";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
@@ -154,6 +154,13 @@ export default async function ProductPage({
           <p className="text-sm text-neutral-600 mt-2">{product.description}</p>
         )}
 
+        {product.voice_note_url && (
+          <div className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <p className="text-xs font-semibold text-neutral-700 mb-1.5">{t.product.voiceNoteTitle}</p>
+            <audio controls preload="none" src={product.voice_note_url} className="w-full h-9" />
+          </div>
+        )}
+
         {product.sizes?.length > 0 && (
           <p className="text-sm mt-3">
             <span className="text-neutral-500">{t.product.sizesLabel}: </span>
@@ -177,6 +184,9 @@ export default async function ProductPage({
             {formatFcfa(product.price_fcfa)}
           </p>
         )}
+        <p className="text-xs text-neutral-500 mt-0.5">
+          ≈ {formatEurFromFcfa(product.sale_price_fcfa ?? product.price_fcfa, locale)}
+        </p>
 
         {product.shop && (
           <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
