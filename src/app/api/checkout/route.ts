@@ -5,6 +5,7 @@ import { resolveOrderPricing } from "@/lib/order-pricing";
 import { notifyShop } from "@/lib/supabase-admin";
 import { formatFcfa } from "@/lib/format";
 import { cleanEmail } from "@/lib/email-address";
+import { getSiteUrl } from "@/lib/site";
 import { getOrderSecrets } from "@/lib/order-secrets";
 
 // Server-side only — these keys never reach the browser.
@@ -26,7 +27,7 @@ function getAdminClient() {
 type ChargeBody = {
   productId: string;
   quantity?: number;
-  provider: "mtn" | "orange";
+  provider: "mtn" | "orange" | "card";
   phone: string;
   deliveryName?: string;
   deliveryPhone?: string;
@@ -81,6 +82,9 @@ export async function POST(req: NextRequest) {
     deliveryAddress,
     deliveryNotes,
   } = body;
+  if (provider === "card" && process.env.NOTCHPAY_CARDS_ENABLED !== "true") {
+    return NextResponse.json({ error: "Card payment is not available yet." }, { status: 400 });
+  }
   if (!productId || !provider || !phone) {
     return NextResponse.json({ error: "Missing product, provider, or phone." }, { status: 400 });
   }
@@ -167,6 +171,8 @@ export async function POST(req: NextRequest) {
     unit_price_fcfa: unitPriceFcfa,
   });
 
+  const viewKey = (await getOrderSecrets(admin, order.id))?.view_key ?? null;
+
   try {
     // Step 1: initialize the payment
     const initRes = await fetch(`${NOTCHPAY_BASE_URL}/payments`, {
@@ -180,7 +186,10 @@ export async function POST(req: NextRequest) {
         currency: "XAF",
         description: product.title,
         reference: orderReference,
-        customer: { phone },
+        customer: provider === "card" ? { phone, email: cleanEmail(body.buyerEmail) ?? undefined, name: deliveryName } : { phone },
+        ...(provider === "card"
+          ? { callback: `${getSiteUrl()}/order/${order.id}${viewKey ? `?k=${viewKey}` : ""}` }
+          : {}),
       }),
     });
 
@@ -190,6 +199,17 @@ export async function POST(req: NextRequest) {
         { error: initData?.message ?? "Could not start the payment.", debug: initData },
         { status: initRes.status }
       );
+    }
+
+    // Card payments (for buyers abroad): NotchPay's hosted payment page
+    // takes the card; the buyer is sent there and comes back to their
+    // order page, and the NotchPay webhook marks the order paid.
+    if (provider === "card") {
+      const authorizationUrl: string | undefined = initData?.authorization_url ?? initData?.transaction?.authorization_url;
+      if (!authorizationUrl) {
+        return NextResponse.json({ error: "Card payment is not available right now." }, { status: 502 });
+      }
+      return NextResponse.json({ authorizationUrl, orderReference, orderId: order.id, viewKey });
     }
 
     // NotchPay's actual response nests these under "transaction".
@@ -244,7 +264,7 @@ export async function POST(req: NextRequest) {
       reference: usedReference,
       orderReference,
       orderId: order.id,
-      viewKey: (await getOrderSecrets(admin, order.id))?.view_key ?? null,
+      viewKey,
       debug: chargeData,
     });
   } catch {
