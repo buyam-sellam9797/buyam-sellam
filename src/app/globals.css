@@ -251,3 +251,20 @@ textarea {
     display: none !important;
   }
 }
+
+/* Installed app (home-screen launch): bottom tab bar instead of relying
+   on the browser's own back/forward bar, and room for it at the bottom.
+   In a normal browser tab none of this applies. */
+.app-tabbar {
+  display: none;
+}
+@media (display-mode: standalone) {
+  .app-tabbar {
+    display: flex;
+  }
+  body {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
