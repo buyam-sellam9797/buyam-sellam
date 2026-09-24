@@ -50,6 +50,7 @@ export default async function CheckoutPage({
         deliveryFee={deliveryFee}
         deliveryZones={deliveryZones}
         sebpayOperators={sebpayCurrency ? sebpayOperators : []}
+        cardsEnabled={process.env.NOTCHPAY_CARDS_ENABLED === "true"}
       />
     </div>
   );
