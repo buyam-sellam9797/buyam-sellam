@@ -12,6 +12,8 @@ const KINDS = {
   "512": { size: 512, scale: 0.46 },
   "maskable-512": { size: 512, scale: 0.34 },
   "apple-180": { size: 180, scale: 0.44 },
+  // Android's small status-bar icon: white on transparent, shape only.
+  badge: { size: 96, scale: 0.5 },
 } as const;
 
 type Kind = keyof typeof KINDS;
@@ -27,6 +29,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/app-icon/[kind]
   const spec = KINDS[kind as Kind];
   if (!spec) return new Response("Not found", { status: 404 });
   const fontSize = Math.round(spec.size * spec.scale);
+  const isBadge = kind === "badge";
   // The built-in font has no bold weight; a ring of same-colour text
   // shadows thickens the strokes so the letters read at small sizes.
   const w = Math.max(1, Math.round(fontSize * 0.035));
@@ -45,7 +48,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/app-icon/[kind]
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#171717",
+          background: isBadge ? "transparent" : "#171717",
           fontSize,
           fontWeight: 800,
           letterSpacing: fontSize * 0.02,
@@ -53,7 +56,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/app-icon/[kind]
         }}
       >
         <span style={{ color: "#ffffff", textShadow: bold("#ffffff") }}>B</span>
-        <span style={{ color: "#f59e0b", textShadow: bold("#f59e0b") }}>S</span>
+        <span style={{ color: isBadge ? "#ffffff" : "#f59e0b", textShadow: bold(isBadge ? "#ffffff" : "#f59e0b") }}>S</span>
       </div>
     ),
     { width: spec.size, height: spec.size }
