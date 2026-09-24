@@ -11,7 +11,8 @@ import { getDictionary, plural } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
 import { isOpenNow, summarizeBusinessHours } from "@/lib/business-hours";
 import { ChatWidget } from "@/components/chat-widget";
-import { IconShield, IconPin, IconStar, IconCard, IconTruck, IconLock, IconBag, IconChat, StatusDot } from "@/components/dash-icons";
+import { IconShield, IconPin, IconStar, IconCard, IconTruck, IconLock, IconBag, IconChat, IconSeal, IconHandshake, StatusDot } from "@/components/dash-icons";
+import { SignatureBadge } from "@/components/signature-badge";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,9 @@ export default async function ShopPage({
                   {t.sellItem.privateSeller}
                 </span>
               )}
+              {shop.signature_status === "approved" && (
+                <SignatureBadge kind={shop.signature_kind ?? null} madeInCameroon={shop.made_in_cameroon} t={t} size="md" />
+              )}
               {shop.is_verified && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
                   <IconShield className="w-3.5 h-3.5" /> {t.shop.verified}
@@ -199,6 +203,32 @@ export default async function ShopPage({
 
         {shop.description && (
           <p className="text-sm text-neutral-600 mb-4">{shop.description}</p>
+        )}
+
+        {shop.signature_status === "approved" && shop.signature_story && (
+          <section className="rounded-2xl bg-neutral-900 text-white p-5 sm:p-6 mb-6">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300 flex items-center gap-1.5">
+              <IconSeal className="w-4 h-4" />
+              {shop.signature_kind === "creator" && shop.signature_founder
+                ? t.signature.wardrobeOf.replace("{name}", shop.signature_founder)
+                : t.signature.storyTitle}
+            </p>
+            <p className="mt-3 text-sm sm:text-base leading-relaxed whitespace-pre-line text-neutral-100">{shop.signature_story}</p>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-neutral-400">
+              {shop.signature_founder && shop.signature_kind !== "creator" && (
+                <span>
+                  {t.signature.founderLabel}: <span className="text-white font-semibold">{shop.signature_founder}</span>
+                </span>
+              )}
+              {shop.signature_founded_year && (
+                <span>
+                  {t.signature.sinceLabel} <span className="text-white font-semibold">{shop.signature_founded_year}</span>
+                </span>
+              )}
+              {shop.signature_audience && <span className="text-white font-semibold">{shop.signature_audience}</span>}
+              {shop.made_in_cameroon && <span className="text-amber-300 font-semibold uppercase tracking-wide">{t.signature.madeInCameroon}</span>}
+            </div>
+          </section>
         )}
 
         {(shop.facebook_url || shop.instagram_url || shop.tiktok_url) && (
@@ -329,6 +359,11 @@ export default async function ShopPage({
                   ) : (
                     <p className="text-sm font-semibold mt-1">
                       {formatFcfa(p.price_fcfa)}
+                    </p>
+                  )}
+                  {p.accepts_offers && p.stock_quantity > 0 && (
+                    <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-amber-800">
+                      <IconHandshake className="w-3 h-3" /> {t.offers.openToOffers}
                     </p>
                   )}
                 </div>
