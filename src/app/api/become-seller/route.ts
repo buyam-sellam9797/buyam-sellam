@@ -14,7 +14,7 @@ function slugify(input: string) {
     .replace(/(^-|-$)/g, "");
 }
 
-type Body = { shopName: string; whatsappNumber: string; city: string };
+type Body = { shopName: string; whatsappNumber: string; city: string; isPersonal?: boolean };
 
 // Turns the signed-in account (usually a buyer) into a seller by adding
 // a shop to it — same login, same orders and favourites. Unlike
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       slug,
       whatsapp_number: whatsappNumber,
       city,
+      is_personal: Boolean(body.isPersonal),
     });
     if (!shopError) return NextResponse.json({ slug });
     if (shopError.code === "23505") {
