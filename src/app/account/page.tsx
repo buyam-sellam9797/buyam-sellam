@@ -34,6 +34,7 @@ import { LocationProblem } from "@/components/location-problem";
 import { useFavoritesContext } from "@/components/favorites-provider";
 import { IconPin, IconChat, IconHeart, IconBag } from "@/components/dash-icons";
 import { MyOffersSection, SharedBagsSection } from "./offers-and-links";
+import { PushToggle } from "@/components/push-toggle";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -127,6 +128,8 @@ export default function AccountPage() {
         t={t}
         onChanged={async () => setAddresses(await getMyAddresses())}
       />
+
+      <PushToggle audience="buyer" />
 
       <MyOffersSection t={t} />
 
