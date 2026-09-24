@@ -143,6 +143,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                       </Link>
                     </li>
                     <li>
+                      <Link href="/sell-item" className="hover:text-amber-600">
+                        {t.sellItem.footerLink}
+                      </Link>
+                    </li>
+                    <li>
                       <Link href="/login" className="hover:text-amber-600">
                         {t.footer.sellerLogin}
                       </Link>
