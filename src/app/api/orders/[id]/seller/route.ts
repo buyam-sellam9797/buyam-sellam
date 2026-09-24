@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
+import { getOrderSecrets, MAX_HANDOVER_ATTEMPTS } from "@/lib/order-secrets";
 
 // The seller's two actions on a paid order — "Accept" (I'm preparing
 // it) and "Mark as sent" — done on the server so the buyer can be
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const user = userData?.user;
   if (!user) return NextResponse.json({ error: "Please log in again." }, { status: 401 });
 
-  let body: { action?: string };
+  let body: { action?: string; code?: string };
   try {
     body = await req.json();
   } catch {
@@ -60,6 +61,39 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "This order can't be marked as sent right now." }, { status: 409 });
     }
     after(() => sendOrderEmails(admin, id, "shipped"));
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "handover") {
+    // The buyer gives the seller their 4-digit code only once they have
+    // the item; entering it confirms delivery straight away.
+    if (!["paid_held", "shipped"].includes(order.status)) {
+      return NextResponse.json({ error: "This order can't be confirmed right now." }, { status: 409 });
+    }
+    const secrets = await getOrderSecrets(admin, id);
+    if (!secrets) return NextResponse.json({ error: "No delivery code for this order." }, { status: 409 });
+    if (secrets.handover_attempts >= MAX_HANDOVER_ATTEMPTS) {
+      return NextResponse.json({ error: "locked" }, { status: 429 });
+    }
+    const code = String(body.code ?? "").replace(/\D/g, "");
+    if (code !== secrets.delivery_code) {
+      const attempts = secrets.handover_attempts + 1;
+      await admin.from("order_secrets").update({ handover_attempts: attempts }).eq("order_id", id);
+      return NextResponse.json(
+        { error: attempts >= MAX_HANDOVER_ATTEMPTS ? "locked" : "wrong", attemptsLeft: MAX_HANDOVER_ATTEMPTS - attempts },
+        { status: attempts >= MAX_HANDOVER_ATTEMPTS ? 429 : 400 }
+      );
+    }
+    const { data: updated } = await admin
+      .from("orders")
+      .update({ status: "completed", completed_at: now, updated_at: now })
+      .eq("id", id)
+      .in("status", ["paid_held", "shipped"])
+      .select("id, shipped_at")
+      .maybeSingle();
+    if (!updated) return NextResponse.json({ error: "This order can't be confirmed right now." }, { status: 409 });
+    if (!updated.shipped_at) await admin.from("orders").update({ shipped_at: now }).eq("id", id);
+    after(() => sendOrderEmails(admin, id, "completed"));
     return NextResponse.json({ ok: true });
   }
 
