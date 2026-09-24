@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { supabase, getMyAddresses, type Product, type BuyerAddress, type DeliveryZone } from "@/lib/supabase";
 import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/delivery";
-import { formatFcfa } from "@/lib/format";
+import { formatFcfa, formatEurFromFcfa } from "@/lib/format";
 import { useLocale } from "@/components/locale-provider";
 import { requestLocation, geoProblem } from "@/lib/geolocate";
 import { LocationProblem } from "@/components/location-problem";
@@ -22,12 +22,14 @@ export default function CheckoutForm({
   deliveryFee = 0,
   deliveryZones = [],
   sebpayOperators = [],
+  cardsEnabled = false,
 }: {
   product: Product;
   initialQuantity?: number;
   deliveryFee?: number;
   deliveryZones?: DeliveryZone[];
   sebpayOperators?: SebpayOperator[];
+  cardsEnabled?: boolean;
 }) {
   const { t, locale } = useLocale();
   // NotchPay stays the default in every case — SebPay is an extra
@@ -41,7 +43,7 @@ export default function CheckoutForm({
   // design work. Switching to SebPay always drops back to "full" so a
   // buyer can never end up on the SebPay gateway with layaway selected.
   const [paymentPlan, setPaymentPlan] = useState<"full" | "layaway">("full");
-  const [provider, setProvider] = useState<"mtn" | "orange">("mtn");
+  const [provider, setProvider] = useState<"mtn" | "orange" | "card">("mtn");
   const [sebpayOperator, setSebpayOperator] = useState<string>(sebpayOperators[0]?.slug ?? "");
   const [sebpayOtpCode, setSebpayOtpCode] = useState("");
   const [phone, setPhone] = useState("");
@@ -207,6 +209,11 @@ export default function CheckoutForm({
       return;
     }
 
+    if (provider === "card" && gateway === "notchpay" && !accountEmail && !buyerEmail.trim()) {
+      setError(t.checkout.cardNeedsEmail);
+      return;
+    }
+
     setStatus("waiting");
 
     try {
@@ -248,6 +255,18 @@ export default function CheckoutForm({
       if (!startRes.ok) {
         setError(startData.error ?? t.checkout.errorStart);
         setStatus("failed");
+        return;
+      }
+
+      // Card: continue on NotchPay's secure card page; it sends the buyer
+      // back to their order page once paid.
+      if (startData.authorizationUrl) {
+        try {
+          if (startData.orderId && startData.viewKey) localStorage.setItem(`bs_order_key_${startData.orderId}`, startData.viewKey);
+        } catch {
+          // storage blocked — the return link carries the key
+        }
+        window.location.href = startData.authorizationUrl;
         return;
       }
 
@@ -433,6 +452,7 @@ export default function CheckoutForm({
           <span>{t.checkout.totalLabel}</span>
           <span>{formatFcfa(total)}</span>
         </div>
+        <p className="text-right text-xs text-neutral-500 mt-0.5">≈ {formatEurFromFcfa(total, locale)}</p>
       </div>
 
       <div>
@@ -622,7 +642,26 @@ export default function CheckoutForm({
             >
               {t.checkout.orange}
             </button>
+            {cardsEnabled && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProvider("card");
+                  setPaymentPlan("full");
+                }}
+                className={`col-span-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                  provider === "card" ? "border-amber-500 bg-amber-50" : "border-neutral-300"
+                }`}
+              >
+                {t.checkout.card}
+              </button>
+            )}
           </div>
+          {provider === "card" && (
+            <p className="text-xs text-neutral-500 mt-2">
+              {t.checkout.cardNote.replace("{eur}", formatEurFromFcfa(total, locale))}
+            </p>
+          )}
         </div>
       ) : (
         <div>
@@ -667,7 +706,7 @@ export default function CheckoutForm({
         </div>
       )}
 
-      {gateway === "notchpay" && layawayAvailable && (
+      {gateway === "notchpay" && provider !== "card" && layawayAvailable && (
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <input
