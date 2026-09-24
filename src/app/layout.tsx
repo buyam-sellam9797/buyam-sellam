@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { getLocale } from "@/lib/get-locale";
@@ -12,11 +12,25 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { HeaderAuthNav } from "@/components/header-auth-nav";
 import { BagNavLink } from "@/components/bag-nav-link";
 import { IdleLogout } from "@/components/idle-logout";
+import { AppShell, InstallAppLink } from "@/components/app-shell";
 
 export const metadata: Metadata = {
   title: "Buyam Sellam — Shop Cameroon. Buy with Confidence.",
   description:
     "Buyam Sellam is Cameroon's trusted online marketplace for fashion and beauty — verified sellers, pay by MTN MoMo or Orange Money, held safely until you confirm delivery.",
+  applicationName: "Buyam Sellam",
+  // iPhone: open full screen from the home screen, with our own name
+  // under the icon (the icon itself comes from app/apple-icon).
+  appleWebApp: { capable: true, title: "Buyam Sellam", statusBarStyle: "default" },
+  icons: { apple: [{ url: "/app-icon/apple-180", sizes: "180x180", type: "image/png" }] },
+  formatDetection: { telephone: false },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 // Sitewide structured data — tells search engines what Buyam Sellam is
@@ -108,6 +122,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </header>
           <main className="flex-1">{children}</main>
           <IdleLogout />
+          <AppShell />
           <footer className="border-t border-neutral-200 bg-white mt-16">
             <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-neutral-500">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
@@ -241,7 +256,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               )}
               <div className="mt-8 pt-6 border-t border-neutral-100 flex flex-col sm:flex-row gap-2 sm:justify-between text-xs">
                 <p>&copy; {new Date().getFullYear()} {t.footer.rights}</p>
-                <p>{t.footer.payWith}</p>
+                <p className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>{t.footer.payWith}</span>
+                  <InstallAppLink className="font-semibold text-neutral-900 hover:text-amber-600 underline underline-offset-2" />
+                </p>
               </div>
             </div>
           </footer>
