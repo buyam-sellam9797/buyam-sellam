@@ -10,6 +10,7 @@ import { LocaleProvider } from "@/components/locale-provider";
 import { FavoritesProvider } from "@/components/favorites-provider";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { HeaderAuthNav } from "@/components/header-auth-nav";
+import { BagNavLink } from "@/components/bag-nav-link";
 import { IdleLogout } from "@/components/idle-logout";
 
 export const metadata: Metadata = {
@@ -99,6 +100,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                 <Link href="/shops" className="hidden sm:inline hover:text-amber-600">
                   {t.footer.verifiedSellers}
                 </Link>
+                <BagNavLink />
                 <HeaderAuthNav />
                 <LanguageSwitcher />
               </nav>
