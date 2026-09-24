@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "./locale-provider";
 import { useBag, bagCount } from "@/lib/bag";
 import { supabase, getMyShop } from "@/lib/supabase";
-import { IconBag } from "./dash-icons";
+import { IconBag, IconBell } from "./dash-icons";
+import { enablePush, currentSubscription } from "./push-toggle";
 
 // Everything that makes the site behave like an installed app:
 //  - registers the service worker (fast reopen, offline screen, saved pages)
@@ -236,6 +237,8 @@ export function AppShell() {
 
       {pwa.sheet !== "none" && <InstallSheet kind={pwa.sheet} onClose={() => setState({ sheet: "none" })} />}
 
+      {standalone && !busy && <PushNudge />}
+
       <AppTabBar />
     </>
   );
@@ -394,5 +397,60 @@ function ShopGlyph() {
       <path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0" />
       <path d="M5 11v9h14v-9" />
     </svg>
+  );
+}
+
+// Inside the installed app, a signed-in person who hasn't decided about
+// notifications yet gets one small card offering to turn them on (at
+// most once a week if they tap "Later").
+const NUDGE_KEY = "bs_push_nudge_at";
+function PushNudge() {
+  const { t, locale } = useLocale();
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!("Notification" in window) || !("PushManager" in window) || Notification.permission !== "default") return;
+    const last = readNumber(NUDGE_KEY);
+    if (last && Date.now() - last < 7 * 86400000) return;
+    let cancelled = false;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session || cancelled) return;
+      const sub = await currentSubscription();
+      if (!cancelled && !sub) setShow(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!show) return null;
+  const later = () => {
+    writeValue(NUDGE_KEY, String(Date.now()));
+    setShow(false);
+  };
+  return (
+    <div className="fixed z-40 inset-x-3 bottom-[calc(72px+env(safe-area-inset-bottom))] rounded-2xl bg-neutral-900 text-white shadow-xl p-3 flex items-center gap-3">
+      <span className="w-9 h-9 shrink-0 rounded-xl bg-white/10 text-amber-400 flex items-center justify-center">
+        <IconBell className="w-5 h-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold leading-tight">{t.push.nudgeTitle}</p>
+        <p className="text-xs text-neutral-300">{t.push.nudgeBody}</p>
+      </div>
+      <button type="button" onClick={later} className="text-xs text-neutral-300 px-1">
+        {t.push.later}
+      </button>
+      <button
+        type="button"
+        onClick={async () => {
+          writeValue(NUDGE_KEY, String(Date.now()));
+          setShow(false);
+          await enablePush(locale);
+        }}
+        className="rounded-lg bg-amber-500 text-neutral-900 text-xs font-bold px-3 py-2"
+      >
+        {t.push.turnOn}
+      </button>
+    </div>
   );
 }
