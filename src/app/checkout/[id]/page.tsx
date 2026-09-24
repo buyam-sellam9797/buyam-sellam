@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProductById, getDeliveryZones } from "@/lib/supabase";
+import { getAdminClient } from "@/lib/supabase-admin";
+import { effectiveOfferStatus, type OfferRow } from "@/lib/offers";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
 import { getOperatorsForCountry, getCurrencyForCountry, isSebpayConfigured, SEBPAY_COUNTRY_CODE } from "@/lib/sebpay";
@@ -12,14 +14,32 @@ export default async function CheckoutPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ qty?: string }>;
+  searchParams: Promise<{ qty?: string; offer?: string }>;
 }) {
   const locale = await getLocale();
   const t = getDictionary(locale);
   const { id } = await params;
-  const { qty } = await searchParams;
+  const { qty, offer: offerId } = await searchParams;
   const product = await getProductById(id);
   if (!product) notFound();
+
+  // Paying a price agreed through an offer: the page only shows the
+  // agreed amount; the payment route re-checks that it's this buyer's
+  // deal, on this item, still within the time to pay.
+  let offer: { id: string; unitPriceFcfa: number } | undefined;
+  let offerProblem = false;
+  if (offerId && /^[0-9a-f-]{36}$/i.test(offerId)) {
+    const admin = getAdminClient();
+    const { data } = admin
+      ? await admin.from("offers").select("id, product_id, status, agreed_fcfa, expires_at, pay_by").eq("id", offerId).maybeSingle()
+      : { data: null };
+    const row = data as Pick<OfferRow, "id" | "product_id" | "status" | "agreed_fcfa" | "expires_at" | "pay_by"> | null;
+    if (row && row.product_id === product.id && effectiveOfferStatus(row) === "accepted" && row.agreed_fcfa) {
+      offer = { id: row.id, unitPriceFcfa: row.agreed_fcfa };
+    } else {
+      offerProblem = true;
+    }
+  }
 
   const requestedQty = Number(qty);
   const initialQuantity = Number.isInteger(requestedQty)
@@ -44,6 +64,11 @@ export default async function CheckoutPage({
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       <h1 className="text-xl font-bold mb-6">{t.checkout.confirmOrder}</h1>
+      {offerProblem && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {t.offers.checkoutOfferGone}
+        </p>
+      )}
       <CheckoutForm
         product={product}
         initialQuantity={initialQuantity}
@@ -51,6 +76,7 @@ export default async function CheckoutPage({
         deliveryZones={deliveryZones}
         sebpayOperators={sebpayCurrency ? sebpayOperators : []}
         cardsEnabled={process.env.NOTCHPAY_CARDS_ENABLED === "true"}
+        offer={offer}
       />
     </div>
   );
