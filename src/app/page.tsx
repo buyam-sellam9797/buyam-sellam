@@ -1,10 +1,15 @@
 import Link from "next/link";
-import Image from "next/image";
-import { getCategories, getActiveProducts, getHomeStats } from "@/lib/supabase";
+import { getCategories, getHomeStats } from "@/lib/supabase";
+import { getHomeShelves, BUDGET_PRICE } from "@/lib/home-shelves";
 import { formatFcfa } from "@/lib/format";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary, plural } from "@/lib/i18n";
-import { IconStar, IconCard, IconLock, IconBag, StatusDot } from "@/components/dash-icons";
+import { IconStar, IconCard, IconLock, IconTrendingUp, IconHandshake, IconTag, IconSeal, IconHeart } from "@/components/dash-icons";
+import { Shelf, ShelfItem } from "@/components/shelf";
+import { ProductCard } from "@/components/product-card";
+import { ShopCard } from "@/components/shop-card";
+
+const BUDGETS = [2000, 5000, 10000, 25000];
 
 // This page lists live products/categories from Supabase — never cache
 // it statically, or new sellers/listings wouldn't show up until the
@@ -24,12 +29,8 @@ const MIN_REVIEWS_TO_SHOW = 5;
 export default async function Home() {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const [categories, products, stats] = await Promise.all([
-    getCategories(),
-    getActiveProducts(),
-    getHomeStats(),
-  ]);
-  const featured = products.slice(0, 4);
+  const [categories, shelves, stats] = await Promise.all([getCategories(), getHomeShelves(), getHomeStats()]);
+  const cardSizes = "(max-width: 640px) 44vw, 20vw";
 
   const statItems = [
     stats.productCount >= MIN_PRODUCTS_TO_SHOW && {
@@ -130,14 +131,53 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 pb-16">
-        <div className="flex items-baseline justify-between mb-4">
-          <h2 className="text-lg font-semibold">{t.home.justListed}</h2>
-          <Link href="/browse" className="text-sm text-amber-600 hover:underline">
-            {t.home.seeAll}
+      <section className="mx-auto max-w-6xl px-4 pb-2">
+        <p className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-2">{t.shelves.budgetTitle}</p>
+        <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden -mx-4 px-4 sm:mx-0 sm:px-0">
+          {BUDGETS.map((b) => (
+            <Link
+              key={b}
+              href={`/browse?maxPrice=${b}&sort=price_asc`}
+              className="shrink-0 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:border-neutral-900"
+            >
+              {t.shelves.underPrice.replace("{price}", formatFcfa(b))}
+            </Link>
+          ))}
+          <Link
+            href="/browse?offers=1"
+            className="shrink-0 rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:border-amber-600 inline-flex items-center gap-1.5"
+          >
+            <IconHandshake className="w-4 h-4" /> {t.offers.openToOffers}
           </Link>
         </div>
-        {featured.length === 0 ? (
+      </section>
+
+      {shelves.trending.length > 0 && (
+        <Shelf
+          title={t.shelves.trendingTitle}
+          subtitle={t.shelves.trendingSubtitle}
+          href="/browse?sort=popular"
+          seeAll={t.home.seeAll}
+          icon={<IconTrendingUp className="w-5 h-5 text-amber-600" />}
+        >
+          {shelves.trending.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.justListed.length > 0 ? (
+        <Shelf title={t.home.justListed} subtitle={t.shelves.justListedSubtitle} href="/browse" seeAll={t.home.seeAll} rows={2}>
+          {shelves.justListed.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      ) : (
+        <section className="mx-auto max-w-6xl px-4 py-10">
           <div className="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-500">
             {t.home.noProductsYet}{" "}
             <Link href="/sell" className="text-amber-600 hover:underline">
@@ -145,42 +185,100 @@ export default async function Home() {
             </Link>
             .
           </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {featured.map((p) => (
-              <Link
-                key={p.id}
-                href={`/product/${p.id}`}
-                className="rounded-xl border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition"
-              >
-                <div className="relative aspect-square bg-neutral-100 flex items-center justify-center overflow-hidden">
-                  {p.image_urls?.[0] ? (
-                    <Image
-                      src={p.image_urls[0]}
-                      alt={p.title}
-                      fill
-                      sizes="(max-width: 640px) 50vw, 25vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <IconBag className="w-10 h-10 text-neutral-300" />
-                  )}
-                </div>
-                <div className="p-3">
-                  <p className="text-sm font-medium line-clamp-1">{p.title}</p>
-                  <p className="text-xs text-neutral-500 mt-0.5 flex items-center gap-1">
-                    {p.shop?.shop_name}
-                    {p.shop?.is_verified && <StatusDot tone="success" className="inline-block w-1.5 h-1.5 rounded-full shrink-0" />}
-                  </p>
-                  <p className="text-sm font-semibold mt-1">
-                    {formatFcfa(p.price_fcfa)}
-                  </p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
+        </section>
+      )}
+
+      {shelves.signatureShops.length > 0 && (
+        <Shelf
+          tone="dark"
+          title={t.signature.shelfTitle}
+          subtitle={t.signature.shelfSubtitle}
+          href="/signature"
+          seeAll={t.home.seeAll}
+          icon={<IconSeal className="w-5 h-5 text-amber-300" />}
+        >
+          {shelves.signatureShops.map((shop) => (
+            <ShelfItem key={shop.id}>
+              <ShopCard shop={shop} t={t} tone="dark" />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.underBudget.length > 0 && (
+        <Shelf
+          title={t.shelves.underPrice.replace("{price}", formatFcfa(BUDGET_PRICE))}
+          subtitle={t.shelves.underBudgetSubtitle}
+          href={`/browse?maxPrice=${BUDGET_PRICE}&sort=price_asc`}
+          seeAll={t.home.seeAll}
+        >
+          {shelves.underBudget.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.openToOffers.length > 0 && (
+        <Shelf
+          title={t.shelves.offersTitle}
+          subtitle={t.shelves.offersSubtitle}
+          href="/browse?offers=1"
+          seeAll={t.home.seeAll}
+          icon={<IconHandshake className="w-5 h-5 text-amber-600" />}
+        >
+          {shelves.openToOffers.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.newWithTags.length > 0 && (
+        <Shelf
+          title={t.conditions.grades.new_with_tags}
+          subtitle={t.shelves.newWithTagsSubtitle}
+          href="/browse?condition=new_with_tags"
+          seeAll={t.home.seeAll}
+          icon={<IconTag className="w-5 h-5 text-amber-600" />}
+        >
+          {shelves.newWithTags.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.onSale.length > 0 && (
+        <Shelf title={t.shelves.onSaleTitle} subtitle={t.shelves.onSaleSubtitle} href="/browse?sale=1" seeAll={t.home.seeAll}>
+          {shelves.onSale.map((p) => (
+            <ShelfItem key={p.id}>
+              <ProductCard product={p} t={t} compact sizes={cardSizes} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      {shelves.popularShops.length > 0 && (
+        <Shelf
+          title={t.shelves.popularShopsTitle}
+          subtitle={t.shelves.popularShopsSubtitle}
+          href="/signature#loved"
+          seeAll={t.home.seeAll}
+          icon={<IconHeart className="w-5 h-5 text-amber-600" />}
+        >
+          {shelves.popularShops.map((shop) => (
+            <ShelfItem key={shop.id}>
+              <ShopCard shop={shop} t={t} />
+            </ShelfItem>
+          ))}
+        </Shelf>
+      )}
+
+      <div className="pb-8" />
 
       <section className="bg-white border-t border-neutral-200">
         <div className="mx-auto max-w-6xl px-4 py-12 grid sm:grid-cols-3 gap-8 text-sm">
