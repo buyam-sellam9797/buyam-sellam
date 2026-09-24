@@ -4,6 +4,8 @@
 // full dictionaries are kept in sync by hand rather than using a
 // heavier i18n library that this small a site doesn't need.
 
+import { marketEn, marketFr } from "./i18n-market";
+
 export type Locale = "en" | "fr";
 
 export const locales: Locale[] = ["en", "fr"];
@@ -1325,6 +1327,7 @@ const en = {
     errorUnreachable: "Could not reach the server. Please check your connection and try again.",
     tryAgain: "Try again",
   },
+  ...marketEn,
 };
 
 const fr: typeof en = {
@@ -2649,6 +2652,7 @@ const fr: typeof en = {
     errorUnreachable: "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
     tryAgain: "Réessayer",
   },
+  ...marketFr,
 };
 
 export const dictionaries = { en, fr };
