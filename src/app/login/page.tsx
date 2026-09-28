@@ -1,10 +1,20 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase, getMyProfile } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+
+// Where to go after logging in. ?next=/product/... sends people back to
+// what they were doing (making an offer, sharing a bag); only same-site
+// paths are followed.
+function destinationFor(role: string | null | undefined, next: string | null): string {
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
+  if (role === "admin") return safeNext ?? "/admin";
+  if (safeNext) return safeNext;
+  return role === "seller" ? "/dashboard" : "/account";
+}
 import {
   AuthShell,
   AuthField,
@@ -23,7 +33,6 @@ const REMEMBERED_EMAIL_KEY = "bs_remembered_email";
 // role. "Remember my email" only pre-fills the email field on this
 // device — it never keeps anyone signed in past the inactivity limit.
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();
   const [email, setEmail] = useState("");
@@ -45,6 +54,19 @@ function LoginForm() {
       // Storage blocked (private mode etc.) — the field just starts empty.
     }
   }, []);
+
+  // Already logged in (another tab, or "Remember me"): skip the form.
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!data.session || cancelled) return;
+      const profile = await getMyProfile();
+      if (!cancelled) window.location.replace(destinationFor(profile?.role, searchParams.get("next")));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   function friendlyError(message: string): string {
     const m = message.toLowerCase();
@@ -70,15 +92,9 @@ function LoginForm() {
       // Not critical.
     }
     const profile = await getMyProfile();
-    setSubmitting(false);
-    // ?next=/product/... sends the buyer back to what they were doing
-    // (making an offer, sharing a bag). Only same-site paths are followed.
-    const next = searchParams.get("next");
-    const safeNext = next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
-    if (profile?.role === "admin") router.push(safeNext ?? "/admin");
-    else if (safeNext) router.push(safeNext);
-    else if (profile?.role === "seller") router.push("/dashboard");
-    else router.push("/account");
+    // A full page load (not the in-app router) so the destination always
+    // opens, with the new session already in place.
+    window.location.assign(destinationFor(profile?.role, searchParams.get("next")));
   }
 
   return (
