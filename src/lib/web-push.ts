@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Web Push (phone/desktop notifications) without an extra library:
+// Web Push (phone/desktop notifications), built without an extra library:
 //  - VAPID (RFC 8292): a short signed token proving the push comes from us
 //  - payload encryption "aes128gcm" (RFC 8291 / RFC 8188), so only the
 //    subscriber's device can read the message
