@@ -78,7 +78,7 @@ export function MyOffersSection({ t }: { t: T }) {
 
   if (offers === null || offers.length === 0) {
     return offers === null ? null : (
-      <section id="offers">
+      <section id="offers" className="scroll-mt-24">
         <h2 className="text-sm font-semibold mb-3">{t.offers.accountTitle}</h2>
         <p className="text-sm text-neutral-500">{t.offers.accountEmpty}</p>
       </section>
@@ -86,7 +86,7 @@ export function MyOffersSection({ t }: { t: T }) {
   }
 
   return (
-    <section id="offers">
+    <section id="offers" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
         <IconHandshake className="w-4 h-4" /> {t.offers.accountTitle}
       </h2>
@@ -200,7 +200,7 @@ export function SharedBagsSection({ t }: { t: T }) {
   if (!bags || bags.length === 0) return null;
 
   return (
-    <section id="shared-bags">
+    <section id="shared-bags" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3 inline-flex items-center gap-1.5">
         <IconGift className="w-4 h-4" /> {t.payForMe.accountTitle}
       </h2>
