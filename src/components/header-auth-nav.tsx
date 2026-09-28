@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase, getMyProfile, getMyShop } from "@/lib/supabase";
 import { useLocale } from "@/components/locale-provider";
+import { AccountMenu, type AccountMenuUser } from "@/components/account-menu";
 
 type AuthState =
   | { kind: "checking" }
   | { kind: "loggedOut" }
-  | { kind: "admin" }
-  | { kind: "seller" }
-  | { kind: "buyer" };
+  | { kind: "admin"; user: AccountMenuUser }
+  | { kind: "seller"; user: AccountMenuUser }
+  | { kind: "buyer"; user: AccountMenuUser };
 
 // The header used to show one static "Account" link no matter who was
 // looking at it — signed out, a signed-in buyer, and a signed-in
@@ -40,9 +41,15 @@ export function HeaderAuthNav() {
       }
       const [profile, shop] = await Promise.all([getMyProfile(), getMyShop()]);
       if (cancelled) return;
-      if (profile?.role === "admin") setState({ kind: "admin" });
-      else if (shop) setState({ kind: "seller" });
-      else setState({ kind: "buyer" });
+      const user: AccountMenuUser = {
+        name: profile?.full_name ?? null,
+        email: session.user.email ?? null,
+        role: profile?.role ?? null,
+        shop: shop ? { name: shop.shop_name, slug: shop.slug } : null,
+      };
+      if (profile?.role === "admin") setState({ kind: "admin", user });
+      else if (shop) setState({ kind: "seller", user });
+      else setState({ kind: "buyer", user });
     }
 
     resolve();
@@ -83,11 +90,7 @@ export function HeaderAuthNav() {
   }
 
   if (state.kind === "admin") {
-    return (
-      <Link href="/admin" className="hover:text-amber-600">
-        {t.nav.admin}
-      </Link>
-    );
+    return <AccountMenu user={state.user} />;
   }
 
   if (state.kind === "seller") {
@@ -96,21 +99,22 @@ export function HeaderAuthNav() {
     // out the way "Open a shop" used to) fully replaces it rather than
     // sitting next to it.
     return (
-      <Link
-        href="/dashboard"
-        className="rounded-full bg-amber-500 text-white font-semibold px-3 sm:px-4 py-1.5 hover:bg-amber-600"
-      >
-        {t.nav.dashboard}
-      </Link>
+      <>
+        <Link
+          href="/dashboard"
+          className="hidden sm:inline rounded-full bg-amber-500 text-white font-semibold px-4 py-1.5 hover:bg-amber-600"
+        >
+          {t.nav.dashboard}
+        </Link>
+        <AccountMenu user={state.user} />
+      </>
     );
   }
 
   return (
     <>
-      <Link href="/account" className="hover:text-amber-600">
-        {t.nav.account}
-      </Link>
       <SellPill label={t.nav.openShop} short={t.nav.sell} />
+      <AccountMenu user={state.user} />
     </>
   );
 }
