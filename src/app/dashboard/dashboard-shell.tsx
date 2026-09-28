@@ -94,7 +94,7 @@ export function DashboardShell<Tab extends string>({
     <div className="dash-shell">
       <div className="mx-auto flex max-w-[1400px]">
         {/* Desktop sidebar — persistent, never overlays content */}
-        <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto overscroll-contain border-r" style={{ borderColor: "var(--dash-border)" }}>
+        <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:shrink-0 lg:h-[calc(100vh-57px)] lg:sticky lg:top-[57px] lg:overflow-y-auto overscroll-contain border-r" style={{ borderColor: "var(--dash-border)" }}>
           <div className="flex items-center gap-2.5 px-5 py-5">
             <span
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
@@ -164,7 +164,7 @@ export function DashboardShell<Tab extends string>({
 
         <div className="flex-1 min-w-0">
           <header
-            className="sticky top-0 z-20 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b"
+            className="sticky top-[57px] z-[9] flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-white border-b"
             style={{ borderColor: "var(--dash-border)" }}
           >
             <div className="flex items-center gap-3 min-w-0">
