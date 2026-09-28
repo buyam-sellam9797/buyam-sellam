@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useLocale } from "./locale-provider";
 import { startInstall } from "./app-shell";
+import { ThemeSwitch } from "./theme";
 import {
   IconGrid,
   IconCart,
@@ -186,6 +187,10 @@ export function AccountMenu({
                 setLocale(locale === "fr" ? "en" : "fr");
               }}
             />
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="text-neutral-500 text-xs">{m.appearance}</span>
+              <ThemeSwitch />
+            </div>
             {!standalone && (
               <MenuButton
                 icon={<PhoneGlyph />}
