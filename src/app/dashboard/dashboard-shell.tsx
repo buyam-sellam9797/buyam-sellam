@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { IconLink, IconLogout } from "@/components/dash-icons";
+import { AccountMenu, type AccountMenuUser } from "@/components/account-menu";
 
 export type DashNavItem<Tab extends string> = {
   key: Tab;
@@ -23,6 +24,7 @@ export function DashboardShell<Tab extends string>({
   activeTab,
   onTabChange,
   onLogout,
+  menuUser,
   logoutLabel,
   viewShopHref,
   viewShopLabel,
@@ -36,6 +38,7 @@ export function DashboardShell<Tab extends string>({
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   onLogout: () => void;
+  menuUser: AccountMenuUser;
   logoutLabel: string;
   viewShopHref?: string;
   viewShopLabel: string;
@@ -180,12 +183,14 @@ export function DashboardShell<Tab extends string>({
             </div>
             <div className="flex items-center gap-3 shrink-0">
               {notificationSlot}
-              <span
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-semibold text-sm"
-                style={{ background: "var(--dash-primary)" }}
-              >
-                {initial}
-              </span>
+              <AccountMenu
+                user={menuUser}
+                size="sm"
+                onSignOut={onLogout}
+                onDashboardTab={(key) => {
+                  if (tabs.some((item) => item.key === key)) onTabChange(key as Tab);
+                }}
+              />
             </div>
           </header>
           <main className="px-4 sm:px-6 py-6 max-w-5xl">{children}</main>
