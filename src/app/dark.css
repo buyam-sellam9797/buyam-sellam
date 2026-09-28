@@ -1,0 +1,92 @@
+/* Dark theme. Generated from the colour classes the site uses
+   (kept in sync by hand when new colours are added): each light colour gets a dark counterpart,
+   applied only when <html data-theme="dark">. Unlayered, so it wins
+   over Tailwind's utilities without !important. */
+:root[data-theme=dark]{color-scheme:dark}
+:root[data-theme=dark] body{background:#0d0d0e;color:#f4f4f5}
+:root[data-theme=dark] input,:root[data-theme=dark] select,:root[data-theme=dark] textarea{background-color:#161618;color:#f4f4f5}
+:root[data-theme=dark] ::placeholder{color:#6b6b73}
+/* Dark text stays dark on the solid amber buttons and badges. */
+:root[data-theme=dark] :is(.bg-amber-300,.bg-amber-400,.bg-amber-500):is(.text-neutral-900,.text-neutral-800,.text-amber-900,.text-amber-950){color:#171717}
+:root[data-theme=dark] img{filter:none}
+/* Sign-in pages set their light backdrop inline. */
+:root[data-theme=dark] .auth-backdrop{background:radial-gradient(800px 420px at 95% 0%,rgba(245,158,11,.10),rgba(0,0,0,0) 60%),#0d0d0e!important}
+:root[data-theme=dark] .dash-shell{
+  --dash-primary:#3a3a41;--dash-primary-dark:#4a4a52;--dash-primary-wash:rgba(255,255,255,.06);
+  --dash-ink:#f4f4f5;--dash-muted:#9d9da5;--dash-bg:#0d0d0e;--dash-bg-2:#141416;--dash-card:#161618;
+  --dash-border:#2c2c31;--dash-border-strong:#3c3c42;--dash-gold-ink:#fcd34d;
+  --dash-danger:#f87171;--dash-danger-wash:rgba(239,68,68,.12);--dash-success:#4ade80;--dash-success-wash:rgba(34,197,94,.12)}
+:root[data-theme=dark] .dash-btn-outline{color:#f4f4f5}
+:root[data-theme=dark] .dash-input:focus{outline-color:#a1a1aa}
+:root[data-theme=dark] .dash-input{background:#161618}
+:root[data-theme=dark] .text-neutral-500{color:#9d9da5}
+:root[data-theme=dark] .border-neutral-300{border-color:#3c3c42}
+:root[data-theme=dark] .border-neutral-200{border-color:#2e2e33}
+:root[data-theme=dark] .bg-neutral-900{background-color:#2a2a2f}
+:root[data-theme=dark] .bg-white{background-color:#161618}
+:root[data-theme=dark] .text-neutral-600{color:#b4b4bb}
+:root[data-theme=dark] .hover\:border-neutral-900:hover{border-color:#e4e4e7}
+:root[data-theme=dark] .hover\:text-amber-600:hover{color:#fbbf24}
+:root[data-theme=dark] .hover\:bg-neutral-700:hover{background-color:#3a3a41}
+:root[data-theme=dark] .text-red-700{color:#fca5a5}
+:root[data-theme=dark] .text-amber-600{color:#fbbf24}
+:root[data-theme=dark] .bg-amber-50{background-color:rgba(245,158,11,.10)}
+:root[data-theme=dark] .text-neutral-700{color:#d4d4d8}
+:root[data-theme=dark] .bg-neutral-100{background-color:#222226}
+:root[data-theme=dark] .border-red-200{border-color:rgba(239,68,68,.3)}
+:root[data-theme=dark] .bg-red-50{background-color:rgba(239,68,68,.12)}
+:root[data-theme=dark] .text-neutral-900{color:#f4f4f5}
+:root[data-theme=dark] .text-neutral-400{color:#7e7e87}
+:root[data-theme=dark] .bg-neutral-50{background-color:#0d0d0e}
+:root[data-theme=dark] .text-neutral-300{color:#a1a1aa}
+:root[data-theme=dark] .bg-green-50{background-color:rgba(34,197,94,.12)}
+:root[data-theme=dark] .border-amber-200{border-color:rgba(245,158,11,.3)}
+:root[data-theme=dark] .text-amber-900{color:#fde68a}
+:root[data-theme=dark] .border-neutral-100{border-color:#232327}
+:root[data-theme=dark] .border-green-200{border-color:rgba(34,197,94,.3)}
+:root[data-theme=dark] .text-green-700{color:#4ade80}
+:root[data-theme=dark] .border-neutral-900{border-color:#e4e4e7}
+:root[data-theme=dark] .text-red-600{color:#f87171}
+:root[data-theme=dark] .text-green-800{color:#86efac}
+:root[data-theme=dark] .hover\:text-neutral-900:hover{color:#f4f4f5}
+:root[data-theme=dark] .divide-neutral-100 > *{border-color:#232327}
+:root[data-theme=dark] .text-neutral-800{color:#e4e4e7}
+:root[data-theme=dark] .text-amber-700{color:#fcd34d}
+:root[data-theme=dark] .text-green-900{color:#bbf7d0}
+:root[data-theme=dark] .text-amber-800{color:#fcd34d}
+:root[data-theme=dark] .bg-neutral-200{background-color:#2c2c31}
+:root[data-theme=dark] .bg-white\/90{background-color:rgba(22,22,24,.9)}
+:root[data-theme=dark] .divide-neutral-200 > *{border-color:#2e2e33}
+:root[data-theme=dark] .border-amber-300{border-color:rgba(245,158,11,.4)}
+:root[data-theme=dark] .text-red-800{color:#fca5a5}
+:root[data-theme=dark] .hover\:bg-neutral-900:hover{background-color:#2a2a2f}
+:root[data-theme=dark] .hover\:bg-green-50:hover{background-color:rgba(34,197,94,.12)}
+:root[data-theme=dark] .border-red-300{border-color:rgba(239,68,68,.4)}
+:root[data-theme=dark] .text-red-900{color:#fecaca}
+:root[data-theme=dark] .text-red-500{color:#f87171}
+:root[data-theme=dark] .text-green-600{color:#4ade80}
+:root[data-theme=dark] .hover\:bg-neutral-100:hover{background-color:#222226}
+:root[data-theme=dark] .focus\:border-neutral-900:focus{border-color:#e4e4e7}
+:root[data-theme=dark] .disabled\:bg-neutral-100:disabled{background-color:#222226}
+:root[data-theme=dark] .bg-white\/95{background-color:rgba(22,22,24,.95)}
+:root[data-theme=dark] .bg-amber-100{background-color:rgba(245,158,11,.18)}
+:root[data-theme=dark] .text-emerald-700{color:#6ee7b7}
+:root[data-theme=dark] .text-blue-700{color:#93c5fd}
+:root[data-theme=dark] .text-amber-950{color:#fde68a}
+:root[data-theme=dark] .hover\:text-red-600:hover{color:#f87171}
+:root[data-theme=dark] .hover\:text-amber-700:hover{color:#fcd34d}
+:root[data-theme=dark] .hover\:border-neutral-500:hover{border-color:#6b6b73}
+:root[data-theme=dark] .hover\:border-neutral-400:hover{border-color:#55555c}
+:root[data-theme=dark] .hover\:bg-red-50:hover{background-color:rgba(239,68,68,.12)}
+:root[data-theme=dark] .hover\:bg-blue-50:hover{background-color:rgba(59,130,246,.12)}
+:root[data-theme=dark] .group:hover .group-hover\:text-amber-700{color:#fcd34d}
+:root[data-theme=dark] .focus\:ring-neutral-900\/10:focus{--tw-ring-color:rgba(255,255,255,.12)}
+:root[data-theme=dark] .focus\:bg-white:focus{background-color:#161618}
+:root[data-theme=dark] .focus-within\:border-neutral-900:focus-within{border-color:#e4e4e7}
+:root[data-theme=dark] .border-green-300{border-color:rgba(34,197,94,.4)}
+:root[data-theme=dark] .border-amber-100{border-color:rgba(245,158,11,.22)}
+:root[data-theme=dark] .bg-neutral-900\/90{background-color:rgba(42,42,47,.9)}
+:root[data-theme=dark] .bg-neutral-800{background-color:#323238}
+:root[data-theme=dark] .bg-neutral-700{background-color:#3a3a41}
+:root[data-theme=dark] .bg-neutral-50\/60{background-color:rgba(13,13,14,.6)}
+:root[data-theme=dark] .bg-emerald-50{background-color:rgba(34,197,94,.12)}
