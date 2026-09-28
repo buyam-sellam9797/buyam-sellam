@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 import { getCategories, getHomeStats } from "@/lib/supabase";
 import { getHomeShelves, BUDGET_PRICE } from "@/lib/home-shelves";
 import { formatFcfa } from "@/lib/format";
@@ -26,10 +27,19 @@ const MIN_SELLERS_TO_SHOW = 3;
 const MIN_ORDERS_TO_SHOW = 10;
 const MIN_REVIEWS_TO_SHOW = 5;
 
+// The listings themselves are the same for every visitor, so they are
+// fetched at most once a minute instead of on every page view (the page
+// stays dynamic for the visitor's language).
+const getHomeData = unstable_cache(
+  async () => Promise.all([getCategories(), getHomeShelves(), getHomeStats()]),
+  ["home-data-v1"],
+  { revalidate: 60 }
+);
+
 export default async function Home() {
   const locale = await getLocale();
   const t = getDictionary(locale);
-  const [categories, shelves, stats] = await Promise.all([getCategories(), getHomeShelves(), getHomeStats()]);
+  const [categories, shelves, stats] = await getHomeData();
   const cardSizes = "(max-width: 640px) 44vw, 20vw";
 
   const statItems = [
