@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
+import "./dark.css";
+import { unstable_cache } from "next/cache";
+import { ThemeSwitch, themeInitScript } from "@/components/theme";
 import { getLocale } from "@/lib/get-locale";
 import { getDictionary } from "@/lib/i18n";
 import { getSiteUrl } from "@/lib/site";
@@ -68,14 +71,22 @@ function websiteJsonLd() {
   };
 }
 
+// Categories change rarely; every page used to fetch them again.
+const getCachedCategories = unstable_cache(async () => getCategories(), ["layout-categories-v1"], { revalidate: 300 });
+
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const locale = await getLocale();
   const t = getDictionary(locale);
   const featuredCities = CITIES.slice(0, 5);
-  const categories = await getCategories();
+  const categories = await getCachedCategories();
 
   return (
-    <html lang={locale} className="h-full antialiased">
+    // suppressHydrationWarning: the theme script below sets data-theme
+    // on <html> before React loads.
+    <html lang={locale} className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col bg-neutral-50 text-neutral-900">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd()) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd()) }} />
@@ -260,6 +271,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
                   <span>{t.footer.payWith}</span>
                   <InstallAppLink className="font-semibold text-neutral-900 hover:text-amber-600 underline underline-offset-2" />
                 </p>
+                <ThemeSwitch />
               </div>
             </div>
           </footer>
