@@ -15,6 +15,42 @@ export const supabase = createClient(
   supabaseAnonKey || "placeholder-key"
 );
 
+
+// Who is signed in, read from the locally stored session. auth.getUser()
+// makes a network round trip every call and supabase-js runs them one
+// after another, so a page calling several helpers waited on a queue of
+// them. The database checks the token on every query anyway (RLS), so
+// the local session is enough to know which rows to ask for.
+async function currentUserData(): Promise<{ user: import("@supabase/supabase-js").User | null }> {
+  const { data } = await supabase.auth.getSession();
+  return { user: data.session?.user ?? null };
+}
+
+// getMyShop / getMyProfile are called by the header, the dashboard and
+// the account page on the same load. Share one request for a few
+// seconds instead of repeating it; cleared whenever sign-in changes.
+const sharedLookups = new Map<string, { at: number; promise: Promise<unknown> }>();
+function shared<T>(key: string, load: () => Promise<T>): Promise<T> {
+  if (typeof window === "undefined") return load();
+  const hit = sharedLookups.get(key);
+  if (hit && Date.now() - hit.at < 5000) return hit.promise as Promise<T>;
+  const promise = load();
+  sharedLookups.set(key, { at: Date.now(), promise });
+  // Never keep "no shop yet": the next call right after opening one must see it.
+  promise.then((value) => {
+    if (value == null && sharedLookups.get(key)?.promise === promise) sharedLookups.delete(key);
+  });
+  return promise;
+}
+/** After changing the user's shop or profile. */
+function forgetMyLookups() {
+  sharedLookups.clear();
+}
+if (typeof window !== "undefined" && isSupabaseConfigured) {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event !== "INITIAL_SESSION") sharedLookups.clear();
+  });
+}
 export type Category = {
   id: string;
   name: string;
@@ -280,7 +316,7 @@ export type FavoriteProduct = Pick<
 // one favorited?" lookups while rendering a grid of product cards —
 // one query for the whole page instead of one per card.
 export async function getMyFavoriteProductIds(): Promise<Set<string>> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   if (!userData?.user) return new Set();
   const { data, error } = await supabase.from("favorites").select("product_id").eq("buyer_id", userData.user.id);
   if (error || !data) return new Set();
@@ -340,7 +376,7 @@ export async function getMyFollowedShops(): Promise<FollowedShop[]> {
 // Favorites" list — a plain product-id set isn't enough there, the
 // page needs to actually render each item.
 export async function getMyFavorites(): Promise<FavoriteProduct[]> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   if (!userData?.user) return [];
   const { data, error } = await supabase
     .from("favorites")
@@ -359,7 +395,7 @@ export async function getMyFavorites(): Promise<FavoriteProduct[]> {
 // logged in — callers (FavoriteButton) are expected to have already
 // gated on a session before calling this, same pattern as ChatWidget.
 export async function toggleFavorite(productId: string, currentlyFavorited: boolean): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) throw new Error("Not signed in.");
   if (currentlyFavorited) {
@@ -405,7 +441,7 @@ export async function requestRestockNotification(input: {
   contactEmail?: string;
   locale?: "en" | "fr";
 }): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   const { error } = await supabase.from("restock_requests").insert({
     product_id: input.productId,
@@ -927,8 +963,11 @@ export async function getShopProducts(
 
 // --- Seller-side (requires an authenticated session) ---
 
-export async function getMyShop(): Promise<Shop | null> {
-  const { data: userData } = await supabase.auth.getUser();
+export function getMyShop(): Promise<Shop | null> {
+  return shared("shop", loadMyShop);
+}
+async function loadMyShop(): Promise<Shop | null> {
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) return null;
   const { data, error } = await supabase
@@ -957,6 +996,7 @@ export async function createSellerAccount(input: {
   description?: string;
   locale?: "en" | "fr";
 }): Promise<{ hasSession: boolean; slug: string }> {
+  forgetMyLookups();
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email: input.email,
     password: input.password,
@@ -1013,6 +1053,7 @@ export async function openShopForCurrentUser(input: {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Please log in first.");
+  forgetMyLookups();
   const res = await fetch("/api/become-seller", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -1074,8 +1115,11 @@ export async function createBuyerAccount(input: {
 // the right dashboard (buyer/seller/admin all share one login form).
 // Also used by the /account page itself and elsewhere to read the
 // buyer's own name/phone/city for pre-filling forms.
-export async function getMyProfile(): Promise<BuyerProfile | null> {
-  const { data: userData } = await supabase.auth.getUser();
+export function getMyProfile(): Promise<BuyerProfile | null> {
+  return shared("profile", loadMyProfile);
+}
+async function loadMyProfile(): Promise<BuyerProfile | null> {
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) return null;
   const { data, error } = await supabase
@@ -1095,7 +1139,8 @@ export async function updateBuyerProfile(input: {
   phone?: string;
   city?: string;
 }): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
+  forgetMyLookups();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) throw new Error("Not signed in.");
   const { error } = await supabase
@@ -1114,7 +1159,7 @@ export async function updateBuyerProfile(input: {
 // this is a real per-account read backed by the "Buyers view their own
 // orders" RLS policy, so it can safely show full delivery details.
 export async function getMyBuyerOrders(): Promise<BuyerOrder[]> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) return [];
   const { data, error } = await supabase
@@ -1157,7 +1202,7 @@ export type LayawayOrder = BuyerOrder & { installments: LayawayInstallment[] };
 // installments so the page can show "deposit paid, final installment
 // due" without a second round trip.
 export async function getMyLayawayOrders(): Promise<LayawayOrder[]> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) return [];
   const { data, error } = await supabase
@@ -1183,7 +1228,7 @@ export async function getMyLayawayOrders(): Promise<LayawayOrder[]> {
 }
 
 export async function getMyAddresses(): Promise<BuyerAddress[]> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) return [];
   const { data, error } = await supabase
@@ -1211,7 +1256,7 @@ export async function createAddress(input: {
   latitude?: number | null;
   longitude?: number | null;
 }): Promise<void> {
-  const { data: userData } = await supabase.auth.getUser();
+  const userData = await currentUserData();
   const user = userData?.user;
   if (!user) throw new Error("Not signed in.");
 
@@ -1406,6 +1451,7 @@ export async function updateShop(
     layawayIntervalDays?: number;
   }
 ) {
+  forgetMyLookups();
   const { error } = await supabase
     .from("shops")
     .update({
