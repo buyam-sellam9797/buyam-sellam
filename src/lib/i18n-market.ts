@@ -489,6 +489,10 @@ export const marketEn = {
     admin: "Admin panel",
     language: "Français",
     getApp: "Get the app",
+    appearance: "Appearance",
+    themeLight: "Light",
+    themeDark: "Dark",
+    themeAuto: "Auto",
     signOut: "Sign out",
   },
 };
@@ -974,6 +978,10 @@ export const marketFr: MarketDictionary = {
     admin: "Administration",
     language: "English",
     getApp: "Télécharger l'appli",
+    appearance: "Apparence",
+    themeLight: "Clair",
+    themeDark: "Sombre",
+    themeAuto: "Auto",
     signOut: "Se déconnecter",
   },
 };
