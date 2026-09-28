@@ -30,7 +30,7 @@ export function AuthShell({
   const { t } = useLocale();
   return (
     <div
-      className="flex justify-center px-4 py-8 sm:py-14"
+      className="auth-backdrop flex justify-center px-4 py-8 sm:py-14"
       style={{
         background:
           "radial-gradient(900px 480px at 10% -10%, rgba(23,23,23,0.06), rgba(0,0,0,0) 60%), radial-gradient(800px 420px at 95% 0%, rgba(245,158,11,0.16), rgba(0,0,0,0) 60%), linear-gradient(#fafafa, #f5f5f4)",
