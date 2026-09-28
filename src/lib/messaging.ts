@@ -53,7 +53,8 @@ export type SellerConversation = Conversation & {
 // requires a logged-in buyer (there's no way to deliver a reply back
 // to an anonymous guest browsing session).
 async function getCurrentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getUser();
+  const { data: sessionData } = await supabase.auth.getSession();
+  const data = { user: sessionData.session?.user ?? null };
   return data?.user?.id ?? null;
 }
 
