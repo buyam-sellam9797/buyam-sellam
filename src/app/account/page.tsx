@@ -129,7 +129,9 @@ export default function AccountPage() {
         onChanged={async () => setAddresses(await getMyAddresses())}
       />
 
-      <PushToggle audience="buyer" />
+      <div id="notifications" className="scroll-mt-24">
+        <PushToggle audience="buyer" />
+      </div>
 
       <MyOffersSection t={t} />
 
@@ -199,7 +201,7 @@ function ProfileSection({
   }
 
   return (
-    <section>
+    <section id="profile" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3">{t.account.profileTitle}</h2>
       <form onSubmit={handleSave} className="rounded-xl border border-neutral-200 bg-white p-5 flex flex-col gap-3 max-w-md">
         <div>
@@ -320,7 +322,7 @@ function AddressesSection({
   }
 
   return (
-    <section>
+    <section id="addresses" className="scroll-mt-24">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold">{t.account.addressesTitle}</h2>
         {!adding && (
@@ -463,7 +465,7 @@ function MessagesSection({
   t: ReturnType<typeof useLocale>["t"];
 }) {
   return (
-    <section>
+    <section id="messages" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3">{t.account.messagesTitle}</h2>
       {conversations.length === 0 ? (
         <p className="text-sm text-neutral-500">{t.account.noMessages}</p>
@@ -525,7 +527,7 @@ function FollowedShopsSection({ t }: { t: ReturnType<typeof useLocale>["t"] }) {
   if (shops === null) return null;
 
   return (
-    <section>
+    <section id="following" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-1">{t.account.followingTitle}</h2>
       <p className="text-xs text-neutral-500 mb-3">{t.account.followingHint}</p>
       {shops.length === 0 ? (
@@ -578,7 +580,7 @@ function FavoritesSection({
   }
 
   return (
-    <section>
+    <section id="saved" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3">{t.account.favoritesTitle}</h2>
       {favorites.length === 0 ? (
         <p className="text-sm text-neutral-500">{t.account.noFavorites}</p>
@@ -628,7 +630,7 @@ function LayawaySection({
   onPaid: (orderId: string) => void;
 }) {
   return (
-    <section>
+    <section id="layaway" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3">{t.account.layawayTitle}</h2>
       <div className="flex flex-col gap-3">
         {layawayOrders.map((o) => (
@@ -801,7 +803,7 @@ function LayawayCard({
 
 function OrdersSection({ orders, t }: { orders: BuyerOrder[]; t: ReturnType<typeof useLocale>["t"] }) {
   return (
-    <section>
+    <section id="orders" className="scroll-mt-24">
       <h2 className="text-sm font-semibold mb-3">{t.account.ordersTitle}</h2>
       {orders.length === 0 ? (
         <p className="text-sm text-neutral-500">{t.account.noOrders}</p>
