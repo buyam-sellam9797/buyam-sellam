@@ -37,6 +37,7 @@ import {
 import {
   supabase,
   getMyShop,
+  getMyProfile,
   getShopProducts,
   getMyOrders,
   getCategories,
@@ -90,6 +91,7 @@ import { MoneyPulse } from "./money-pulse";
 import { BooksPanel } from "./books-panel";
 import { SignaturePanel } from "./signature-panel";
 import { PushToggle } from "@/components/push-toggle";
+import type { AccountMenuUser } from "@/components/account-menu";
 
 // Which product form is open, if any: closed, adding a new one, or
 // editing an existing one (carries the product being edited).
@@ -167,6 +169,7 @@ export default function DashboardPage() {
     const wanted = new URLSearchParams(window.location.search).get("tab");
     return wanted && (TABS as readonly string[]).includes(wanted) ? (wanted as Tab) : "overview";
   });
+  const [me, setMe] = useState<Omit<AccountMenuUser, "shop">>({ name: null, email: null, role: null });
   const [openOffers, setOpenOffers] = useState(0);
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("all");
   // new Date() is impure, so "today" is captured once via a lazy
@@ -181,7 +184,8 @@ export default function DashboardPage() {
       router.push("/login");
       return;
     }
-    const myShop = await getMyShop();
+    const [myShop, profile] = await Promise.all([getMyShop(), getMyProfile()]);
+    setMe({ name: profile?.full_name ?? null, email: session.user.email ?? null, role: profile?.role ?? null });
     if (!myShop) {
       setLoading(false);
       return;
@@ -190,17 +194,20 @@ export default function DashboardPage() {
     // includeInactive: true — a paused listing still needs to show up
     // here so the seller can turn it back on; only the public storefront
     // hides it.
-    const [myProducts, myOrders, cats, ratingSummary, myReviews, myNotifications, myOffers] = await Promise.all([
+    // Offers go through a server route and are only a badge count here,
+    // so they load alongside instead of holding up the whole dashboard.
+    fetchSellerOffers().then((myOffers) => {
+      const nowTs = Date.now();
+      setOpenOffers(myOffers.filter((o) => liveOfferStatus(o, nowTs) === "pending").length);
+    });
+    const [myProducts, myOrders, cats, ratingSummary, myReviews, myNotifications] = await Promise.all([
       getShopProducts(myShop.id, { includeInactive: true }),
       getMyOrders(myShop.id),
       getCategories(),
       getShopRatingSummary(myShop.id),
       getShopReviewsForDashboard(myShop.id),
       getMyNotifications(myShop.id),
-      fetchSellerOffers(),
     ]);
-    const nowTs = Date.now();
-    setOpenOffers(myOffers.filter((o) => liveOfferStatus(o, nowTs) === "pending").length);
     setProducts(myProducts);
     setOrders(myOrders);
     setCategories(cats);
@@ -403,7 +410,9 @@ export default function DashboardPage() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    router.push("/");
+    // Full reload on purpose: clears every signed-in view and cache.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/");
   }
 
   const activeTabLabel = tabs.find((tb) => tb.key === tab)?.label ?? shop.shop_name;
@@ -416,6 +425,7 @@ export default function DashboardPage() {
       activeTab={tab}
       onTabChange={setTab}
       onLogout={handleLogout}
+      menuUser={{ ...me, shop: { name: shop.shop_name, slug: shop.slug } }}
       logoutLabel={t.dashboard.logout}
       viewShopHref={`/shop/${shop.slug}`}
       viewShopLabel={t.dashboard.previewShop}
