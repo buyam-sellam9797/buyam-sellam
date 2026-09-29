@@ -5,6 +5,7 @@ import { formatFcfa } from "@/lib/format";
 import { after } from "next/server";
 import { sendOrderEmails, renderEmail, userEmailAndLang, type Lang } from "@/lib/order-emails";
 import { sendMail } from "@/lib/smtp";
+import type { NotchPayTx } from "@/lib/notchpay";
 
 // Shared by every place that can hear "this order's payment was
 // confirmed" — a gateway's webhook, or the buyer's own browser polling
@@ -61,8 +62,10 @@ export async function markOrderPaid(
 
 // Stock is only taken off the shelf once payment is actually confirmed
 // — never at checkout start — so an abandoned mobile money prompt never
-// permanently reserves inventory. A simple read-then-write (not an
-// atomic decrement), an accepted simplification at this order volume.
+// permanently reserves inventory. take_stock() locks the product row,
+// so two payments clearing at the same moment can't both take the last
+// unit unnoticed: if an order needed more than was left, the seller is
+// told straight away to contact the buyer (or refund through support).
 export async function decrementStockAndNotify(
   admin: SupabaseClient,
   orderId: string,
@@ -70,33 +73,117 @@ export async function decrementStockAndNotify(
 ): Promise<void> {
   const { data: items } = await admin
     .from("order_items")
-    .select("product_id, quantity")
+    .select("product_id, quantity, product:products(title)")
     .eq("order_id", orderId);
 
   for (const item of items ?? []) {
-    const { data: prod } = await admin
-      .from("products")
-      .select("stock_quantity, title")
-      .eq("id", item.product_id)
-      .maybeSingle();
-    if (!prod) continue;
+    const { data: rows } = await admin.rpc("take_stock", { p_product: item.product_id, p_qty: item.quantity });
+    const row = (rows as { before_qty: number; after_qty: number }[] | null)?.[0];
+    if (!row) continue;
+    const productRel = item.product as unknown as { title: string } | { title: string }[] | null;
+    const title = (Array.isArray(productRel) ? productRel[0]?.title : productRel?.title) ?? "An item";
 
-    const newStock = Math.max(0, prod.stock_quantity - item.quantity);
-    await admin.from("products").update({ stock_quantity: newStock }).eq("id", item.product_id);
+    if (row.before_qty < item.quantity) {
+      await notifyShop(admin, {
+        shopId,
+        type: "low_stock",
+        title: "Sold more than you had in stock",
+        body: `"${title}": a paid order needs ${item.quantity} but only ${row.before_qty} were left. Contact the buyer to agree a delay, or ask support to refund them.`,
+        orderId,
+      });
+      continue;
+    }
 
     // Only fire the moment stock crosses into "needs attention" (<=3,
     // same threshold as the dashboard's low-stock badge) — never
     // re-fire on every later checkout of an already-low item.
-    if (newStock <= 3 && prod.stock_quantity > 3) {
+    if (row.after_qty <= 3 && row.before_qty > 3) {
       await notifyShop(admin, {
         shopId,
         type: "low_stock",
-        title: newStock === 0 ? "Out of stock" : "Low stock",
-        body:
-          newStock === 0 ? `"${prod.title}" just sold out.` : `"${prod.title}" has only ${newStock} left.`,
+        title: row.after_qty === 0 ? "Out of stock" : "Low stock",
+        body: row.after_qty === 0 ? `"${title}" just sold out.` : `"${title}" has only ${row.after_qty} left.`,
       });
     }
   }
+}
+
+// The one place a confirmed NotchPay payment is applied, whoever heard
+// about it first (the signed webhook, or the buyer's page polling).
+// Everything is matched from NotchPay's own transaction record — never
+// from references the browser sends — and the amount must cover what
+// is owed, so a cheap payment can't be used to mark a dearer order paid.
+export async function applyConfirmedNotchPayPayment(
+  admin: SupabaseClient,
+  tx: NotchPayTx,
+  meta: { eventType: string; rawPayload: unknown }
+): Promise<"order" | "group_buy" | "layaway" | null> {
+  const paid = tx.amount;
+  const currencyOk = !tx.currency || tx.currency.toUpperCase() === "XAF";
+  if (!currencyOk) {
+    console.error("notchpay: unexpected currency", tx.currency, tx.merchantReference);
+    return null;
+  }
+
+  // Layaway charges are stored under NotchPay's own reference.
+  if (tx.reference) {
+    const layaway = await completeLayawayInstallment(admin, {
+      paymentReference: tx.reference,
+      merchantReference: tx.merchantReference,
+      paidAmountFcfa: paid,
+      provider: "notchpay",
+      eventType: meta.eventType,
+      rawPayload: meta.rawPayload,
+    });
+    if (layaway) return "layaway";
+  }
+
+  const ref = tx.merchantReference;
+  if (!ref) return null;
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, total_amount_fcfa, group_buy_id, payment_plan, status")
+    .eq("payment_reference", ref)
+    .maybeSingle();
+  if (!order) {
+    // Maybe a layaway charge started before the reference fix.
+    const layaway = await completeLayawayInstallment(admin, {
+      paymentReference: ref,
+      merchantReference: ref,
+      paidAmountFcfa: paid,
+      provider: "notchpay",
+      eventType: meta.eventType,
+      rawPayload: meta.rawPayload,
+    });
+    return layaway ? "layaway" : null;
+  }
+  if (order.status !== "pending_payment") return null;
+  if (order.payment_plan === "layaway") return null; // paid per installment only
+  if (paid == null || paid < order.total_amount_fcfa) {
+    console.error("notchpay: amount too low", { ref, paid, owed: order.total_amount_fcfa });
+    return null;
+  }
+
+  if (order.group_buy_id) {
+    const joined = await completeGroupBuyJoin(admin, {
+      paymentReference: ref,
+      provider: "notchpay",
+      eventType: meta.eventType,
+      rawPayload: meta.rawPayload,
+    });
+    return joined ? "group_buy" : null;
+  }
+
+  const updated = await markOrderPaid(admin, {
+    paymentReference: ref,
+    provider: "notchpay",
+    eventType: meta.eventType,
+    rawPayload: meta.rawPayload,
+    excludeGroupBuy: true,
+  });
+  if (!updated) return null;
+  await decrementStockAndNotify(admin, updated.id, updated.shop_id);
+  return "order";
 }
 
 // Marks a single layaway installment paid, given the NotchPay
@@ -118,12 +205,57 @@ export async function decrementStockAndNotify(
 // to handling itself).
 export async function completeLayawayInstallment(
   admin: SupabaseClient,
-  input: { paymentReference: string; provider: string; eventType: string; rawPayload: unknown }
+  input: {
+    paymentReference: string;
+    // Our own charge reference ("<order ref>_<installment>_<time>"):
+    // lets a charge that was approved after the buyer retried (and the
+    // stored reference was replaced) still find its installment.
+    merchantReference?: string;
+    paidAmountFcfa?: number;
+    provider: string;
+    eventType: string;
+    rawPayload: unknown;
+  }
 ): Promise<{ orderId: string; installmentNumber: number; fullyPaid: boolean } | null> {
+  let installmentId: string | null = null;
+  const { data: byRef } = await admin
+    .from("layaway_installments")
+    .select("id, amount_fcfa")
+    .eq("payment_reference", input.paymentReference)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (byRef) installmentId = byRef.id;
+  let owed = byRef?.amount_fcfa ?? null;
+
+  if (!installmentId && input.merchantReference) {
+    const m = /^(bs_\d+_[a-z0-9]+)_(\d+)_\d+$/.exec(input.merchantReference);
+    if (m) {
+      const { data: ord } = await admin.from("orders").select("id").eq("payment_reference", m[1]).eq("payment_plan", "layaway").maybeSingle();
+      if (ord) {
+        const { data: inst } = await admin
+          .from("layaway_installments")
+          .select("id, amount_fcfa")
+          .eq("order_id", ord.id)
+          .eq("installment_number", Number(m[2]))
+          .eq("status", "pending")
+          .maybeSingle();
+        if (inst) {
+          installmentId = inst.id;
+          owed = inst.amount_fcfa;
+        }
+      }
+    }
+  }
+  if (!installmentId) return null;
+  if (input.paidAmountFcfa != null && owed != null && input.paidAmountFcfa < owed) {
+    console.error("layaway: amount too low", { paid: input.paidAmountFcfa, owed });
+    return null;
+  }
+
   const { data: installment } = await admin
     .from("layaway_installments")
     .update({ status: "paid", paid_at: new Date().toISOString() })
-    .eq("payment_reference", input.paymentReference)
+    .eq("id", installmentId)
     .eq("status", "pending")
     .select("id, order_id, installment_number, amount_fcfa")
     .maybeSingle();
@@ -218,6 +350,31 @@ export async function completeGroupBuyJoin(
     .maybeSingle();
 
   if (!order?.group_buy_id) return null;
+
+  const { data: campaign } = await admin.from("group_buys").select("status").eq("id", order.group_buy_id).maybeSingle();
+  if (campaign?.status !== "open") {
+    // Paid after the campaign had already ended: nothing will ever ship
+    // or refund this automatically, so put it in front of support now.
+    const { data: late } = await admin.from("orders").select("shop_id, buyer_phone, total_amount_fcfa").eq("id", order.id).maybeSingle();
+    await admin.from("orders").update({ status: "cancelled", updated_at: new Date().toISOString() }).eq("id", order.id);
+    if (late) {
+      await admin.from("disputes").insert({
+        order_id: order.id,
+        shop_id: late.shop_id,
+        buyer_phone: late.buyer_phone,
+        reason: "other",
+        description: `Group buy payment of ${formatFcfa(late.total_amount_fcfa)} arrived after the campaign had already ended. Refund the buyer.`,
+        status: "open",
+      });
+    }
+    await admin.from("payment_events").insert({
+      order_id: order.id,
+      provider: input.provider,
+      event_type: `${input.eventType}.late`,
+      raw_payload: input.rawPayload as object,
+    });
+    return null;
+  }
 
   await admin.from("payment_events").insert({
     order_id: order.id,
