@@ -43,6 +43,37 @@ export function extractNotchPayReference(payload: unknown): string | undefined {
   );
 }
 
+// The parts of a NotchPay transaction we act on. `merchantReference` is
+// the reference WE gave the payment when starting it (our order or
+// charge reference); `reference` is NotchPay's own (trx.…). Handles the
+// shapes seen so far: { transaction: {...} } from GET /payments/:ref and
+// { data: {...} } / { data: { transaction } } from webhooks.
+export type NotchPayTx = {
+  reference?: string;
+  merchantReference?: string;
+  amount?: number;
+  currency?: string;
+  status?: string;
+};
+
+export function readNotchPayTx(payload: unknown): NotchPayTx {
+  const p = (payload ?? {}) as Record<string, unknown>;
+  const data = (p.data ?? null) as Record<string, unknown> | null;
+  const t = ((p.transaction as Record<string, unknown> | undefined) ??
+    (data?.transaction as Record<string, unknown> | undefined) ??
+    data ??
+    p) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const amount = typeof t.amount === "number" ? t.amount : typeof t.amount === "string" ? Number(t.amount) : undefined;
+  return {
+    reference: str(t.reference),
+    merchantReference: str(t.merchant_reference),
+    amount: amount != null && Number.isFinite(amount) ? amount : undefined,
+    currency: str(t.currency),
+    status: str(t.status),
+  };
+}
+
 // The event name NotchPay sends under "type" (some payloads use
 // "event" instead — checked as a fallback).
 export function extractNotchPayEventType(payload: unknown): string | undefined {
@@ -61,8 +92,8 @@ const NOTCHPAY_PUBLIC_KEY = process.env.NOTCHPAY_PUBLIC_KEY ?? "";
 const NOTCHPAY_BASE_URL = "https://api.notchpay.co";
 
 export type NotchPayChargeResult =
-  | { ok: true; reference: string; debug: unknown }
-  | { ok: false; error: string; status: number; debug?: unknown };
+  | { ok: true; reference: string }
+  | { ok: false; error: string; status: number };
 
 export async function initAndChargeNotchPay(input: {
   amountFcfa: number;
@@ -89,7 +120,8 @@ export async function initAndChargeNotchPay(input: {
     });
     const initData = await initRes.json();
     if (!initRes.ok) {
-      return { ok: false, error: initData?.message ?? "Could not start the payment.", status: initRes.status, debug: initData };
+      console.error("notchpay init failed:", initRes.status, JSON.stringify(initData).slice(0, 300));
+      return { ok: false, error: "Could not start the payment. Please try again.", status: initRes.status >= 500 ? 502 : 400 };
     }
 
     const txReference: string | undefined = initData?.transaction?.reference;
@@ -119,16 +151,12 @@ export async function initAndChargeNotchPay(input: {
     }
 
     if (lastError || !usedReference) {
-      const errData = (lastError ?? {}) as { message?: string };
-      return {
-        ok: false,
-        error: errData?.message ?? "Could not charge that mobile money number.",
-        status: 502,
-        debug: { initData, lastError },
-      };
+      console.error("notchpay charge failed:", JSON.stringify(lastError).slice(0, 300));
+      return { ok: false, error: "Could not charge that mobile money number. Check the number and try again.", status: 502 };
     }
 
-    return { ok: true, reference: usedReference, debug: chargeData };
+    void chargeData;
+    return { ok: true, reference: usedReference };
   } catch {
     return { ok: false, error: "Could not reach the payment provider. Please try again.", status: 502 };
   }
@@ -138,7 +166,7 @@ export async function initAndChargeNotchPay(input: {
 // existing checkout GET route does inline, factored out here so
 // layaway's own GET routes don't repeat it a third time.
 export async function checkNotchPayStatus(reference: string): Promise<
-  { ok: true; status: string; raw: unknown } | { ok: false; error: string; status: number }
+  { ok: true; status: string; raw: unknown; tx: NotchPayTx } | { ok: false; error: string; status: number }
 > {
   if (!NOTCHPAY_PUBLIC_KEY) {
     return { ok: false, error: "Payments are not configured yet.", status: 500 };
@@ -152,7 +180,7 @@ export async function checkNotchPayStatus(reference: string): Promise<
       return { ok: false, error: data?.message ?? "Could not check payment status.", status: res.status };
     }
     const status: string = data?.transaction?.status ?? data?.payment?.status ?? "pending";
-    return { ok: true, status, raw: data };
+    return { ok: true, status, raw: data, tx: readNotchPayTx(data) };
   } catch {
     return { ok: false, error: "Could not reach the payment provider.", status: 502 };
   }
