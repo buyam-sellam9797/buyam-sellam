@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
 import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
   if (!admin) {
     return NextResponse.json({ error: "Payments are not configured yet." }, { status: 500 });
   }
+  const limited = await rateLimited(admin, req, "payment");
+  if (limited) return limited;
   const { orderId } = await params;
   if (!(await requestIsOrderBuyer(admin, req, orderId))) {
     return NextResponse.json({ error: "Please sign in to pay this plan." }, { status: 403 });
