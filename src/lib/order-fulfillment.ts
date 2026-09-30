@@ -71,6 +71,11 @@ export async function decrementStockAndNotify(
   orderId: string,
   shopId: string
 ): Promise<void> {
+  // Only the first caller for an order takes stock (the webhook and the
+  // buyer's polling can both get here), and refunds can put it back.
+  const { data: claimed } = await admin.rpc("claim_stock_take", { p_order: orderId });
+  if (claimed !== true) return;
+
   const { data: items } = await admin
     .from("order_items")
     .select("product_id, quantity, product:products(title)")
@@ -106,6 +111,12 @@ export async function decrementStockAndNotify(
       });
     }
   }
+}
+
+/** Put a refunded or cancelled order's items back on sale (once). */
+export async function putBackStock(admin: SupabaseClient, orderId: string): Promise<void> {
+  const { error } = await admin.rpc("put_back_stock", { p_order: orderId });
+  if (error) console.error("put_back_stock failed:", error.message);
 }
 
 // The one place a confirmed NotchPay payment is applied, whoever heard
