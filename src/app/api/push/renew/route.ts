@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { isAllowedPushEndpoint } from "@/lib/web-push";
 
@@ -8,6 +9,8 @@ import { isAllowedPushEndpoint } from "@/lib/web-push";
 export async function POST(req: NextRequest) {
   const admin = getAdminClient();
   if (!admin) return NextResponse.json({ ok: false }, { status: 500 });
+  const limited = await rateLimited(admin, req, "push");
+  if (limited) return limited;
   let body: { oldEndpoint?: string; endpoint?: string; keys?: { p256dh?: string; auth?: string } };
   try {
     body = await req.json();
