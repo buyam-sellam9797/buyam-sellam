@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 
 // The admin dashboard's top-line numbers: how many people/shops/
 // products/orders exist, how much money has moved through the
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     admin.from("products").select("id", { count: "exact", head: true }),
     admin.from("orders").select("id", { count: "exact", head: true }),
     admin.from("disputes").select("id", { count: "exact", head: true }).eq("status", "open"),
-    admin.from("orders").select("total_amount_fcfa, status, payout_sent"),
+    admin.from("orders").select("total_amount_fcfa, delivery_fee_fcfa, status, payout_sent"),
   ]);
 
   let gmvFcfa = 0;
@@ -37,10 +37,10 @@ export async function GET(req: NextRequest) {
       gmvFcfa += o.total_amount_fcfa;
     }
     if (o.status === "paid_held" || o.status === "shipped") {
-      heldFcfa += calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa;
+      heldFcfa += orderCommission(o).sellerPayoutFcfa;
     }
     if (o.status === "completed" && o.payout_sent) {
-      paidToSellersFcfa += calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa;
+      paidToSellersFcfa += orderCommission(o).sellerPayoutFcfa;
     }
   }
 
