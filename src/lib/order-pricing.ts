@@ -9,6 +9,8 @@ import { haversineDistanceKm, calculateDistanceDeliveryFeeFcfa } from "@/lib/del
 // promotions are priced only has to happen here now.
 export type OrderPricingInput = {
   productId: string;
+  /** Signed-in buyer, if any: they can't buy from their own shop. */
+  buyerId?: string | null;
   quantity?: number;
   deliveryLatitude?: number;
   deliveryLongitude?: number;
@@ -50,7 +52,7 @@ export async function resolveOrderPricing(
   const { data: product, error: productError } = await admin
     .from("products")
     .select(
-      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, layaway_installments, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days)"
+      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, layaway_installments, shop:shops(is_active, owner_id, delivery_fee_fcfa, latitude, longitude, is_open, closed_message, layaway_enabled, layaway_installments, layaway_deposit_percent, layaway_interval_days)"
     )
     .eq("id", input.productId)
     .eq("is_active", true)
@@ -68,6 +70,12 @@ export async function resolveOrderPricing(
   }
 
   const shopRecord = Array.isArray(product.shop) ? product.shop[0] : product.shop;
+  if (!shopRecord || shopRecord.is_active === false) {
+    return { ok: false, error: "This product is no longer available.", status: 404 };
+  }
+  if (input.buyerId && shopRecord.owner_id === input.buyerId) {
+    return { ok: false, error: "You can't buy from your own shop.", status: 400 };
+  }
 
   // A seller can mark their shop temporarily closed (vacation, out of
   // stock everywhere, etc.) without deactivating it — blocked here so
@@ -190,6 +198,8 @@ export async function resolveBagPricing(
   admin: SupabaseClient,
   input: {
     lines: BagLineInput[];
+    /** Signed-in buyer, if any: they can't buy from their own shop. */
+    buyerId?: string | null;
     // Unit price agreed through an offer, for a single-line order.
     agreedUnitPriceFcfa?: number;
     deliveryLatitude?: number;
@@ -214,7 +224,7 @@ export async function resolveBagPricing(
   const { data: rows, error } = await admin
     .from("products")
     .select(
-      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, shop:shops(delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
+      "id, shop_id, title, price_fcfa, sale_price_fcfa, stock_quantity, is_active, shop:shops(is_active, owner_id, delivery_fee_fcfa, latitude, longitude, is_open, closed_message)"
     )
     .in("id", [...wanted.keys()])
     .eq("is_active", true);
@@ -227,12 +237,20 @@ export async function resolveBagPricing(
     return { ok: false, error: "A bag can only hold items from one shop.", status: 400 };
   }
   const shopRecord = (Array.isArray(rows[0].shop) ? rows[0].shop[0] : rows[0].shop) as {
+    is_active: boolean | null;
+    owner_id: string | null;
     delivery_fee_fcfa: number | null;
     latitude: number | null;
     longitude: number | null;
     is_open: boolean | null;
     closed_message: string | null;
   } | null;
+  if (!shopRecord || shopRecord.is_active === false) {
+    return { ok: false, error: "One of these items is no longer available.", status: 404 };
+  }
+  if (input.buyerId && shopRecord.owner_id === input.buyerId) {
+    return { ok: false, error: "You can't buy from your own shop.", status: 400 };
+  }
   if (shopRecord?.is_open === false) {
     return {
       ok: false,
