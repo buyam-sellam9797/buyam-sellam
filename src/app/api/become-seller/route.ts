@@ -58,7 +58,10 @@ export async function POST(req: NextRequest) {
     phone_number: whatsappNumber,
     city,
   });
-  if (profileError) return NextResponse.json({ error: profileError.message }, { status: 500 });
+  if (profileError) {
+    console.error("become-seller profile:", profileError.message);
+    return NextResponse.json({ error: "Could not set up your shop — please try again." }, { status: 500 });
+  }
 
   const baseSlug = slugify(shopName) || "shop";
   let slug = baseSlug;
@@ -73,10 +76,14 @@ export async function POST(req: NextRequest) {
     });
     if (!shopError) return NextResponse.json({ slug });
     if (shopError.code === "23505") {
+      // One shop per account (e.g. a double-tapped button): return it.
+      const { data: existing } = await admin.from("shops").select("slug").eq("owner_id", user.id).maybeSingle();
+      if (existing) return NextResponse.json({ slug: existing.slug });
       slug = `${baseSlug}-${Math.floor(Math.random() * 1000)}`;
       continue;
     }
-    return NextResponse.json({ error: shopError.message }, { status: 500 });
+    console.error("become-seller shop:", shopError.message);
+    return NextResponse.json({ error: "Could not create your shop — please try again." }, { status: 500 });
   }
   return NextResponse.json({ error: "Could not create your shop — please try again." }, { status: 500 });
 }
