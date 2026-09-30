@@ -33,6 +33,7 @@ export default function ResetPasswordPage() {
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         settled = true;
+        setInvalid(false);
         setReady(true);
       }
     });
@@ -40,13 +41,19 @@ export default function ResetPasswordPage() {
     supabase.auth.getSession().then(({ data }) => {
       if (!settled && data.session) {
         settled = true;
+        setInvalid(false);
         setReady(true);
       }
     });
 
+    // Supabase puts the reason in the link when it's expired or used.
+    // Otherwise give slow mobile connections time before giving up.
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const query = new URLSearchParams(window.location.search);
+    const linkError = hash.get("error_code") || hash.get("error") || query.get("error_code") || query.get("error");
     const timeout = setTimeout(() => {
       if (!settled) setInvalid(true);
-    }, 4000);
+    }, linkError ? 0 : 15000);
 
     return () => {
       subscription.unsubscribe();
