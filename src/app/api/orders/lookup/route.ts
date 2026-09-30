@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient } from "@/lib/supabase-admin";
 
 // Guest order recovery: buyers never create an account, so a lost
@@ -13,6 +14,8 @@ export async function POST(req: NextRequest) {
   if (!admin) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
+  const limited = await rateLimited(admin, req, "lookup");
+  if (limited) return limited;
 
   let body: { phone?: string };
   try {
