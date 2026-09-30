@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { expireGroupBuy } from "@/lib/order-fulfillment";
+import { timingSafeEqual } from "node:crypto";
 
 // Vercel calls this daily (see vercel.json), the same way
 // auto-confirm-orders handles shipped-but-unconfirmed orders. A
@@ -11,7 +12,9 @@ import { expireGroupBuy } from "@/lib/order-fulfillment";
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (!expected || authHeader !== expected) {
+  const a = Buffer.from(authHeader ?? "");
+  const b = Buffer.from(expected ?? "");
+  if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
