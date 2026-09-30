@@ -53,11 +53,15 @@ export async function POST(req: NextRequest) {
     .update({ payout_sent: true, payout_sent_at: new Date().toISOString() })
     .eq("id", body.orderId)
     .eq("status", "completed")
+    .eq("payout_sent", false) // a double click must not alert the seller twice
     .select("id, shop_id, total_amount_fcfa")
     .maybeSingle();
 
-  if (error || !updated) {
+  if (error) {
     return NextResponse.json({ error: "Could not update this order." }, { status: 500 });
+  }
+  if (!updated) {
+    return NextResponse.json({ error: "Already marked as paid out." }, { status: 409 });
   }
 
   const { sellerPayoutFcfa } = calculateCommission(updated.total_amount_fcfa);
