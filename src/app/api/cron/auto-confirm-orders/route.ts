@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
+import { handleUnshippedOrders, handleOverdueLayaway, cleanUp } from "@/lib/order-timeouts";
+import { timingSafeEqual } from "node:crypto";
 
 // A shipped order with no response from the buyer would otherwise sit
 // forever with the seller never getting paid. Vercel calls this once a
@@ -15,7 +17,9 @@ export async function GET(req: NextRequest) {
   // else from calling the route and force-releasing payments early.
   const authHeader = req.headers.get("authorization");
   const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : null;
-  if (!expected || authHeader !== expected) {
+  const a = Buffer.from(authHeader ?? "");
+  const b = Buffer.from(expected ?? "");
+  if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -37,13 +41,28 @@ export async function GET(req: NextRequest) {
     .select("id");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("auto-confirm failed:", error.message);
+    return NextResponse.json({ error: "Auto-confirm failed." }, { status: 500 });
   }
+
+  // The other daily jobs: unsent orders, missed plan payments, cleanup.
+  // Each is independent, so one failing doesn't stop the others.
+  const run = async <T,>(name: string, fn: () => Promise<T>) => {
+    try {
+      return await fn();
+    } catch (err) {
+      console.error(`daily job ${name} failed:`, err instanceof Error ? err.message : err);
+      return null;
+    }
+  };
+  const unshipped = await run("unshipped", () => handleUnshippedOrders(admin));
+  const layaway = await run("layaway", () => handleOverdueLayaway(admin));
+  const cleanup = await run("cleanup", () => cleanUp(admin));
 
   const confirmedIds = (updated ?? []).map((o) => o.id as string);
   after(async () => {
     for (const orderId of confirmedIds) await sendOrderEmails(admin, orderId, "completed");
   });
 
-  return NextResponse.json({ autoConfirmed: confirmedIds.length });
+  return NextResponse.json({ autoConfirmed: confirmedIds.length, unshipped, layaway, cleanup });
 }
