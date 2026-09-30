@@ -91,6 +91,7 @@ import { MoneyPulse } from "./money-pulse";
 import { BooksPanel } from "./books-panel";
 import { SignaturePanel } from "./signature-panel";
 import { PushToggle } from "@/components/push-toggle";
+import { signOutEverywhere } from "@/lib/sign-out";
 import type { AccountMenuUser } from "@/components/account-menu";
 
 // Which product form is open, if any: closed, adding a new one, or
@@ -409,10 +410,7 @@ export default function DashboardPage() {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    // Full reload on purpose: clears every signed-in view and cache.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/");
+    await signOutEverywhere("/");
   }
 
   const activeTabLabel = tabs.find((tb) => tb.key === tab)?.label ?? shop.shop_name;
