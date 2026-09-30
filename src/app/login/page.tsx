@@ -9,8 +9,23 @@ import { useLocale } from "@/components/locale-provider";
 // Where to go after logging in. ?next=/product/... sends people back to
 // what they were doing (making an offer, sharing a bag); only same-site
 // paths are followed.
+// Only a path on this same site is followed after login. Parsing it as
+// a URL (instead of checking the text) also catches tricks like
+// "/\t/evil.com" that browsers turn into another website.
+function sameSitePath(next: string | null): string | null {
+  if (!next || !next.startsWith("/")) return null;
+  try {
+    const base = window.location.origin;
+    const u = new URL(next, base);
+    if (u.origin !== base) return null;
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return null;
+  }
+}
+
 function destinationFor(role: string | null | undefined, next: string | null): string {
-  const safeNext = next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
+  const safeNext = sameSitePath(next);
   if (role === "admin") return safeNext ?? "/admin";
   if (safeNext) return safeNext;
   return role === "seller" ? "/dashboard" : "/account";
