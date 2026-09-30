@@ -812,7 +812,7 @@ export async function replyToReview(reviewId: string, reply: string): Promise<vo
 export type ShopNotification = {
   id: string;
   shop_id: string;
-  type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature";
+  type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature" | "ship_reminder" | "order_cancelled";
   title: string;
   body: string | null;
   order_id: string | null;
