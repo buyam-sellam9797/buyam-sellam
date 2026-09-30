@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveBagPricing, type BagLineInput } from "@/lib/order-pricing";
-import { markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
+import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
+import { checkNotchPayStatus } from "@/lib/notchpay";
 import { resolveAgreedOffer } from "@/lib/offers";
 import { getSharedBagByToken, isSharedBagOpen, pricingInputFor, type SharedBagRow } from "@/lib/shared-bags";
 import { cleanEmail } from "@/lib/email-address";
@@ -152,9 +153,13 @@ export async function POST(req: NextRequest) {
     agreedUnitPriceFcfa = agreed.unitPriceFcfa;
   }
 
+  // An agreed offer price only ever applies to that one product, one
+  // unit: whatever else the request lists is ignored.
   const lines: BagLineInput[] = sharedBag
     ? sharedBag.items
-    : Array.isArray(body.items) && body.items.length > 0
+    : agreedUnitPriceFcfa != null
+      ? [{ productId: body.productId as string, quantity: 1 }]
+      : Array.isArray(body.items) && body.items.length > 0
       ? body.items
       : body.productId
         ? [{ productId: body.productId, quantity: body.quantity }]
@@ -167,6 +172,7 @@ export async function POST(req: NextRequest) {
     ? await resolveBagPricing(admin, pricingInputFor(sharedBag))
     : await resolveBagPricing(admin, {
         lines,
+        buyerId,
         agreedUnitPriceFcfa,
         deliveryLatitude: delivery.latitude,
         deliveryLongitude: delivery.longitude,
@@ -263,9 +269,10 @@ export async function POST(req: NextRequest) {
 
     const initData = await initRes.json();
     if (!initRes.ok) {
+      console.error("notchpay init failed:", initRes.status, JSON.stringify(initData).slice(0, 300));
       return NextResponse.json(
-        { error: initData?.message ?? "Could not start the payment.", debug: initData },
-        { status: initRes.status }
+        { error: "Could not start the payment. Please try again." },
+        { status: initRes.status >= 500 ? 502 : 400 }
       );
     }
 
@@ -291,7 +298,6 @@ export async function POST(req: NextRequest) {
     // Try each identifier NotchPay might expect, in order, since the docs
     // and real API responses don't always agree on reference vs id.
     const channel = provider === "mtn" ? "cm.mtn" : "cm.orange";
-    let chargeData: Record<string, unknown> | null = null;
     let chargeOk = false;
     let usedReference = candidates[0];
     let lastError: unknown = null;
@@ -307,7 +313,6 @@ export async function POST(req: NextRequest) {
       });
       const data = await chargeRes.json();
       if (chargeRes.ok) {
-        chargeData = data;
         chargeOk = true;
         usedReference = candidate;
         break;
@@ -318,11 +323,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!chargeOk) {
-      const errData = (lastError ?? {}) as { message?: string };
+      console.error("notchpay charge failed:", JSON.stringify(lastError).slice(0, 300));
       return NextResponse.json(
         {
-          error: errData?.message ?? "Could not charge that mobile money number.",
-          debug: { initData, lastError, candidates },
+          error: "Could not charge that mobile money number. Check the number and try again.",
         },
         { status: 502 }
       );
@@ -333,7 +337,6 @@ export async function POST(req: NextRequest) {
       orderReference,
       orderId: order.id,
       viewKey,
-      debug: chargeData,
     });
   } catch {
     return NextResponse.json(
@@ -355,41 +358,23 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Only NotchPay's own reference is taken from the browser. Which order
+  // it pays for, and whether it covers the amount, comes from NotchPay's
+  // transaction record (see applyConfirmedNotchPayPayment).
   const reference = req.nextUrl.searchParams.get("reference");
-  const orderReference = req.nextUrl.searchParams.get("orderReference");
-  if (!reference) {
+  if (!reference || !/^[A-Za-z0-9._-]{4,120}$/.test(reference)) {
     return NextResponse.json({ error: "Missing reference." }, { status: 400 });
   }
 
   try {
-    const res = await fetch(`${NOTCHPAY_BASE_URL}/payments/${reference}`, {
-      headers: { Authorization: NOTCHPAY_PUBLIC_KEY },
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: data?.message ?? "Could not check payment status." },
-        { status: res.status }
-      );
+    const result = await checkNotchPayStatus(reference);
+    if (!result.ok) {
+      return NextResponse.json({ error: "Could not check payment status." }, { status: result.status >= 500 ? 502 : 400 });
     }
-    const status: string = data?.transaction?.status ?? data?.payment?.status ?? "pending";
-
-    if (status === "complete" && orderReference) {
+    const status = result.status;
+    if (status === "complete") {
       const admin = getAdminClient();
-      if (admin) {
-        // Shared with the NotchPay webhook: whichever hears first wins,
-        // the other is a no-op. Stock is only taken off the shelf once
-        // payment is confirmed, never at checkout start.
-        const updatedOrder = await markOrderPaid(admin, {
-          paymentReference: orderReference,
-          provider: "notchpay",
-          eventType: "payment.complete",
-          rawPayload: data,
-        });
-        if (updatedOrder && updatedOrder.payment_plan !== "layaway") {
-          await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
-        }
-      }
+      if (admin) await applyConfirmedNotchPayPayment(admin, result.tx, { eventType: "payment.complete", rawPayload: result.raw });
     }
 
     return NextResponse.json({ status });
