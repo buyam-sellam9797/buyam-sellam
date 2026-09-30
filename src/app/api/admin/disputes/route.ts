@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { putBackStock } from "@/lib/order-fulfillment";
+import { sendOrderEmails } from "@/lib/order-emails";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
 
 // Every dispute — a buyer's structured "report a problem" — newest
@@ -81,6 +83,12 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", dispute.order_id);
+
+  if (newOrderStatus === "refunded") {
+    // The item never reached the buyer (or came back): back on sale.
+    await putBackStock(admin, dispute.order_id);
+    after(() => sendOrderEmails(admin, dispute.order_id, "refunded"));
+  }
 
   return NextResponse.json({ ok: true });
 }
