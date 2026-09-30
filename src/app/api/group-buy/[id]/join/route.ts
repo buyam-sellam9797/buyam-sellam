@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOrderPricing } from "@/lib/order-pricing";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
-import { completeGroupBuyJoin } from "@/lib/order-fulfillment";
+import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
 
 // Joining a campaign charges the buyer immediately, for real — same
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     reference: orderReference,
   });
   if (!charge.ok) {
-    return NextResponse.json({ error: charge.error, debug: charge.debug }, { status: charge.status });
+    return NextResponse.json({ error: charge.error }, { status: charge.status });
   }
 
   return NextResponse.json({ reference: charge.reference, orderReference, orderId: order.id });
@@ -164,12 +164,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (result.status === "complete") {
-    await completeGroupBuyJoin(admin, {
-      paymentReference: reference,
-      provider: "notchpay",
-      eventType: "group_buy.joined",
-      rawPayload: result.raw,
-    });
+    await applyConfirmedNotchPayPayment(admin, result.tx, { eventType: "group_buy.joined", rawPayload: result.raw });
   }
 
   return NextResponse.json({ status: result.status });
