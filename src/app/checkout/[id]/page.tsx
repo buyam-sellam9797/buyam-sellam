@@ -74,7 +74,7 @@ export default async function CheckoutPage({
         initialQuantity={initialQuantity}
         deliveryFee={deliveryFee}
         deliveryZones={deliveryZones}
-        sebpayOperators={sebpayCurrency ? sebpayOperators : []}
+        sebpayOperators={sebpayCurrency && !offer ? sebpayOperators : []}
         cardsEnabled={process.env.NOTCHPAY_CARDS_ENABLED === "true"}
         offer={offer}
       />
