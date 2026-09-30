@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { SignatureTab } from "./signature-tab";
 import type { Dictionary } from "@/lib/i18n";
@@ -29,6 +29,7 @@ type AdminOrder = {
   id: string;
   status: string;
   total_amount_fcfa: number;
+  delivery_fee_fcfa?: number | null;
   buyer_phone: string | null;
   payout_sent: boolean;
   created_at: string;
@@ -81,6 +82,7 @@ type AdminDispute = {
 type PayoutOrder = {
   id: string;
   total_amount_fcfa: number;
+  delivery_fee_fcfa?: number | null;
   buyer_phone: string | null;
   created_at: string;
   shop?: {
@@ -745,11 +747,11 @@ function PayoutsTab({
           </div>
           <div className="text-right whitespace-nowrap">
             <p className="text-sm font-semibold">
-              {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
+              {formatFcfa(orderCommission(o).sellerPayoutFcfa)}
             </p>
             <p className="text-[11px] text-neutral-400">
               {t.admin.ofTotal} {formatFcfa(o.total_amount_fcfa)} · {t.admin.commission}{" "}
-              {formatFcfa(calculateCommission(o.total_amount_fcfa).commissionFcfa)}
+              {formatFcfa(orderCommission(o).commissionFcfa)}
             </p>
           </div>
           <button
