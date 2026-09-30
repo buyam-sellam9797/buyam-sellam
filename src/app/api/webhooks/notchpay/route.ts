@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
-import { verifyNotchPayWebhook, extractNotchPayReference, extractNotchPayEventType } from "@/lib/notchpay";
-import { completeLayawayInstallment, completeGroupBuyJoin, markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
+import { verifyNotchPayWebhook, extractNotchPayEventType, readNotchPayTx } from "@/lib/notchpay";
+import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
 
 // Before this route existed, an order only flipped from
 // "pending_payment" to "paid_held" when the BUYER'S OWN BROWSER polled
@@ -42,67 +42,20 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = extractNotchPayEventType(payload);
-  const reference = extractNotchPayReference(payload);
+  const tx = readNotchPayTx(payload);
+  // Our own order/charge reference, as we gave it to NotchPay.
+  const ourReference = tx.merchantReference ?? tx.reference;
 
-  if (!reference) {
+  if (!ourReference) {
     // Nothing to match this to — acknowledge so NotchPay doesn't keep
     // retrying a payload we could never act on anyway.
     return NextResponse.json({ ok: true, ignored: "no reference in payload" });
   }
 
   if (eventType === "payment.complete" || eventType === "payment.success") {
-    // Stock is only taken off the shelf once payment is actually
-    // confirmed (see /api/checkout's GET handler for the matching
-    // comment) — this is the second, more reliable path to that same
-    // "paid_held" transition, guarded the same way: only a still-
-    // pending order can be moved, so a late/duplicate webhook delivery
-    // after the browser's own poll already confirmed it is a no-op.
-    // The `.is("group_buy_id", null)` guard is the only change from
-    // this route's original, already-tested query: a group-buy join
-    // charge (see /api/group-buy/[id]/join) must NOT be escrowed the
-    // instant it clears the way every other order is — it's contingent
-    // on the whole campaign succeeding — so it's left for the
-    // completeGroupBuyJoin branch below to handle instead.
-    // Now shared with the buyer's own polling and SebPay through
-    // markOrderPaid (escrow, payment event, seller alert, emails,
-    // offer / shared-bag closing). Stock also comes off the shelf here:
-    // card payments never poll (the buyer is on NotchPay's own page),
-    // so without this their stock was never reduced.
-    const updatedOrder = await markOrderPaid(admin, {
-      paymentReference: reference,
-      provider: "notchpay",
-      eventType,
-      rawPayload: payload,
-      excludeGroupBuy: true,
-    });
-
-    if (updatedOrder) {
-      if (updatedOrder.payment_plan !== "layaway") {
-        await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
-      }
-    } else {
-      // No ordinary order was charged in full under this exact
-      // reference — the other two shapes a NotchPay reference can take
-      // are a group-buy join charge (/api/group-buy/[id]/join) or one
-      // of layaway's per-installment charges (/api/layaway/...), whose
-      // reference is derived from but not equal to any order's own
-      // payment_reference. Each helper is a no-op if the reference
-      // doesn't match what it's looking for.
-      const groupBuyResult = await completeGroupBuyJoin(admin, {
-        paymentReference: reference,
-        provider: "notchpay",
-        eventType,
-        rawPayload: payload,
-      });
-      if (!groupBuyResult) {
-        await completeLayawayInstallment(admin, {
-          paymentReference: reference,
-          provider: "notchpay",
-          eventType,
-          rawPayload: payload,
-        });
-      }
-    }
+    // Same path as the buyer's own polling: matched on our reference,
+    // amount checked, escrow + stock + alerts; a no-op if already done.
+    await applyConfirmedNotchPayPayment(admin, tx, { eventType, rawPayload: payload });
   } else if (
     eventType === "payment.failed" ||
     eventType === "payment.canceled" ||
@@ -115,7 +68,7 @@ export async function POST(req: NextRequest) {
     const { data: updatedOrder } = await admin
       .from("orders")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
-      .eq("payment_reference", reference)
+      .eq("payment_reference", ourReference)
       .eq("status", "pending_payment")
       .select("id")
       .maybeSingle();
