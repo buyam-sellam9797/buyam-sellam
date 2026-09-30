@@ -53,10 +53,13 @@ export function summarizeBusinessHours(
 export function isOpenNow(isOpenToggle: boolean, hours: BusinessHours | null, now: Date = new Date()): boolean {
   if (!isOpenToggle) return false;
   if (!hours) return true;
-  const dayKey = JS_DAY_TO_KEY[now.getDay()];
+  // Shop hours are Cameroon time (UTC+1, no daylight saving), whatever
+  // timezone the server or the visitor's phone is in.
+  const cm = new Date(now.getTime() + 60 * 60 * 1000);
+  const dayKey = JS_DAY_TO_KEY[cm.getUTCDay()];
   const today = hours[dayKey];
-  if (today.closed || !today.open || !today.close) return false;
-  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  if (!today || today.closed || !today.open || !today.close) return false;
+  const minutesNow = cm.getUTCHours() * 60 + cm.getUTCMinutes();
   const [openH, openM] = today.open.split(":").map(Number);
   const [closeH, closeM] = today.close.split(":").map(Number);
   const openMinutes = openH * 60 + openM;
