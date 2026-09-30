@@ -14,7 +14,7 @@ import { IconBag, IconPin, IconLock } from "@/components/dash-icons";
 import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
 import { removeFromBag } from "@/lib/bag";
 
-type Status = "form" | "waiting" | "held" | "failed";
+type Status = "form" | "waiting" | "held" | "failed" | "pending";
 type Gateway = "notchpay" | "sebpay";
 
 export default function CheckoutForm({
@@ -331,21 +331,19 @@ export default function CheckoutForm({
           } catch {
             // transient network hiccup while polling — keep trying until timeout
           }
-          if (attempts >= 20) {
+          if (attempts >= 40) {
             if (pollRef.current) clearInterval(pollRef.current);
-            setError(t.checkout.errorTimeout);
-            setStatus("failed");
+            setStatus("pending");
           }
         }, 3000);
         return;
       }
 
       const reference: string = startData.reference;
-      const orderReference: string = startData.orderReference;
       const pollUrl =
         paymentPlan === "layaway"
           ? `/api/layaway?reference=${encodeURIComponent(reference)}`
-          : `/api/checkout?reference=${encodeURIComponent(reference)}&orderReference=${encodeURIComponent(orderReference)}`;
+          : `/api/checkout?reference=${encodeURIComponent(reference)}`;
       pollRef.current = setInterval(async () => {
         attempts += 1;
         try {
@@ -363,10 +361,11 @@ export default function CheckoutForm({
         } catch {
           // transient network hiccup while polling — keep trying until timeout
         }
-        if (attempts >= 20) {
+        // No answer after 2 minutes: the payment may still go through
+        // (slow network, late approval), so never suggest paying again.
+        if (attempts >= 40) {
           if (pollRef.current) clearInterval(pollRef.current);
-          setError(t.checkout.errorTimeout);
-          setStatus("failed");
+          setStatus("pending");
         }
       }, 3000);
     } catch {
@@ -395,6 +394,25 @@ export default function CheckoutForm({
           <Link
             href={paymentPlan === "layaway" ? "/account" : `/order/${orderId}${viewKey ? `?k=${viewKey}` : ""}`}
             className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-semibold text-center hover:border-neutral-900"
+          >
+            {paymentPlan === "layaway" ? t.checkout.viewLayawayPlan : t.checkout.trackOrder}
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "pending") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold mb-1">{t.checkout.stillPendingTitle}</p>
+          <p>{t.checkout.stillPendingBody}</p>
+        </div>
+        {orderId && (
+          <Link
+            href={paymentPlan === "layaway" ? "/account" : `/order/${orderId}${viewKey ? `?k=${viewKey}` : ""}`}
+            className="rounded-full bg-neutral-900 text-white px-6 py-3 text-sm font-semibold text-center hover:bg-neutral-700"
           >
             {paymentPlan === "layaway" ? t.checkout.viewLayawayPlan : t.checkout.trackOrder}
           </Link>
