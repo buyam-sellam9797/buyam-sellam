@@ -1,5 +1,6 @@
 "use client";
 
+import { signOutEverywhere } from "@/lib/sign-out";
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -138,8 +139,7 @@ export default function AdminPage() {
   if (!token) return null;
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/");
+    await signOutEverywhere("/");
   }
 
   const TABS: { key: Tab; label: string }[] = [
@@ -196,12 +196,17 @@ export default function AdminPage() {
   );
 }
 
+// Always sends the current access token: Supabase refreshes it in the
+// background every hour, and a token captured when the page opened
+// would make every admin call fail after that.
 async function authedFetch(url: string, token: string, init?: RequestInit) {
+  const { data } = await supabase.auth.getSession();
+  const current = data.session?.access_token ?? token;
   return fetch(url, {
     ...init,
     headers: {
       ...(init?.headers ?? {}),
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${current}`,
     },
   });
 }
