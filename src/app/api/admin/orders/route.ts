@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await check.admin
     .from("orders")
     .select(
-      "id, status, total_amount_fcfa, buyer_phone, payout_sent, created_at, shop:shops(shop_name)"
+      "id, status, total_amount_fcfa, delivery_fee_fcfa, buyer_phone, payout_sent, created_at, shop:shops(shop_name)"
     )
     .order("created_at", { ascending: false })
     .limit(200);
