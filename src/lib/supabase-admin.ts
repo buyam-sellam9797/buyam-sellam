@@ -99,7 +99,7 @@ export async function notifyShop(
   admin: SupabaseClient,
   input: {
     shopId: string;
-    type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature";
+    type: "new_order" | "dispute_filed" | "low_stock" | "payout_released" | "offer" | "signature" | "ship_reminder" | "order_cancelled";
     title: string;
     body?: string | null;
     orderId?: string | null;
@@ -119,12 +119,14 @@ export async function notifyShop(
     body: pushBody(input.body),
     url: `/dashboard?tab=${SHOP_PUSH_TAB[input.type]}`,
     tag: input.orderId ? `order-${input.orderId}` : `shop-${input.type}`,
-    urgency: input.type === "new_order" || input.type === "offer" || input.type === "dispute_filed" ? "high" : "normal",
+    urgency: ["new_order", "offer", "dispute_filed", "ship_reminder"].includes(input.type) ? "high" : "normal",
   });
 }
 
 const SHOP_PUSH_TAB: Record<string, string> = {
   new_order: "orders",
+  ship_reminder: "orders",
+  order_cancelled: "orders",
   dispute_filed: "orders",
   low_stock: "products",
   payout_released: "payments",
