@@ -107,8 +107,14 @@ export async function POST(req: NextRequest) {
     if (userData?.user) buyerId = userData.user.id;
   }
 
+  // Offer prices are only charged through the main checkout.
+  if ((body as { offerId?: string }).offerId) {
+    return NextResponse.json({ error: "Pay an agreed offer with MTN MoMo or Orange Money." }, { status: 400 });
+  }
+
   const pricing = await resolveOrderPricing(admin, {
     productId,
+    buyerId,
     quantity: body.quantity,
     deliveryLatitude: body.deliveryLatitude,
     deliveryLongitude: body.deliveryLongitude,
@@ -209,17 +215,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Could not reach SebPay." }, { status: 502 });
   }
 
-  if (result.status === "approved") {
-    const updatedOrder = await markOrderPaid(admin, {
-      paymentReference: orderReference,
-      provider: "sebpay",
-      eventType: "collection.approved",
-      rawPayload: { transactionId, status: result.status },
-    });
-    if (updatedOrder) {
-      await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
+  // The transaction must be the one started for THIS order (SebPay's
+  // own record says so) — otherwise a payment for something cheap could
+  // be replayed against a dearer order. If SebPay doesn't tell us, the
+  // signed webhook is left to settle it.
+  const belongsToOrder = result.externalReference === orderReference;
+
+  if (result.status === "approved" && belongsToOrder) {
+    const { data: order } = await admin
+      .from("orders")
+      .select("total_amount_fcfa")
+      .eq("payment_reference", orderReference)
+      .maybeSingle();
+    if (order && (result.amount == null || result.amount >= order.total_amount_fcfa)) {
+      const updatedOrder = await markOrderPaid(admin, {
+        paymentReference: orderReference,
+        provider: "sebpay",
+        eventType: "collection.approved",
+        rawPayload: { transactionId, status: result.status },
+        excludeGroupBuy: true,
+      });
+      if (updatedOrder) {
+        await decrementStockAndNotify(admin, updatedOrder.id, updatedOrder.shop_id);
+      }
     }
-  } else if (result.status === "rejected") {
+  } else if (result.status === "rejected" && belongsToOrder) {
     await admin
       .from("orders")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
