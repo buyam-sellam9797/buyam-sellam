@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { signOutEverywhere } from "@/lib/sign-out";
 import { getIdleTimeoutMinutes } from "@/lib/site-settings";
 import { useLocale } from "@/components/locale-provider";
 
@@ -42,7 +43,6 @@ function writeStored(key: string, value: number) {
 
 export function IdleLogout() {
   const { t } = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
   const [limitMs, setLimitMs] = useState<number | null>(null);
   const [signedIn, setSignedIn] = useState(false);
@@ -66,19 +66,21 @@ export function IdleLogout() {
     setWarning(false);
   }, []);
 
+  // Full reload, so no signed-in view from before stays on screen.
   const goToLogin = useCallback(() => {
-    if (pathnameRef.current !== "/login") router.push("/login?reason=idle");
-  }, [router]);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    if (pathnameRef.current !== "/login") window.location.assign("/login?reason=idle");
+  }, []);
 
   const signOutForIdle = useCallback(async () => {
     if (signingOut.current) return;
+    // Someone who opened a password-reset link is mid-recovery, not idle.
+    if (pathnameRef.current === "/reset-password") return;
     signingOut.current = true;
     writeStored(IDLE_SIGNOUT_FLAG, Date.now());
-    await supabase.auth.signOut();
     setWarning(false);
-    signingOut.current = false;
-    goToLogin();
-  }, [goToLogin]);
+    await signOutEverywhere(pathnameRef.current === "/login" ? "/login" : "/login?reason=idle");
+  }, []);
 
   // Load the admin-set limit once per page load.
   useEffect(() => {
@@ -98,7 +100,7 @@ export function IdleLogout() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       setSignedIn(Boolean(session));
-      if (event === "SIGNED_IN") {
+      if (event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") {
         const now = Date.now();
         lastActivity.current = now;
         lastWrite.current = now;
