@@ -71,7 +71,7 @@ import {
   type DeliveryZone,
 } from "@/lib/supabase";
 import { formatFcfa } from "@/lib/format";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { useLocale } from "@/components/locale-provider";
 import { SpaceSwitch } from "@/components/space-switch";
 import { HandoverForm } from "./handover-form";
@@ -247,13 +247,13 @@ export default function DashboardPage() {
   // seller's hands, not the full amount the buyer paid.
   const balanceHeld = orders
     .filter((o) => o.status === "paid_held" || o.status === "shipped")
-    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+    .reduce((sum, o) => sum + orderCommission(o).sellerPayoutFcfa, 0);
   const owed = orders
     .filter((o) => o.status === "completed" && !o.payout_sent)
-    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+    .reduce((sum, o) => sum + orderCommission(o).sellerPayoutFcfa, 0);
   const paidOut = orders
     .filter((o) => o.status === "completed" && o.payout_sent)
-    .reduce((sum, o) => sum + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+    .reduce((sum, o) => sum + orderCommission(o).sellerPayoutFcfa, 0);
   const todaySales = orders
     .filter((o) => new Date(o.created_at).toDateString() === today && o.status !== "pending_payment" && o.status !== "cancelled")
     .reduce((sum, o) => sum + o.total_amount_fcfa, 0);
@@ -922,7 +922,7 @@ function OrdersPanel({
                     </p>
                     {o.status === "completed" && (
                       <p className="text-xs mt-0.5" style={{ color: "var(--dash-muted)" }}>
-                        {t.dashboard.youReceive} {formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}
+                        {t.dashboard.youReceive} {formatFcfa(orderCommission(o).sellerPayoutFcfa)}
                       </p>
                     )}
                   </div>
@@ -1014,12 +1014,12 @@ function OrdersPanel({
                         <div className="flex items-center justify-between text-sm mb-1">
                           <span style={{ color: "var(--dash-muted)" }}>{t.dashboard.platformFeeLabel}</span>
                           <span style={{ color: "var(--dash-danger)" }}>
-                            −{formatFcfa(calculateCommission(o.total_amount_fcfa).commissionFcfa)}
+                            −{formatFcfa(orderCommission(o).commissionFcfa)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm font-semibold pt-1 mt-1 border-t" style={{ borderColor: "var(--dash-border)" }}>
                           <span>{t.dashboard.youReceive}</span>
-                          <span>{formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}</span>
+                          <span>{formatFcfa(orderCommission(o).sellerPayoutFcfa)}</span>
                         </div>
                         <div className="flex items-center justify-between text-xs mt-2">
                           <span style={{ color: "var(--dash-muted)" }}>{t.dashboard.paymentStatusLabel}</span>
@@ -1472,7 +1472,7 @@ function PayoutHistory({ orders, t }: { orders: Order[]; t: Dictionary }) {
           {paidOrders.map((o) => (
             <div key={o.id} className="flex items-center justify-between p-4 text-sm">
               <div>
-                <p className="font-medium">{formatFcfa(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa)}</p>
+                <p className="font-medium">{formatFcfa(orderCommission(o).sellerPayoutFcfa)}</p>
                 <p className="text-xs" style={{ color: "var(--dash-muted)" }}>
                   {o.payout_sent_at ? new Date(o.payout_sent_at).toLocaleDateString() : ""}
                 </p>
