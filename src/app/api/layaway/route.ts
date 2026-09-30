@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { resolveOrderPricing } from "@/lib/order-pricing";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
 import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
@@ -51,6 +52,8 @@ export async function POST(req: NextRequest) {
   if (!admin) {
     return NextResponse.json({ error: "Payments are not configured yet." }, { status: 500 });
   }
+  const limited = await rateLimited(admin, req, "payment");
+  if (limited) return limited;
 
   let body: LayawayChargeBody;
   try {
