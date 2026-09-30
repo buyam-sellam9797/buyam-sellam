@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveOrderPricing } from "@/lib/order-pricing";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
-import { completeLayawayInstallment } from "@/lib/order-fulfillment";
+import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { resolveLayawaySettings, computeLayawayPlan } from "@/lib/layaway";
 import { cleanEmail } from "@/lib/email-address";
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
     reference: chargeReference,
   });
   if (!charge.ok) {
-    return NextResponse.json({ error: charge.error, debug: charge.debug }, { status: charge.status });
+    return NextResponse.json({ error: charge.error }, { status: charge.status });
   }
 
   await admin
@@ -217,12 +217,7 @@ export async function GET(req: NextRequest) {
   if (result.status === "complete") {
     const admin = getAdminClient();
     if (admin) {
-      await completeLayawayInstallment(admin, {
-        paymentReference: reference,
-        provider: "notchpay",
-        eventType: "layaway.deposit_paid",
-        rawPayload: result.raw,
-      });
+      await applyConfirmedNotchPayPayment(admin, result.tx, { eventType: "layaway.deposit_paid", rawPayload: result.raw });
     }
   }
 
