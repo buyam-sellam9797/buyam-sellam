@@ -56,6 +56,23 @@ function stepIndexFor(order: OrderInfo): number {
   return 0;
 }
 
+
+// Proves to the server that this browser belongs to the buyer: the
+// order's private key (from the link) and/or the signed-in session.
+async function buyerHeaders(orderId: string): Promise<Record<string, string>> {
+  const h: Record<string, string> = {};
+  let key: string | null = null;
+  try {
+    key = new URLSearchParams(window.location.search).get("k") || localStorage.getItem(`bs_order_key_${orderId}`);
+  } catch {
+    key = new URLSearchParams(window.location.search).get("k");
+  }
+  if (key) h["x-order-key"] = key;
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.access_token) h.Authorization = `Bearer ${data.session.access_token}`;
+  return h;
+}
+
 export default function OrderStatus({ orderId }: { orderId: string }) {
   const { t, locale } = useLocale();
   const [order, setOrder] = useState<OrderInfo | null>(null);
@@ -65,6 +82,9 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  // False when the page was opened with just the order number (no
+  // private link, not signed in as the buyer): progress only.
+  const [isBuyer, setIsBuyer] = useState(false);
   const [deliveryCode, setDeliveryCode] = useState<string | null>(null);
   const [productRating, setProductRating] = useState(0);
   const [sellerRating, setSellerRating] = useState(0);
@@ -109,6 +129,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
           setOrder(data.order);
           setItems(Array.isArray(data.items) ? data.items : []);
           setReviewed(Boolean(data.reviewed));
+          setIsBuyer(Boolean(data.isBuyer));
           setDeliveryCode(typeof data.deliveryCode === "string" ? data.deliveryCode : null);
         } else setNotFound(true);
       })
@@ -133,7 +154,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await buyerHeaders(orderId)) },
         body: JSON.stringify({
           action: "review",
           productRating,
@@ -161,7 +182,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await buyerHeaders(orderId)) },
         body: JSON.stringify({ action: "confirm" }),
       });
       const data = await res.json();
@@ -189,7 +210,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
       form.set("reason", reportReason);
       form.set("description", reportDescription);
       if (reportPhoto) form.set("photo", reportPhoto);
-      const res = await fetch(`/api/orders/${orderId}/dispute`, { method: "POST", body: form });
+      const res = await fetch(`/api/orders/${orderId}/dispute`, { method: "POST", body: form, headers: await buyerHeaders(orderId) });
       const data = await res.json();
       if (!res.ok) {
         setReportError(data.error ?? t.order.reportErrorGeneric);
@@ -364,7 +385,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
         </div>
       )}
 
-      {(chatHref || !isTerminalIssue) && (
+      {(chatHref || (!isTerminalIssue && isBuyer)) && (
         <div className="flex gap-2 mb-4">
           {chatHref && (
             <a
@@ -376,7 +397,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
               {t.order.chatWithSeller}
             </a>
           )}
-          {!isTerminalIssue && (
+          {!isTerminalIssue && isBuyer && (
             <button
               type="button"
               onClick={() => setShowReportForm((s) => !s)}
@@ -490,13 +511,15 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
               {error}
             </p>
           )}
-          <button
-            onClick={handleConfirm}
-            disabled={confirming}
-            className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
-          >
-            {confirming ? t.order.confirming : t.order.confirmReceived}
-          </button>
+          {isBuyer && (
+            <button
+              onClick={handleConfirm}
+              disabled={confirming}
+              className="rounded-full bg-neutral-900 text-white font-semibold px-6 py-3 hover:bg-neutral-700 disabled:opacity-60"
+            >
+              {confirming ? t.order.confirming : t.order.confirmReceived}
+            </button>
+          )}
         </div>
       )}
 
@@ -510,7 +533,7 @@ export default function OrderStatus({ orderId }: { orderId: string }) {
             <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700 flex items-center gap-1.5">
               <IconStar filled className="w-4 h-4 text-amber-500 shrink-0" /> {t.order.reviewThanks}
             </div>
-          ) : (
+          ) : !isBuyer ? null : (
             <div className="rounded-xl border border-neutral-200 bg-white p-5">
               <p className="text-sm font-semibold mb-3">{t.order.reviewPrompt}</p>
               <StarPicker
