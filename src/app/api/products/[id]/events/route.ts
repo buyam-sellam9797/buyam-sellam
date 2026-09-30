@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { processProductEvents } from "@/lib/shop-alerts";
 
@@ -6,11 +7,13 @@ import { processProductEvents } from "@/lib/shop-alerts";
 // edited or switched back on. The server re-reads the product itself and
 // only emails what is actually true (it's back in stock / it's new), and
 // every send is recorded, so repeated calls never send twice.
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) return NextResponse.json({ error: "Invalid product." }, { status: 400 });
   const admin = getAdminClient();
   if (!admin) return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
+  const limited = await rateLimited(admin, req, "event");
+  if (limited) return limited;
   after(() => processProductEvents(admin, id));
   return NextResponse.json({ ok: true });
 }
