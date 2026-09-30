@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
-import { getOrderSecrets, MAX_HANDOVER_ATTEMPTS } from "@/lib/order-secrets";
+import { MAX_HANDOVER_ATTEMPTS } from "@/lib/order-secrets";
 
 // The seller's two actions on a paid order — "Accept" (I'm preparing
 // it) and "Mark as sent" — done on the server so the buyer can be
@@ -70,20 +70,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!["paid_held", "shipped"].includes(order.status)) {
       return NextResponse.json({ error: "This order can't be confirmed right now." }, { status: 409 });
     }
-    const secrets = await getOrderSecrets(admin, id);
-    if (!secrets) return NextResponse.json({ error: "No delivery code for this order." }, { status: 409 });
-    if (secrets.handover_attempts >= MAX_HANDOVER_ATTEMPTS) {
-      return NextResponse.json({ error: "locked" }, { status: 429 });
+    // Checked and counted inside one locked database call, so firing
+    // many guesses at once can't get past the attempt limit.
+    const code = String(body.code ?? "").replace(/\D/g, "").slice(0, 8);
+    const { data: verdict } = await admin.rpc("check_handover_code", { p_order: id, p_code: code, p_max: MAX_HANDOVER_ATTEMPTS });
+    if (verdict === "missing") return NextResponse.json({ error: "No delivery code for this order." }, { status: 409 });
+    if (verdict === "locked") return NextResponse.json({ error: "locked" }, { status: 429 });
+    if (typeof verdict === "string" && verdict.startsWith("wrong:")) {
+      return NextResponse.json({ error: "wrong", attemptsLeft: Number(verdict.slice(6)) }, { status: 400 });
     }
-    const code = String(body.code ?? "").replace(/\D/g, "");
-    if (code !== secrets.delivery_code) {
-      const attempts = secrets.handover_attempts + 1;
-      await admin.from("order_secrets").update({ handover_attempts: attempts }).eq("order_id", id);
-      return NextResponse.json(
-        { error: attempts >= MAX_HANDOVER_ATTEMPTS ? "locked" : "wrong", attemptsLeft: MAX_HANDOVER_ATTEMPTS - attempts },
-        { status: attempts >= MAX_HANDOVER_ATTEMPTS ? 429 : 400 }
-      );
-    }
+    if (verdict !== "ok") return NextResponse.json({ error: "Could not check the code. Try again." }, { status: 500 });
     const { data: updated } = await admin
       .from("orders")
       .update({ status: "completed", completed_at: now, updated_at: now })
