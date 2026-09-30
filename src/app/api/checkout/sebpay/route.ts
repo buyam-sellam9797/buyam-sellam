@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { resolveOrderPricing } from "@/lib/order-pricing";
 import { markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
@@ -54,6 +55,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  const limited = await rateLimited(admin, req, "payment");
+  if (limited) return limited;
 
   let body: ChargeBody;
   try {
