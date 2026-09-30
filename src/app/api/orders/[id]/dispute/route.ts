@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
 import { requestIsOrderBuyer } from "@/lib/order-secrets";
@@ -38,6 +39,8 @@ export async function POST(
   if (!admin) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
+  const limited = await rateLimited(admin, req, "report");
+  if (limited) return limited;
 
   if (!(await requestIsOrderBuyer(admin, req, id))) {
     return NextResponse.json({ error: "Open this order from your confirmation link or sign in to your account." }, { status: 403 });
