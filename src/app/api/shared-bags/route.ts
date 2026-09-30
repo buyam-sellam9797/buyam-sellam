@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { getRequestUser } from "@/lib/api-auth";
 import { createSharedBag, type SharedBagDelivery } from "@/lib/shared-bags";
@@ -9,6 +10,8 @@ import type { BagLineInput } from "@/lib/order-pricing";
 export async function POST(req: NextRequest) {
   const admin = getAdminClient();
   if (!admin) return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
+  const limited = await rateLimited(admin, req, "offer");
+  if (limited) return limited;
   const user = await getRequestUser(admin, req);
   if (!user) return NextResponse.json({ error: "Please log in first.", code: "login" }, { status: 401 });
 
