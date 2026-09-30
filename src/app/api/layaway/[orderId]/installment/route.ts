@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initAndChargeNotchPay, checkNotchPayStatus } from "@/lib/notchpay";
-import { completeLayawayInstallment } from "@/lib/order-fulfillment";
+import { applyConfirmedNotchPayPayment } from "@/lib/order-fulfillment";
 import { getAdminClient } from "@/lib/supabase-admin";
+import { requestIsOrderBuyer } from "@/lib/order-secrets";
 
 // Charges the next unpaid installment of an existing layaway order
 // (installment 2, 3, … up to however many the seller's plan has — see
@@ -16,6 +17,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     return NextResponse.json({ error: "Payments are not configured yet." }, { status: 500 });
   }
   const { orderId } = await params;
+  if (!(await requestIsOrderBuyer(admin, req, orderId))) {
+    return NextResponse.json({ error: "Please sign in to pay this plan." }, { status: 403 });
+  }
 
   let body: { provider?: "mtn" | "orange"; phone?: string };
   try {
@@ -33,6 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     .select("id, payment_reference, payment_plan")
     .eq("id", orderId)
     .eq("payment_plan", "layaway")
+    .eq("status", "pending_payment")
     .maybeSingle();
   if (!order) {
     return NextResponse.json({ error: "Layaway order not found." }, { status: 404 });
@@ -68,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ ord
     reference: chargeReference,
   });
   if (!charge.ok) {
-    return NextResponse.json({ error: charge.error, debug: charge.debug }, { status: charge.status });
+    return NextResponse.json({ error: charge.error }, { status: charge.status });
   }
 
   await admin.from("layaway_installments").update({ payment_reference: charge.reference }).eq("id", installment.id);
@@ -100,12 +105,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (result.status === "complete") {
-    await completeLayawayInstallment(admin, {
-      paymentReference: reference,
-      provider: "notchpay",
-      eventType: "layaway.completed",
-      rawPayload: result.raw,
-    });
+    await applyConfirmedNotchPayPayment(admin, result.tx, { eventType: "layaway.completed", rawPayload: result.raw });
   }
 
   return NextResponse.json({ status: result.status });
