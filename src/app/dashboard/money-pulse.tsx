@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase, updateShop, type Order, type Product, type Shop } from "@/lib/supabase";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { formatFcfa } from "@/lib/format";
 import type { Dictionary } from "@/lib/i18n";
 import { IconBanknote, IconEye, IconBox, IconChat, IconTrendingUp, IconTrendingDown, IconAlertTriangle, IconCart } from "@/components/dash-icons";
@@ -75,7 +75,7 @@ export function MoneyPulse({
     const paid = orders.filter((o) => COUNTED.has(o.status) && o.paid_at);
     const cur = paid.filter((o) => inWindow(o.paid_at, start, end));
     const prev = paid.filter((o) => inWindow(o.paid_at, prevStart, start));
-    const net = (list: Order[]) => list.reduce((s, o) => s + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+    const net = (list: Order[]) => list.reduce((s, o) => s + orderCommission(o).sellerPayoutFcfa, 0);
     const units = (list: Order[]) => list.reduce((s, o) => s + (o.items ?? []).reduce((n, i) => n + i.quantity, 0), 0);
     const viewsBetween = (a: number, b: number) => {
       let total = 0;
