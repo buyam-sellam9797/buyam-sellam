@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
-import { getOrderSecrets } from "@/lib/order-secrets";
+import { getOrderSecrets, requestIsOrderBuyer } from "@/lib/order-secrets";
 
 // Public order-status endpoint used by the buyer-facing /order/[id]
 // page. An order id (UUID) is hard to guess, but this route still
@@ -19,17 +19,19 @@ export async function GET(
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
 
-  const { data: order, error } = await admin
-    .from("orders")
-    .select(
-      "id, status, total_amount_fcfa, delivery_fee_fcfa, delivery_distance_km, created_at, updated_at, accepted_at, delivery_name, delivery_phone, is_gift, gift_note, delivery_city, delivery_neighborhood, delivery_address, group_buy_id, shop:shops(shop_name, whatsapp_number, city)"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  // Anyone with just the order number (e.g. from the phone lookup)
+  // sees its progress; the delivery details and the delivery code are
+  // only for the buyer (private link or signed-in session).
+  const isBuyer = await requestIsOrderBuyer(admin, req, id);
+  const fields = isBuyer
+    ? "id, status, total_amount_fcfa, delivery_fee_fcfa, delivery_distance_km, created_at, updated_at, accepted_at, delivery_name, delivery_phone, is_gift, gift_note, delivery_city, delivery_neighborhood, delivery_address, group_buy_id, shop:shops(shop_name, whatsapp_number, city)"
+    : "id, status, total_amount_fcfa, delivery_fee_fcfa, created_at, updated_at, accepted_at, delivery_city, group_buy_id, shop:shops(shop_name, whatsapp_number, city)";
+  const { data: order, error } = await admin.from("orders").select(fields).eq("id", id).maybeSingle();
 
   if (error || !order) {
     return NextResponse.json({ error: "Order not found." }, { status: 404 });
   }
+  const status = (order as unknown as { status: string }).status;
 
   const { data: items } = await admin
     .from("order_items")
@@ -42,29 +44,12 @@ export async function GET(
     .eq("order_id", id)
     .maybeSingle();
 
-  // The delivery code is only for the buyer: shown when the request
-  // carries this order's secret view key (from the checkout page or the
-  // payment email) or the signed-in buyer's own session — never to the
-  // seller, who types it in at handover.
   let deliveryCode: string | null = null;
-  if (["paid_held", "shipped"].includes(order.status)) {
-    const secrets = await getOrderSecrets(admin, id);
-    const key = req.nextUrl.searchParams.get("k");
-    let isBuyer = Boolean(secrets && key && key === secrets.view_key);
-    if (!isBuyer && secrets) {
-      const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-      if (token) {
-        const [{ data: userData }, { data: owner }] = await Promise.all([
-          admin.auth.getUser(token),
-          admin.from("orders").select("buyer_id").eq("id", id).maybeSingle(),
-        ]);
-        isBuyer = Boolean(userData?.user && owner?.buyer_id && owner.buyer_id === userData.user.id);
-      }
-    }
-    if (isBuyer && secrets) deliveryCode = secrets.delivery_code;
+  if (isBuyer && ["paid_held", "shipped"].includes(status)) {
+    deliveryCode = (await getOrderSecrets(admin, id))?.delivery_code ?? null;
   }
 
-  return NextResponse.json({ order, items: items ?? [], reviewed: Boolean(existingReview), deliveryCode });
+  return NextResponse.json({ order, items: items ?? [], reviewed: Boolean(existingReview), deliveryCode, isBuyer });
 }
 
 // The buyer taps "I received my order" on that page, which calls this
@@ -79,6 +64,10 @@ export async function POST(
   const admin = getAdminClient();
   if (!admin) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
+  }
+
+  if (!(await requestIsOrderBuyer(admin, req, id))) {
+    return NextResponse.json({ error: "Open this order from your confirmation link or sign in to your account." }, { status: 403 });
   }
 
   let body: {
