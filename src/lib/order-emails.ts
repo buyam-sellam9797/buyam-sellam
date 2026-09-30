@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendPushToUser, pushBody } from "@/lib/web-push";
 import { sendMail } from "@/lib/smtp";
 import { formatFcfa } from "@/lib/format";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { getSiteUrl } from "@/lib/site";
 import { getOrderSecrets } from "@/lib/order-secrets";
 
@@ -11,7 +11,17 @@ import { getOrderSecrets } from "@/lib/order-secrets";
 // the payment, shipping or confirmation step that triggered it. Callers
 // run it inside next/server's after() so the response isn't delayed.
 
-export type OrderEmailEvent = "paid" | "accepted" | "shipped" | "completed" | "disputed" | "payout";
+export type OrderEmailEvent =
+  | "paid"
+  | "accepted"
+  | "shipped"
+  | "completed"
+  | "disputed"
+  | "payout"
+  | "unshipped_cancelled"
+  | "refunded"
+  | "layaway_due"
+  | "layaway_cancelled";
 export type Lang = "en" | "fr";
 
 const SUPPORT_EMAIL = "support@buyamsellam.shop";
@@ -207,6 +217,113 @@ const SELLER: Record<Lang, Partial<Record<OrderEmailEvent, (c: Ctx) => Mail>>> =
   },
 };
 
+// Timeouts and refunds (see /api/cron/auto-confirm-orders and the admin
+// dispute resolution).
+Object.assign(BUYER.en, {
+  unshipped_cancelled: (c: Ctx) => ({
+    subject: `Order ${c.ref} was not sent — you will be refunded`,
+    title: "Your order was not sent in time",
+    paragraphs: [
+      `${c.shop} did not send your order (${c.items}) within 7 days of your payment. The order is cancelled and your ${c.amount} will be refunded to your mobile money number by the Buyam Sellam team.`,
+      "You don't need to do anything. If the seller contacts you to deliver after all, reply to this email before accepting.",
+    ],
+    button: { label: "View my order", path: "/order/{id}" },
+  }),
+  refunded: (c: Ctx) => ({
+    subject: `Refund sent — order ${c.ref}`,
+    title: "Your refund has been sent",
+    paragraphs: [`We've refunded your payment for ${c.items} from ${c.shop} to your mobile money number. It can take a few hours to show.`],
+    button: { label: "View my order", path: "/order/{id}" },
+  }),
+  layaway_due: (c: Ctx) => ({
+    subject: `A payment on your plan is due — order ${c.ref}`,
+    title: "Your next payment is due",
+    paragraphs: [
+      `The next payment on your pay-in-parts plan for ${c.items} from ${c.shop} is due now.`,
+      "Pay within 7 days to keep the item reserved. After that the plan is closed and the item goes back on sale.",
+    ],
+    button: { label: "Pay now", path: "/account#layaway" },
+  }),
+  layaway_cancelled: (c: Ctx) => ({
+    subject: `Your plan for order ${c.ref} was closed`,
+    title: "Your pay-in-parts plan was closed",
+    paragraphs: [
+      `No payment was made on your plan for ${c.items} from ${c.shop} for more than 7 days after it was due, so the plan is closed and the item is back on sale.`,
+      "Anything you already paid will be refunded to your mobile money number by the Buyam Sellam team.",
+    ],
+    button: { label: "My account", path: "/account" },
+  }),
+});
+Object.assign(BUYER.fr, {
+  unshipped_cancelled: (c: Ctx) => ({
+    subject: `Commande ${c.ref} non envoyée — vous serez remboursé`,
+    title: "Votre commande n'a pas été envoyée à temps",
+    paragraphs: [
+      `${c.shop} n'a pas envoyé votre commande (${c.items}) dans les 7 jours suivant votre paiement. La commande est annulée et vos ${c.amount} vous seront remboursés sur votre numéro mobile money par l'équipe Buyam Sellam.`,
+      "Vous n'avez rien à faire. Si le vendeur vous contacte malgré tout pour livrer, répondez à cet e-mail avant d'accepter.",
+    ],
+    button: { label: "Voir ma commande", path: "/order/{id}" },
+  }),
+  refunded: (c: Ctx) => ({
+    subject: `Remboursement envoyé — commande ${c.ref}`,
+    title: "Votre remboursement a été envoyé",
+    paragraphs: [`Nous avons remboursé votre paiement pour ${c.items} de ${c.shop} sur votre numéro mobile money. Cela peut prendre quelques heures à apparaître.`],
+    button: { label: "Voir ma commande", path: "/order/{id}" },
+  }),
+  layaway_due: (c: Ctx) => ({
+    subject: `Un paiement de votre plan est dû — commande ${c.ref}`,
+    title: "Votre prochain paiement est dû",
+    paragraphs: [
+      `Le prochain paiement de votre plan en plusieurs fois pour ${c.items} de ${c.shop} est dû maintenant.`,
+      "Payez dans les 7 jours pour garder l'article réservé. Passé ce délai, le plan est clôturé et l'article est remis en vente.",
+    ],
+    button: { label: "Payer maintenant", path: "/account#layaway" },
+  }),
+  layaway_cancelled: (c: Ctx) => ({
+    subject: `Votre plan pour la commande ${c.ref} a été clôturé`,
+    title: "Votre plan en plusieurs fois a été clôturé",
+    paragraphs: [
+      `Aucun paiement n'a été fait sur votre plan pour ${c.items} de ${c.shop} plus de 7 jours après l'échéance : le plan est clôturé et l'article est remis en vente.`,
+      "Ce que vous avez déjà payé vous sera remboursé sur votre numéro mobile money par l'équipe Buyam Sellam.",
+    ],
+    button: { label: "Mon compte", path: "/account" },
+  }),
+});
+Object.assign(SELLER.en, {
+  unshipped_cancelled: (c: Ctx) => ({
+    subject: `Order ${c.ref} cancelled — not sent within 7 days`,
+    title: "An order was cancelled because it wasn't sent",
+    paragraphs: [
+      `The order of ${c.items} (${c.amount}) was paid 7 days ago but never marked as sent, so it has been cancelled and the buyer will be refunded.`,
+      "Please mark orders as sent as soon as they leave. Repeated cancellations can lead to your shop being paused.",
+    ],
+    button: { label: "Open my dashboard", path: "/dashboard?tab=orders" },
+  }),
+  layaway_cancelled: (c: Ctx) => ({
+    subject: `Pay-in-parts plan closed — order ${c.ref}`,
+    title: "A pay-in-parts plan was closed",
+    paragraphs: [`The buyer stopped paying for ${c.items}. The plan is closed and the item is back in your stock.`],
+    button: { label: "Open my dashboard", path: "/dashboard?tab=orders" },
+  }),
+});
+Object.assign(SELLER.fr, {
+  unshipped_cancelled: (c: Ctx) => ({
+    subject: `Commande ${c.ref} annulée — non envoyée sous 7 jours`,
+    title: "Une commande a été annulée car elle n'a pas été envoyée",
+    paragraphs: [
+      `La commande de ${c.items} (${c.amount}) a été payée il y a 7 jours mais n'a jamais été marquée comme envoyée : elle est annulée et l'acheteur sera remboursé.`,
+      "Marquez vos commandes comme envoyées dès leur départ. Des annulations répétées peuvent entraîner la suspension de votre boutique.",
+    ],
+    button: { label: "Ouvrir mon tableau de bord", path: "/dashboard?tab=orders" },
+  }),
+  layaway_cancelled: (c: Ctx) => ({
+    subject: `Plan en plusieurs fois clôturé — commande ${c.ref}`,
+    title: "Un plan en plusieurs fois a été clôturé",
+    paragraphs: [`L'acheteur a cessé de payer pour ${c.items}. Le plan est clôturé et l'article est de retour dans votre stock.`],
+    button: { label: "Ouvrir mon tableau de bord", path: "/dashboard?tab=orders" },
+  }),
+});
+
 export const FOOTER: Record<Lang, string> = {
   en: "Buyam Sellam — buy and sell safely in Cameroon. Questions? Just reply to this email.",
   fr: "Buyam Sellam — achetez et vendez en sécurité au Cameroun. Des questions ? Répondez simplement à cet e-mail.",
@@ -259,7 +376,7 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
   try {
     const { data: order } = await admin
       .from("orders")
-      .select("id, buyer_id, buyer_email, buyer_locale, total_amount_fcfa, delivery_name, delivery_city, delivery_phone, shop:shops(shop_name, owner_id)")
+      .select("id, buyer_id, buyer_email, buyer_locale, total_amount_fcfa, delivery_fee_fcfa, delivery_name, delivery_city, delivery_phone, shop:shops(shop_name, owner_id)")
       .eq("id", orderId)
       .maybeSingle();
     if (!order) return;
@@ -278,7 +395,7 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
     const ctx: Ctx = {
       ref: order.id.slice(0, 8).toUpperCase(),
       amount: formatFcfa(order.total_amount_fcfa),
-      payout: formatFcfa(calculateCommission(order.total_amount_fcfa).sellerPayoutFcfa),
+      payout: formatFcfa(orderCommission(order).sellerPayoutFcfa),
       items: itemText,
       shop: shop?.shop_name ?? "Buyam Sellam",
       name: order.delivery_name ?? "",
@@ -329,9 +446,9 @@ export async function sendOrderEmails(admin: SupabaseClient, orderId: string, ev
         : Promise.resolve(),
       deliver(buyerEmail, buyerLang, BUYER[buyerLang][event], buyerCtx, order.id),
       deliver(seller.email, sellerLang, SELLER[sellerLang][event], ctx, order.id),
-      event === "disputed"
+      event === "disputed" || event === "unshipped_cancelled" || event === "layaway_cancelled"
         ? deliver(SUPPORT_EMAIL, "en", (c) => ({
-            subject: `[Dispute] Order ${c.ref} — ${c.shop}`,
+            subject: `[${event === "disputed" ? "Dispute" : "Refund needed"}] Order ${c.ref} — ${c.shop}`,
             title: `Dispute opened on order ${c.ref}`,
             paragraphs: [`Shop: ${c.shop}. Items: ${c.items}. Amount: ${c.amount}. Buyer: ${c.name}, ${c.city} ${c.phone}.`, `Order id: ${order.id}`],
             button: { label: "Open admin", path: "/admin" },
