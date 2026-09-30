@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase-admin";
-import { markOrderPaid } from "@/lib/order-fulfillment";
+import { markOrderPaid, decrementStockAndNotify } from "@/lib/order-fulfillment";
 import { verifyWebhookSignature } from "@/lib/sebpay";
 
 // SebPay's server-to-server confirmation — the same reasoning as
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
   }
 
-  let payload: { external_reference?: string; status?: string; transaction_id?: string };
+  let payload: { external_reference?: string; status?: string; transaction_id?: string; amount?: number | string };
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -42,12 +42,22 @@ export async function POST(req: NextRequest) {
   }
 
   if (payload.status === "approved") {
-    await markOrderPaid(admin, {
-      paymentReference: reference,
-      provider: "sebpay",
-      eventType: "collection.approved",
-      rawPayload: payload,
-    });
+    const { data: order } = await admin.from("orders").select("total_amount_fcfa").eq("payment_reference", reference).maybeSingle();
+    const paid = Number(payload.amount);
+    if (order && (!Number.isFinite(paid) || paid >= order.total_amount_fcfa)) {
+      const updated = await markOrderPaid(admin, {
+        paymentReference: reference,
+        provider: "sebpay",
+        eventType: "collection.approved",
+        rawPayload: payload,
+        excludeGroupBuy: true,
+      });
+      // The webhook can arrive before the buyer's page polls, so stock
+      // must come off here too.
+      if (updated) await decrementStockAndNotify(admin, updated.id, updated.shop_id);
+    } else if (order) {
+      console.error("sebpay: amount too low", { reference, paid, owed: order.total_amount_fcfa });
+    }
   } else if (payload.status === "rejected") {
     const { data: updatedOrder } = await admin
       .from("orders")
