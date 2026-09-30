@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { signOutEverywhere } from "@/lib/sign-out";
 import { useLocale } from "./locale-provider";
 import { startInstall } from "./app-shell";
 import { ThemeSwitch } from "./theme";
@@ -88,10 +88,7 @@ export function AccountMenu({
       await onSignOut();
       return;
     }
-    await supabase.auth.signOut();
-    // Full reload on purpose: clears every signed-in view and cache.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.assign("/");
+    await signOutEverywhere("/");
   }
 
   const close = () => setOpen(false);
