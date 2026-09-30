@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getAdminClient, notifyShop } from "@/lib/supabase-admin";
 import { sendOrderEmails } from "@/lib/order-emails";
+import { requestIsOrderBuyer } from "@/lib/order-secrets";
 
 const VALID_REASONS = [
   "not_arrived",
@@ -36,6 +37,10 @@ export async function POST(
   const admin = getAdminClient();
   if (!admin) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
+  }
+
+  if (!(await requestIsOrderBuyer(admin, req, id))) {
+    return NextResponse.json({ error: "Open this order from your confirmation link or sign in to your account." }, { status: 403 });
   }
 
   let form: FormData;
@@ -75,12 +80,18 @@ export async function POST(
     if (photo.size > MAX_PHOTO_BYTES) {
       return NextResponse.json({ error: "That photo is too large (max 8MB)." }, { status: 400 });
     }
-    const ext = photo.name.split(".").pop()?.toLowerCase().slice(0, 5) || "jpg";
+    // Only real photos; the file name and type the browser sends are
+    // never trusted for what gets stored.
+    const IMAGE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif" };
+    const ext = IMAGE_TYPES[photo.type];
+    if (!ext) {
+      return NextResponse.json({ error: "Please attach a photo (JPG, PNG or WEBP)." }, { status: 400 });
+    }
     const path = `${order.id}-${Date.now()}.${ext}`;
     const bytes = new Uint8Array(await photo.arrayBuffer());
     const { error: uploadError } = await admin.storage
       .from("dispute-evidence")
-      .upload(path, bytes, { contentType: photo.type || "image/jpeg" });
+      .upload(path, bytes, { contentType: photo.type });
     if (!uploadError) {
       const { data: pub } = admin.storage.from("dispute-evidence").getPublicUrl(path);
       photoUrl = pub.publicUrl;
