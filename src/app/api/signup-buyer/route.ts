@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canFinishSignup, looksLikePhone } from "@/lib/signup-guard";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -36,13 +37,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
 
-  // Only for accounts created moments ago by the sign-up form: this
-  // route takes the account id from the request, so without this check
-  // anyone could overwrite another person's profile.
-  const { data: authUser } = await admin.auth.admin.getUserById(userId);
-  const createdAt = authUser?.user?.created_at ? new Date(authUser.user.created_at).getTime() : 0;
-  if (!authUser?.user || Date.now() - createdAt > 60 * 60 * 1000) {
-    return NextResponse.json({ error: "This sign-up link has expired. Please log in instead." }, { status: 403 });
+  const allowed = await canFinishSignup(admin, userId, req.headers.get("authorization"));
+  if (!allowed.ok) {
+    return NextResponse.json({ error: allowed.error }, { status: 403 });
+  }
+  if (!looksLikePhone(phone)) {
+    return NextResponse.json({ error: "Please enter a valid phone number." }, { status: 400 });
   }
 
   const { error } = await admin.from("profiles").upsert({
@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
     city: city || null,
   });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("signup profile:", error.message);
+    return NextResponse.json({ error: "Could not finish creating your account. Please try again." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
