@@ -259,6 +259,9 @@ const en = {
     errorNotApproved: "The payment was not approved on your phone.",
     errorTimeout:
       "We didn't see a confirmation in time. Check your phone, or try again.",
+    stillPendingTitle: "Still waiting for your payment",
+    stillPendingBody:
+      "If you approved it on your phone, it will show on your order within a few minutes. Don't pay again — check the order first.",
     errorUnreachable: "Could not reach the payment service. Please try again.",
     paymentMethodLabel: "Payment method",
     gatewayNotchpay: "Mobile Money (NotchPay)",
@@ -1579,6 +1582,9 @@ const fr: typeof en = {
     errorNotApproved: "Le paiement n'a pas été approuvé sur votre téléphone.",
     errorTimeout:
       "Nous n'avons pas reçu de confirmation à temps. Vérifiez votre téléphone ou réessayez.",
+    stillPendingTitle: "Paiement toujours en attente",
+    stillPendingBody:
+      "Si vous l'avez approuvé sur votre téléphone, il apparaîtra sur votre commande d'ici quelques minutes. Ne payez pas une deuxième fois — vérifiez d'abord la commande.",
     errorUnreachable: "Impossible de joindre le service de paiement. Veuillez réessayer.",
     paymentMethodLabel: "Moyen de paiement",
     gatewayNotchpay: "Mobile Money (NotchPay)",
