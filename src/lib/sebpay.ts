@@ -188,7 +188,7 @@ export async function createCollection(
 
 export async function getCollectionStatus(
   transactionIdOrReference: string
-): Promise<{ status: string } | null> {
+): Promise<{ status: string; externalReference?: string; amount?: number } | null> {
   try {
     const res = await fetch(
       `${SEBPAY_BASE_URL}/collections/${encodeURIComponent(transactionIdOrReference)}`,
@@ -198,7 +198,11 @@ export async function getCollectionStatus(
     const body = await res.json();
     const data = body?.data ?? body;
     const status = data?.status;
-    return typeof status === "string" ? { status } : null;
+    const ext = data?.external_reference ?? data?.externalReference ?? data?.merchant_reference;
+    const amt = Number(data?.amount);
+    return typeof status === "string"
+      ? { status, externalReference: typeof ext === "string" ? ext : undefined, amount: Number.isFinite(amt) ? amt : undefined }
+      : null;
   } catch {
     return null;
   }
