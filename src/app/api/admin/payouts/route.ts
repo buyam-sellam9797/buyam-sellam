@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { sendOrderEmails } from "@/lib/order-emails";
 import { requireAdmin, adminErrorResponse } from "@/lib/admin-auth";
 import { notifyShop } from "@/lib/supabase-admin";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { formatFcfa } from "@/lib/format";
 
 // Lists every order that's ready for a real-world payout: the buyer
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await check.admin
     .from("orders")
     .select(
-      "id, total_amount_fcfa, buyer_phone, created_at, shop:shops(shop_name, whatsapp_number, payout_provider, payout_phone_number)"
+      "id, total_amount_fcfa, delivery_fee_fcfa, buyer_phone, created_at, shop:shops(shop_name, whatsapp_number, payout_provider, payout_phone_number)"
     )
     .eq("status", "completed")
     .eq("payout_sent", false)
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     .eq("id", body.orderId)
     .eq("status", "completed")
     .eq("payout_sent", false) // a double click must not alert the seller twice
-    .select("id, shop_id, total_amount_fcfa")
+    .select("id, shop_id, total_amount_fcfa, delivery_fee_fcfa")
     .maybeSingle();
 
   if (error) {
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Already marked as paid out." }, { status: 409 });
   }
 
-  const { sellerPayoutFcfa } = calculateCommission(updated.total_amount_fcfa);
+  const { sellerPayoutFcfa } = orderCommission(updated);
   await notifyShop(check.admin, {
     shopId: updated.shop_id,
     type: "payout_released",
