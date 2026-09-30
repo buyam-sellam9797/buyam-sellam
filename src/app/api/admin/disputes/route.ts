@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This dispute is already resolved." }, { status: 409 });
   }
 
-  const { error: updateDisputeError } = await admin
+  const { data: claimed, error: updateDisputeError } = await admin
     .from("disputes")
     .update({
       status: "resolved",
@@ -61,9 +61,15 @@ export async function POST(req: NextRequest) {
       resolution: body.resolution?.trim().slice(0, 1000) || null,
       resolved_at: new Date().toISOString(),
     })
-    .eq("id", dispute.id);
+    .eq("id", dispute.id)
+    .neq("status", "resolved") // two admins clicking at once: only one wins
+    .select("id")
+    .maybeSingle();
   if (updateDisputeError) {
     return NextResponse.json({ error: "Could not resolve this dispute." }, { status: 500 });
+  }
+  if (!claimed) {
+    return NextResponse.json({ error: "This dispute is already resolved." }, { status: 409 });
   }
 
   const newOrderStatus = body.action === "refunded" ? "refunded" : "completed";
