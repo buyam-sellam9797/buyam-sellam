@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimited } from "@/lib/rate-limit";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -25,6 +26,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
   const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const limited = await rateLimited(admin, req, "signup");
+  if (limited) return limited;
 
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) return NextResponse.json({ error: "Please log in first." }, { status: 401 });
