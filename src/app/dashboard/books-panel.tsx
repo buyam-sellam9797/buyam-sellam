@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, type Order, type Product, type Shop } from "@/lib/supabase";
-import { calculateCommission } from "@/lib/commission";
+import { orderCommission } from "@/lib/commission";
 import { formatFcfa } from "@/lib/format";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import { IconBook, IconPrinter, IconCart, IconBox, IconBanknote, IconTrendingUp, IconTrendingDown } from "@/components/dash-icons";
@@ -96,7 +96,7 @@ export function BooksPanel({
     const build = (key: string) => {
       const online = paid.filter((o) => localMonth(o.paid_at as string) === key);
       const onlineGross = online.reduce((s, o) => s + o.total_amount_fcfa, 0);
-      const onlineNet = online.reduce((s, o) => s + calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa, 0);
+      const onlineNet = online.reduce((s, o) => s + orderCommission(o).sellerPayoutFcfa, 0);
       const shopSales = sales.filter((x) => monthOf(x.sold_on) === key);
       const shopTotal = shopSales.reduce((s, x) => s + x.quantity * x.unit_price_fcfa, 0);
       const monthExpenses = expenses.filter((x) => monthOf(x.spent_on) === key);
@@ -197,7 +197,7 @@ export function BooksPanel({
         t.books.csvOnline,
         (o.items ?? []).map((i) => `${i.quantity} x ${i.product?.title ?? ""}`).join("; ") || `#${o.id.slice(0, 8)}`,
         String((o.items ?? []).reduce((n, i) => n + i.quantity, 0)),
-        String(calculateCommission(o.total_amount_fcfa).sellerPayoutFcfa),
+        String(orderCommission(o).sellerPayoutFcfa),
       ]);
     }
     for (const s of r.shopSales) rows.push([s.sold_on, t.books.csvShopSale, s.title, String(s.quantity), String(s.quantity * s.unit_price_fcfa)]);
