@@ -1,5 +1,6 @@
 "use client";
 
+import { signOutEverywhere } from "@/lib/sign-out";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -85,8 +86,7 @@ export default function AccountPage() {
   }, [loadData]);
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/");
+    await signOutEverywhere("/");
   }
 
   if (loading) {
@@ -663,9 +663,13 @@ function LayawayCard({
     setStatus("waiting");
     setError(null);
     try {
+      const { data: sess } = await supabase.auth.getSession();
       const startRes = await fetch(`/api/layaway/${order.id}/installment`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(sess.session ? { Authorization: `Bearer ${sess.session.access_token}` } : {}),
+        },
         body: JSON.stringify({ provider, phone }),
       });
       const startData = await startRes.json();
